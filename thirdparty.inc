@@ -21,10 +21,14 @@ set (THIRDPARTY_LIBS "")         # Initialization, don't touch
 #
 # Edit these 4 lines to define paths to GFLAGS
 #
-set(GFLAGS_HOME $ENV{THIRDPARTY_HOME}/Gflags.Library)
-set(GFLAGS_INCLUDE ${GFLAGS_HOME}/inc/include)
-set(GFLAGS_LIB_DEBUG ${GFLAGS_HOME}/bin/debug/amd64/gflags.lib)
-set(GFLAGS_LIB_RELEASE ${GFLAGS_HOME}/bin/retail/amd64/gflags.lib)
+set(GFLAGS_HOME C:/aRocks/gflags-2.2.0)
+set(GFLAGS_INCLUDE ${GFLAGS_HOME}/target/include)
+set(GFLAGS_LIB_DEBUG ${GFLAGS_HOME}/target/lib/Debug/gflags_static.lib)
+set(GFLAGS_LIB_RELEASE ${GFLAGS_HOME}/target/lib/Release/gflags_static.lib)
+#set(GFLAGS_HOME $ENV{THIRDPARTY_HOME}/Gflags.Library)
+#set(GFLAGS_INCLUDE ${GFLAGS_HOME}/inc/include)
+#set(GFLAGS_LIB_DEBUG ${GFLAGS_HOME}/bin/debug/amd64/gflags.lib)
+#set(GFLAGS_LIB_RELEASE ${GFLAGS_HOME}/bin/retail/amd64/gflags.lib)
 
 # ================================================== GFLAGS ==================================================
 #
@@ -65,10 +69,14 @@ endif ()
 #
 # Edit these 4 lines to define paths to Snappy
 #
-set(SNAPPY_HOME $ENV{THIRDPARTY_HOME}/Snappy.Library)
-set(SNAPPY_INCLUDE ${SNAPPY_HOME}/inc/inc)
-set(SNAPPY_LIB_DEBUG ${SNAPPY_HOME}/bin/debug/amd64/snappy.lib)
-set(SNAPPY_LIB_RELEASE ${SNAPPY_HOME}/bin/retail/amd64/snappy.lib)
+#set(SNAPPY_HOME $ENV{THIRDPARTY_HOME}/Snappy.Library)
+#set(SNAPPY_INCLUDE ${SNAPPY_HOME}/inc/inc)
+#set(SNAPPY_LIB_DEBUG ${SNAPPY_HOME}/bin/debug/amd64/snappy.lib)
+#set(SNAPPY_LIB_RELEASE ${SNAPPY_HOME}/bin/retail/amd64/snappy.lib)
+set(SNAPPY_HOME C:/aRocks/snappy-visual-cpp)
+set(SNAPPY_INCLUDE ${SNAPPY_HOME})
+set(SNAPPY_LIB_DEBUG ${SNAPPY_HOME}/x64/Debug/snappy64.lib)
+set(SNAPPY_LIB_RELEASE ${SNAPPY_HOME}/x64/Release/snappy64.lib)
 
 #
 # Don't touch these lines
@@ -108,11 +116,14 @@ endif ()
 #
 # Edit these 4 lines to define paths to LZ4
 #
-set(LZ4_HOME $ENV{THIRDPARTY_HOME}/LZ4.Library)
-set(LZ4_INCLUDE ${LZ4_HOME}/inc/include)
-set(LZ4_LIB_DEBUG ${LZ4_HOME}/bin/debug/amd64/lz4.lib)
-set(LZ4_LIB_RELEASE ${LZ4_HOME}/bin/retail/amd64/lz4.lib)
-
+#set(LZ4_HOME $ENV{THIRDPARTY_HOME}/LZ4.Library)
+#set(LZ4_INCLUDE ${LZ4_HOME}/inc/include)
+#set(LZ4_LIB_DEBUG ${LZ4_HOME}/bin/debug/amd64/lz4.lib)
+#set(LZ4_LIB_RELEASE ${LZ4_HOME}/bin/retail/amd64/lz4.lib)
+set(LZ4_HOME C:/aRocks/lz4-1.7.5)
+set(LZ4_INCLUDE ${LZ4_HOME}/lib)
+set(LZ4_LIB_DEBUG ${LZ4_HOME}/visual/VS2010/bin/x64_Debug/liblz4_static.lib)
+set(LZ4_LIB_RELEASE ${LZ4_HOME}/visual/VS2010/bin/x64_Release/liblz4_static.lib)
 #
 # Don't touch these lines
 #
@@ -151,11 +162,14 @@ endif ()
 #
 # Edit these 4 lines to define paths to ZLIB
 #
-set(ZLIB_HOME $ENV{THIRDPARTY_HOME}/ZLIB.Library)
-set(ZLIB_INCLUDE ${ZLIB_HOME}/inc/include)
-set(ZLIB_LIB_DEBUG ${ZLIB_HOME}/bin/debug/amd64/zlib.lib)
-set(ZLIB_LIB_RELEASE ${ZLIB_HOME}/bin/retail/amd64/zlib.lib)
-
+#set(ZLIB_HOME $ENV{THIRDPARTY_HOME}/ZLIB.Library)
+#set(ZLIB_INCLUDE ${ZLIB_HOME}/inc/include)
+#set(ZLIB_LIB_DEBUG ${ZLIB_HOME}/bin/debug/amd64/zlib.lib)
+#set(ZLIB_LIB_RELEASE ${ZLIB_HOME}/bin/retail/amd64/zlib.lib)
+set(ZLIB_HOME C:/aRocks/zlib-1.2.11)
+set(ZLIB_INCLUDE ${ZLIB_HOME})
+set(ZLIB_LIB_DEBUG ${ZLIB_HOME}/contrib/vstudio/vc14/x64/ZlibStatDebug/zlibwapi.lib)
+set(ZLIB_LIB_RELEASE ${ZLIB_HOME}/contrib/vstudio/vc14/x64/ZlibStatRelease/zlibwapi.lib)
 #
 # Don't touch these lines
 #
@@ -263,3 +277,5 @@ else ()
   set (ARTIFACT_SUFFIX "")
   message(STATUS "JEMALLOC library is disabled")
 endif ()
+
+set (VCTargetsPath "C:/Program Files (x86)/Microsoft Visual Studio/2017/Community/MSBuild/15.0/Bin/amd64")

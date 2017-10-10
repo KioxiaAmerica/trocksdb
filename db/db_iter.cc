@@ -426,6 +426,11 @@ void DBIter::FindNextUserEntryInternal(bool skipping, bool prefix_check) {
             skipping = true;
             PERF_COUNTER_ADD(internal_delete_skipped_count, 1);
             break;
+#ifdef INDIRECT_VALUE_SUPPORT
+          case kINDIRECTVALUE:
+// resolve the indirect value
+// fall through to...
+#endif
           case kTypeValue:
           case kTypeBlobIndex:
             saved_key_.SetUserKey(
@@ -456,6 +461,11 @@ void DBIter::FindNextUserEntryInternal(bool skipping, bool prefix_check) {
               return;
             }
             break;
+#ifdef INDIRECT_VALUE_SUPPORT
+          case kINDIRECTMERGE:
+// resolve the indirect value
+// fall through to...
+#endif
           case kTypeMerge:
             saved_key_.SetUserKey(
                 ikey_.user_key,
@@ -572,7 +582,7 @@ void DBIter::MergeValuesNewToOld() {
       // iter_ is positioned after delete
       iter_->Next();
       break;
-    } else if (kTypeValue == ikey.type) {
+    } else if (IsTypeValueNonBlob(ikey.type)) {
       // hit a put, merge the put value with operands and store the
       // final result in saved_value_. We are done!
       // ignore corruption if there is any.
@@ -586,7 +596,7 @@ void DBIter::MergeValuesNewToOld() {
       // iter_ is positioned after put
       iter_->Next();
       return;
-    } else if (kTypeMerge == ikey.type) {
+    } else if (IsTypeMerge(ikey.type)) {
       // hit a merge, add the value as an operand and run associative merge.
       // when complete, add result to operands and continue.
       merge_context_.PushOperand(iter_->value(),
@@ -775,6 +785,11 @@ bool DBIter::FindValueForCurrentKey() {
 
     last_key_entry_type = ikey.type;
     switch (last_key_entry_type) {
+#ifdef INDIRECT_VALUE_SUPPORT
+      case kINDIRECTVALUE:
+// Resolve the operand if indirect.
+// fall through to...
+#endif
       case kTypeValue:
       case kTypeBlobIndex:
         if (range_del_agg_.ShouldDelete(
@@ -795,6 +810,11 @@ bool DBIter::FindValueForCurrentKey() {
         last_not_merge_type = last_key_entry_type;
         PERF_COUNTER_ADD(internal_delete_skipped_count, 1);
         break;
+#ifdef INDIRECT_VALUE_SUPPORT
+      case kINDIRECTMERGE:
+// Resolve the operand if indirect.
+// fall through to...
+#endif
       case kTypeMerge:
         if (range_del_agg_.ShouldDelete(
                 ikey,
@@ -829,11 +849,12 @@ bool DBIter::FindValueForCurrentKey() {
     case kTypeRangeDeletion:
       valid_ = false;
       return false;
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kINDIRECTMERGE:
+#endif
     case kTypeMerge:
       current_entry_is_merged_ = true;
-      if (last_not_merge_type == kTypeDeletion ||
-          last_not_merge_type == kTypeSingleDeletion ||
-          last_not_merge_type == kTypeRangeDeletion) {
+      if (IsTypeDelete(last_not_merge_type)) {
         s = MergeHelper::TimedFullMerge(
             merge_operator_, saved_key_.GetUserKey(), nullptr,
             merge_context_.GetOperands(), &saved_value_, logger_, statistics_,
@@ -851,13 +872,16 @@ bool DBIter::FindValueForCurrentKey() {
         valid_ = false;
         return true;
       } else {
-        assert(last_not_merge_type == kTypeValue);
+        assert(IsTypeValueNonBlob(last_not_merge_type));
         s = MergeHelper::TimedFullMerge(
             merge_operator_, saved_key_.GetUserKey(), &pinned_value_,
             merge_context_.GetOperands(), &saved_value_, logger_, statistics_,
             env_, &pinned_value_, true);
       }
       break;
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kINDIRECTVALUE:
+#endif
     case kTypeValue:
       // do nothing - we've already has value in saved_value_
       break;
@@ -913,21 +937,21 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
     valid_ = false;
     return true;
   }
-  if (ikey.type == kTypeValue || ikey.type == kTypeBlobIndex) {
+  if (IsTypeValue(ikey.type)) {
     assert(iter_->IsValuePinned());
     pinned_value_ = iter_->value();
     valid_ = true;
     return true;
   }
 
-  // kTypeMerge. We need to collect all kTypeMerge values and save them
+  // some kind of kTypeMerge. We need to collect all kTypeMerge values and save them
   // in operands
   current_entry_is_merged_ = true;
   merge_context_.Clear();
   while (
       iter_->Valid() &&
       user_comparator_->Equal(ikey.user_key, saved_key_.GetUserKey()) &&
-      ikey.type == kTypeMerge &&
+      IsTypeMerge(ikey.type) &&
       !range_del_agg_.ShouldDelete(
           ikey, RangeDelAggregator::RangePositioningMode::kBackwardTraversal)) {
     merge_context_.PushOperand(iter_->value(),

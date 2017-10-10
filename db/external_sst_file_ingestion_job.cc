@@ -192,6 +192,9 @@ Status ExternalSstFileIngestionJob::Run() {
     if (!status.ok()) {
       return status;
     }
+#ifdef INDIRECT_VALUE_SUPPORT
+// Assign High-Value to VLog file # in SST.  We will pick up the values when this file is compacted.
+#endif
     edit_.AddFile(f.picked_level, f.fd.GetNumber(), f.fd.GetPathId(),
                   f.fd.GetFileSize(), f.smallest_internal_key(),
                   f.largest_internal_key(), f.assigned_seqno, f.assigned_seqno,

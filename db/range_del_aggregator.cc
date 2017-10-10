@@ -56,7 +56,7 @@ bool RangeDelAggregator::ShouldDeleteImpl(
 bool RangeDelAggregator::ShouldDeleteImpl(
     const ParsedInternalKey& parsed,
     RangeDelAggregator::RangePositioningMode mode) {
-  assert(IsValueType(parsed.type));
+  assert(IsTypeMemorSST(parsed.type));
   assert(rep_ != nullptr);
   auto& positional_tombstone_map = GetPositionalTombstoneMap(parsed.sequence);
   const auto& tombstone_map = positional_tombstone_map.raw_map;

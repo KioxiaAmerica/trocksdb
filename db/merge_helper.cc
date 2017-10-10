@@ -165,8 +165,8 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
 
     // At this point we are guaranteed that we need to process this key.
 
-    assert(IsValueType(ikey.type));
-    if (ikey.type != kTypeMerge) {
+    assert(IsTypeMemorSST(ikey.type));
+    if (!IsTypeMerge(ikey.type)) {
 
       // hit a put/delete/single delete
       //   => merge the put value or a nullptr with operands_
@@ -186,7 +186,10 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       // want. Also if we're in compaction and it's a put, it would be nice to
       // run compaction filter on it.
       const Slice val = iter->value();
-      const Slice* val_ptr = (kTypeValue == ikey.type) ? &val : nullptr;
+      const Slice* val_ptr = (IsTypeValueNonBlob(ikey.type)) ? &val : nullptr;
+#ifdef INDIRECT_VALUE_SUPPORT
+// Resolve the operand if indirect
+#endif
       std::string merge_result;
       s = TimedFullMerge(user_merge_operator_, ikey.user_key, val_ptr,
                          merge_context_.GetOperands(), &merge_result, logger_,
@@ -218,6 +221,10 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       //
       // Keep queuing keys and operands until we either meet a put / delete
       // request or later did a partial merge.
+#ifdef INDIRECT_VALUE_SUPPORT
+// Resolve the operand if indirect.  If there is no compaction filter, it would be slightly better to defer the resolution
+// in case we never get a value entry and there is only one merge; but to reduce code complexity we don't do that.
+#endif
 
       Slice value_slice = iter->value();
       // add an operand to the list if:
@@ -291,7 +298,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
   if (surely_seen_the_beginning) {
     // do a final merge with nullptr as the existing value and say
     // bye to the merge type (it's now converted to a Put)
-    assert(kTypeMerge == orig_ikey.type);
+    assert(IsTypeMerge(orig_ikey.type));
     assert(merge_context_.GetNumOperands() >= 1);
     assert(merge_context_.GetNumOperands() == keys_.size());
     std::string merge_result;
@@ -338,6 +345,9 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
         keys_.erase(keys_.begin(), keys_.end() - 1);
       }
     }
+#ifdef INDIRECT_VALUE_SUPPORT
+// If there is only one merge, return it in its original form (indirect/direct)
+#endif
   }
 
   return s;

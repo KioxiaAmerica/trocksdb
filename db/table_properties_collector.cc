@@ -23,7 +23,7 @@ Status InternalKeyPropertiesCollector::InternalAdd(const Slice& key,
   if (ikey.type == ValueType::kTypeDeletion ||
       ikey.type == ValueType::kTypeSingleDeletion) {
     ++deleted_keys_;
-  } else if (ikey.type == ValueType::kTypeMerge) {
+  } else if (IsTypeMerge(ikey.type)) {
     ++merge_operands_;
   }
 
@@ -61,12 +61,18 @@ namespace {
 
 EntryType GetEntryType(ValueType value_type) {
   switch (value_type) {
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kINDIRECTVALUE:
+#endif
     case kTypeValue:
       return kEntryPut;
     case kTypeDeletion:
       return kEntryDelete;
     case kTypeSingleDeletion:
       return kEntrySingleDelete;
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kINDIRECTMERGE:
+#endif
     case kTypeMerge:
       return kEntryMerge;
     default:

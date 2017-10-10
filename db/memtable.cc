@@ -583,7 +583,7 @@ static bool SaveValue(void* arg, const char* entry) {
 
     s->seq = seq;
 
-    if ((type == kTypeValue || type == kTypeMerge || type == kTypeBlobIndex) &&
+    if (IsTypeMemtableSingleValue(type) &&
         range_del_agg->ShouldDelete(Slice(key_ptr, key_length))) {
       type = kTypeRangeDeletion;
     }

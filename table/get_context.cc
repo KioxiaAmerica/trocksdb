@@ -89,13 +89,16 @@ void GetContext::SaveValue(const Slice& value, SequenceNumber seq) {
 
 bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
                            const Slice& value, Cleanable* value_pinner) {
-  assert((state_ != kMerge && parsed_key.type != kTypeMerge) ||
+  assert((state_ != kMerge && !IsTypeMerge(parsed_key.type)) ||
          merge_context_ != nullptr);
   if (ucmp_->Equal(parsed_key.user_key, user_key_)) {
     // If the value is not in the snapshot, skip it
     if (!CheckCallback(parsed_key.sequence)) {
       return true;  // to continue to the next seq
     }
+#ifdef INDIRECT_VALUE_SUPPORT
+// Resolve the operand if indirect, and replace the indirect type with a direct one.  Pin the data read from disk
+#endif
 
     appendToReplayLog(replay_log_, parsed_key.type, value);
 
@@ -108,7 +111,7 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
 
     auto type = parsed_key.type;
     // Key matches. Process it
-    if ((type == kTypeValue || type == kTypeMerge || type == kTypeBlobIndex) &&
+    if (IsTypeMemtableSingleValue(type) &&
         range_del_agg_ != nullptr && range_del_agg_->ShouldDelete(parsed_key)) {
       type = kTypeRangeDeletion;
     }

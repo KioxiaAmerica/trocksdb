@@ -27,6 +27,13 @@ CompactionEventListener::CompactionListenerValueType fromInternalValueType(
       return CompactionEventListener::CompactionListenerValueType::kRangeDelete;
     case kTypeBlobIndex:
       return CompactionEventListener::CompactionListenerValueType::kBlobIndex;
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kINDIRECTVALUE:
+return CompactionEventListener::CompactionListenerValueType::kIndirectValue;
+    case kINDIRECTMERGE:
+      return CompactionEventListener::CompactionListenerValueType::
+          kIndirectMergeOperand;
+#endif
     default:
       assert(false);
       return CompactionEventListener::CompactionListenerValueType::kInvalid;
@@ -230,7 +237,7 @@ void CompactionIterator::NextFromInput() {
 #endif  // ROCKSDB_LITE
 
       // apply the compaction filter to the first occurrence of the user key
-      if (compaction_filter_ != nullptr && ikey_.type == kTypeValue &&
+      if (compaction_filter_ != nullptr && IsTypeValueNonBlob(ikey_.type) &&
           (visible_at_tip_ || ikey_.sequence > latest_snapshot_ ||
            ignore_snapshots_)) {
         // If the user has specified a compaction filter and the sequence
@@ -313,7 +320,7 @@ void CompactionIterator::NextFromInput() {
       // In the previous iteration we encountered a single delete that we could
       // not compact out.  We will keep this Put, but can drop it's data.
       // (See Optimization 3, below.)
-      assert(ikey_.type == kTypeValue);
+      assert(IsTypeValueNonBlob(ikey_.type));
       assert(current_user_key_snapshot_ == last_snapshot);
 
       value_.clear();
@@ -385,7 +392,7 @@ void CompactionIterator::NextFromInput() {
             // is an unexpected Merge or Delete.  We will compact it out
             // either way. We will maintain counts of how many mismatches
             // happened
-            if (next_ikey.type != kTypeValue) {
+            if (!IsTypeValueNonBlob(next_ikey.type)) {
               ++iter_stats_.num_single_del_mismatch;
             }
 
@@ -477,7 +484,7 @@ void CompactionIterator::NextFromInput() {
         ++iter_stats_.num_optimized_del_drop_obsolete;
       }
       input_->Next();
-    } else if (ikey_.type == kTypeMerge) {
+    } else if (IsTypeMerge(ikey_.type)) {
       if (!merge_helper_->HasOperator()) {
         status_ = Status::InvalidArgument(
             "merge_operator is not properly initialized.");
@@ -557,7 +564,7 @@ void CompactionIterator::PrepareOutput() {
   // only care about sequence number larger than any active snapshots.
   if ((compaction_ != nullptr && !compaction_->allow_ingest_behind()) &&
       bottommost_level_ && valid_ && ikey_.sequence <= earliest_snapshot_ &&
-      ikey_.type != kTypeMerge &&
+      !IsTypeMerge(ikey_.type) &&
       !cmp_->Equal(compaction_->GetLargestUserKey(), ikey_.user_key)) {
     assert(ikey_.type != kTypeDeletion && ikey_.type != kTypeSingleDeletion);
     ikey_.sequence = 0;

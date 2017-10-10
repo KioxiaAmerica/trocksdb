@@ -350,6 +350,9 @@ Status TableCache::Get(const ReadOptions& options,
       // cleanup routine under value_pinner will be delegated to
       // get_context.pinnable_slice_. Cache entry is released when
       // get_context.pinnable_slice_ is reset.
+#ifdef INDIRECT_VALUE_SUPPORT
+// Resolve the operand if indirect.  Pin the result read from disk
+#endif
       value_pinner.RegisterCleanup(release_cache_entry_func,
                                    ioptions_.row_cache.get(), row_handle);
       replayGetContextLog(*found_row_cache_entry, user_key, get_context,

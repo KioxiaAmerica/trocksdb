@@ -249,9 +249,7 @@ bool BlockIter::ParseNextKey() {
       assert(GetInternalKeySeqno(key_.GetInternalKey()) == 0);
 
       ValueType value_type = ExtractValueType(key_.GetInternalKey());
-      assert(value_type == ValueType::kTypeValue ||
-             value_type == ValueType::kTypeMerge ||
-             value_type == ValueType::kTypeDeletion);
+      assert(IsTypeIngestible(value_type));
 
       if (key_pinned_) {
         // TODO(tec): Investigate updating the seqno in the loaded block

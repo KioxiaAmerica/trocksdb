@@ -207,6 +207,10 @@ class CompactionEventListener {
     kSingleDelete,
     kRangeDelete,
     kBlobIndex,
+#ifdef INDIRECT_VALUE_SUPPORT
+    kIndirectValue,
+    kIndirectMergeOperand,
+#endif
     kInvalid,
   };
 

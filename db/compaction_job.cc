@@ -786,6 +786,12 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     // returns true.
     const Slice& key = c_iter->key();
     const Slice& value = c_iter->value();
+#ifdef INDIRECT_VALUE_SUPPORT
+// this is where we need to see the raw indirect reference
+// if we have to remap, we will expand it.  Merged results will come back as direct values, and we need to remap them too.
+// Unmerged results may be indirect, and may require remapping
+#endif
+
 
     // If an end key (exclusive) is specified, check if the current key is
     // >= than it and exit if it is because the iterator is out of its range
@@ -809,6 +815,10 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     }
     assert(sub_compact->builder != nullptr);
     assert(sub_compact->current_output() != nullptr);
+#ifdef INDIRECT_VALUE_SUPPORT
+// this is where we convert the value to a reference.  A placeholder reference will be written out to the SST, and then replaced
+// with the actual reference in a postpass
+#endif
     sub_compact->builder->Add(key, value);
     sub_compact->current_output_file_size = sub_compact->builder->FileSize();
     sub_compact->current_output()->meta.UpdateBoundaries(
