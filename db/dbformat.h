@@ -51,7 +51,7 @@ enum ValueType : unsigned char {
   kTypeBlobIndex = 0x11,                  // Blob DB only
 // The indirect types have values that are pointers to the actual location/length of the values is a separate file.
 // The ring in which the file resides could be inferred from the column family and level; but the iterator doesn't
-// give that information to its caller, which would be the one to resolve the value; so we encode the ring number
+// give that information to its caller, which would be the routine that resolves the value; so we encode the ring number
 // into the written reference.  We reserve code points for 4 rings even though only 2 are supported initially
   kTypeIndirectValue0 = 0x14,
   kTypeIndirectMerge0 = 0x18,
@@ -181,19 +181,6 @@ inline bool IsTypeAtomic(ValueType t) {
    ) ); 
 }
 
-// Check for simple type: whether Delete, Value or Merge (possibly inditrect)
-inline bool IsTypeDirectSimple(ValueType t) {
-    return (bool)((t <= kTypeIndirectMerge3) &
-        ((
-        (1LL << kTypeDeletion) | (1LL << kTypeValue) | (1LL << kTypeMerge)
-#ifdef INDIRECT_VALUE_SUPPORT
-      | (1LL << kTypeIndirectValue0) | (1LL << kTypeIndirectValue1) | (1LL << kTypeIndirectValue2) | (1LL << kTypeIndirectValue3)
-      | (1LL << kTypeIndirectMerge0) | (1LL << kTypeIndirectMerge1) | (1LL << kTypeIndirectMerge2) | (1LL << kTypeIndirectMerge3)
-#endif
-            ) >> t
-            ));
-}
-
 // Check for any deletion type:  Delete, SingleDelete, RangeDelete
 inline bool IsTypeDelete(ValueType t) {
     return (bool)((t <= kTypeIndirectMerge3) &
@@ -205,7 +192,6 @@ inline bool IsTypeDelete(ValueType t) {
 
 
 // Checks whether a type is from user operation
-// kTypeRangeDeletion is in meta block so this API is separated from above
 inline bool IsTypeExtended(ValueType t) {
   return (bool) ( (t<=kTypeIndirectMerge3) &
    ((

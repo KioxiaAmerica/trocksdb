@@ -106,6 +106,9 @@ struct FileMetaData {
 
   bool marked_for_compaction;  // True if client asked us nicely to compact this
                                // file.
+#ifdef INDIRECT_VALUE_SUPPORT
+  uint64_t earliest_indirect_ref;  // filenumber of the oldest value referred to in this SST, or HIGH-VALUE if no reference
+#endif
 
   FileMetaData()
       : smallest_seqno(kMaxSequenceNumber),

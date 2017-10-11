@@ -1091,6 +1091,9 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
       }
     }
   }
+#ifdef INDIRECT_VALUE_SUPPORT
+// if no error, create the VLog rings for those CFs that support indirect values, and initialize the early-reference values in the priority queue
+#endif
   TEST_SYNC_POINT("DBImpl::Open:Opened");
   Status persist_options_status;
   if (s.ok()) {

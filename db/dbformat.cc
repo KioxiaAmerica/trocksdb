@@ -27,7 +27,13 @@ namespace rocksdb {
 // and the value type is embedded as the low 8 bits in the sequence
 // number in internal keys, we need to use the highest-numbered
 // ValueType, not the lowest).
-const ValueType kValueTypeForSeek = kTypeIndirectMerge3;
+
+const ValueType kValueTypeForSeek =
+#ifdef INDIRECT_VALUE_SUPPORT  // kValueTypeForSeek must be the highest type that is recognized by IsTypeExtended
+kTypeIndirectMerge3;
+#else
+kTypeBlobIndex;
+#endif
 const ValueType kValueTypeForSeekForPrev = kTypeDeletion;
 
 uint64_t PackSequenceAndType(uint64_t seq, ValueType t) {

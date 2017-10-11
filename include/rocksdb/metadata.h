@@ -34,6 +34,11 @@ struct ColumnFamilyMetaData {
   std::string name;
   // The metadata of all levels in this column family.
   std::vector<LevelMetaData> levels;
+#ifdef INDIRECT_VALUE_SUPPORT
+  // The VLog rings, if any, for this column family
+
+  // for each level, the number of the ring it writes into, or -1 if none
+#endif
 };
 
 // The metadata that describes a level.
@@ -69,7 +74,29 @@ struct SstFileMetaData {
         smallestkey(_smallestkey),
         largestkey(_largestkey),
         num_reads_sampled(_num_reads_sampled),
-        being_compacted(_being_compacted) {}
+        being_compacted(_being_compacted)
+#ifdef INDIRECT_VALUE_SUPPORT
+        ,earliest_indirect_ref(0) 
+#endif
+        {}
+#ifdef INDIRECT_VALUE_SUPPORT
+  SstFileMetaData(const std::string& _file_name, const std::string& _path,
+                  uint64_t _size, SequenceNumber _smallest_seqno,
+                  SequenceNumber _largest_seqno,
+                  const std::string& _smallestkey,
+                  const std::string& _largestkey, uint64_t _num_reads_sampled,
+                  bool _being_compacted, uint64_t _earliest_indirect_ref)
+      : size(_size),
+        name(_file_name),
+        db_path(_path),
+        smallest_seqno(_smallest_seqno),
+        largest_seqno(_largest_seqno),
+        smallestkey(_smallestkey),
+        largestkey(_largestkey),
+        num_reads_sampled(_num_reads_sampled),
+        being_compacted(_being_compacted),
+        earliest_indirect_ref(_earliest_indirect_ref) {}
+#endif
 
   // File size in bytes.
   uint64_t size;
@@ -84,6 +111,9 @@ struct SstFileMetaData {
   std::string largestkey;      // Largest user defined key in the file.
   uint64_t num_reads_sampled;  // How many times the file is read.
   bool being_compacted;  // true if the file is currently being compacted.
+#ifdef INDIRECT_VALUE_SUPPORT
+  uint64_t earliest_indirect_ref;  // file# of the oldest value referred to in this ring.  Set to HIGH-VALUE (~0>>1) if there are no indirect references
+#endif
 };
 
 // The full set of metadata associated with each SST file.

@@ -749,7 +749,11 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
           file->smallest.user_key().ToString(),
           file->largest.user_key().ToString(),
           file->stats.num_reads_sampled.load(std::memory_order_relaxed),
-          file->being_compacted);
+          file->being_compacted
+#ifdef INDIRECT_VALUE_SUPPORT
+          ,file->earliest_indirect_ref
+#endif
+          );
       level_size += file->fd.GetFileSize();
     }
     cf_meta->levels.emplace_back(

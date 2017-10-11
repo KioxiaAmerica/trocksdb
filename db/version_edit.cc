@@ -45,6 +45,9 @@ enum CustomTag {
   kTerminate = 1,  // The end of customized fields
   kNeedCompaction = 2,
   kPathId = 65,
+#ifdef INDIRECT_VALUE_SUPPORT
+  kEarliestIndirectRef = 66,
+#endif
 };
 // If this bit for the custom tag is set, opening DB should fail if
 // we don't know this field.
@@ -252,6 +255,9 @@ const char* VersionEdit::DecodeNewFile4From(Slice* input) {
           }
           f.marked_for_compaction = (field[0] == 1);
           break;
+#ifdef INDIRECT_VALUE_SUPPORT
+// handle kEarliestIndirectRef field
+#endif
         default:
           if ((custom_tag & kCustomTagNonSafeIgnoreMask) != 0) {
             // Should not proceed if cannot understand it
@@ -439,6 +445,10 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
         is_column_family_drop_ = true;
         break;
 
+#ifdef INDIRECT_VALUE_SUPPORT
+// handle kEarliestIndirectRef field
+#endif
+
       default:
         msg = "unknown tag";
         break;
@@ -536,6 +546,9 @@ std::string VersionEdit::DebugJSON(int edit_num, bool hex_key) const {
   if (has_last_sequence_) {
     jw << "LastSeq" << last_sequence_;
   }
+#ifdef INDIRECT_VALUE_SUPPORT
+// handle kEarliestIndirectRef field
+#endif
 
   if (!deleted_files_.empty()) {
     jw << "DeletedFiles";
