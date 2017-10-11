@@ -75,7 +75,11 @@ ImmutableCFOptions::ImmutableCFOptions(const ImmutableDBOptions& db_options,
       row_cache(db_options.row_cache),
       max_subcompactions(db_options.max_subcompactions),
       memtable_insert_with_hint_prefix_extractor(
-          cf_options.memtable_insert_with_hint_prefix_extractor.get()) {}
+          cf_options.memtable_insert_with_hint_prefix_extractor.get())
+#ifdef INDIRECT_VALUE_SUPPORT
+// Get immutable options for VLog
+#endif
+      {}
 
 // Multiple two operands. If they overflow, return op1.
 uint64_t MultiplyCheckOverflow(uint64_t op1, double op2) {
@@ -174,6 +178,9 @@ void MutableCFOptions::Dump(Logger* log) const {
                  report_bg_io_stats);
   ROCKS_LOG_INFO(log, "                              compression: %d",
                  static_cast<int>(compression));
+#ifdef INDIRECT_VALUE_SUPPORT
+// give string form for mutable parameters
+#endif
 }
 
 }  // namespace rocksdb

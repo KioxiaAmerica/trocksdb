@@ -121,6 +121,9 @@ struct ImmutableCFOptions {
   uint32_t max_subcompactions;
 
   const SliceTransform* memtable_insert_with_hint_prefix_extractor;
+#ifdef INDIRECT_VALUE_SUPPORT
+// options related to ring structure and compression are immutable.  Ring structure may change over a restart, as long as a ring is not deleted while it is holding values
+#endif
 };
 
 struct MutableCFOptions {
@@ -153,7 +156,11 @@ struct MutableCFOptions {
             options.max_sequential_skip_in_iterations),
         paranoid_file_checks(options.paranoid_file_checks),
         report_bg_io_stats(options.report_bg_io_stats),
-        compression(options.compression) {
+        compression(options.compression)
+#ifdef INDIRECT_VALUE_SUPPORT
+// Tuning parameters are mutable
+#endif
+  {
     RefreshDerivedOptions(options.num_levels, options.compaction_style);
   }
 
@@ -179,7 +186,11 @@ struct MutableCFOptions {
         max_sequential_skip_in_iterations(0),
         paranoid_file_checks(false),
         report_bg_io_stats(false),
-        compression(Snappy_Supported() ? kSnappyCompression : kNoCompression) {}
+        compression(Snappy_Supported() ? kSnappyCompression : kNoCompression)
+#ifdef INDIRECT_VALUE_SUPPORT
+// Tuning parameters are mutable
+#endif
+  {}
 
   // Must be called after any change to MutableCFOptions
   void RefreshDerivedOptions(int num_levels, CompactionStyle compaction_style);

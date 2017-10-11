@@ -584,7 +584,11 @@ static std::unordered_map<std::string, OptionTypeInfo> cf_options_type_info = {
       OptionType::kCompactionStyle, OptionVerificationType::kNormal, false, 0}},
     {"compaction_pri",
      {offset_of(&ColumnFamilyOptions::compaction_pri),
-      OptionType::kCompactionPri, OptionVerificationType::kNormal, false, 0}}};
+      OptionType::kCompactionPri, OptionVerificationType::kNormal, false, 0}}
+#ifdef INDIRECT_VALUE_SUPPORT
+// add settable options for VLog
+#endif
+    };
 
 static std::unordered_map<std::string, CompressionType>
     compression_type_string_map = {

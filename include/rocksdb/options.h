@@ -264,6 +264,11 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   // BlockBasedTableOptions.
   std::shared_ptr<TableFactory> table_factory;
 
+#ifdef INDIRECT_VALUE_SUPPORT
+// include VLog options for the CF here
+  // All are Dynamically changeable through SetOptions() API
+#endif
+
   // Create ColumnFamilyOptions with default values for all fields
   ColumnFamilyOptions();
   // Create ColumnFamilyOptions from Options
