@@ -278,6 +278,8 @@ if(ROCKSDB_LITE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions")
 endif()
 
+add_definitions(-DINDIRECT_VALUE_SUPPORT)
+
 if(CMAKE_SYSTEM_NAME MATCHES "Cygwin")
   add_definitions(-fno-builtin-memcmp -DCYGWIN)
 elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
