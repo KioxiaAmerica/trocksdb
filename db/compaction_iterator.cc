@@ -27,10 +27,10 @@ CompactionEventListener::CompactionListenerValueType fromInternalValueType(
       return CompactionEventListener::CompactionListenerValueType::kRangeDelete;
     case kTypeBlobIndex:
       return CompactionEventListener::CompactionListenerValueType::kBlobIndex;
-#ifdef INDIRECT_VALUE_SUPPORT
-    case kINDIRECTVALUE:
+#ifdef INDIRECT_VALUE_SUPPORT  // create listener events for indirect types
+    case kTypeIndirectValue:
 return CompactionEventListener::CompactionListenerValueType::kIndirectValue;
-    case kINDIRECTMERGE:
+    case kTypeIndirectMerge:
       return CompactionEventListener::CompactionListenerValueType::
           kIndirectMergeOperand;
 #endif

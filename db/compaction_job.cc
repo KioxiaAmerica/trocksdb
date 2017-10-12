@@ -786,7 +786,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     // returns true.
     const Slice& key = c_iter->key();
     const Slice& value = c_iter->value();
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT   // remap old indirect references
 // this is where we need to see the raw indirect reference
 // if we have to remap, we will expand it.  Merged results will come back as direct values, and we need to remap them too.
 // Unmerged results may be indirect, and may require remapping
@@ -815,7 +815,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     }
     assert(sub_compact->builder != nullptr);
     assert(sub_compact->current_output() != nullptr);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT   // create new indirect references (including remapped values)
 // this is where we convert the value to a reference.  A placeholder reference will be written out to the SST, and then replaced
 // with the actual reference in a postpass
 #endif

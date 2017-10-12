@@ -426,8 +426,8 @@ void DBIter::FindNextUserEntryInternal(bool skipping, bool prefix_check) {
             skipping = true;
             PERF_COUNTER_ADD(internal_delete_skipped_count, 1);
             break;
-#ifdef INDIRECT_VALUE_SUPPORT
-          case kINDIRECTVALUE:
+#ifdef INDIRECT_VALUE_SUPPORT    // resolve indirect value for the key of interest
+          case kTypeIndirectValue:
 // resolve the indirect value
 // fall through to...
 #endif
@@ -461,8 +461,8 @@ void DBIter::FindNextUserEntryInternal(bool skipping, bool prefix_check) {
               return;
             }
             break;
-#ifdef INDIRECT_VALUE_SUPPORT
-          case kINDIRECTMERGE:
+#ifdef INDIRECT_VALUE_SUPPORT    // resolve indirect Merge for the key of interest
+          case kTypeIndirectMerge:
 // resolve the indirect value
 // fall through to...
 #endif
@@ -785,8 +785,8 @@ bool DBIter::FindValueForCurrentKey() {
 
     last_key_entry_type = ikey.type;
     switch (last_key_entry_type) {
-#ifdef INDIRECT_VALUE_SUPPORT
-      case kINDIRECTVALUE:
+#ifdef INDIRECT_VALUE_SUPPORT    // resolve indirect value for the key of interest
+      case kTypeIndirectValue:
 // Resolve the operand if indirect.
 // fall through to...
 #endif
@@ -810,8 +810,8 @@ bool DBIter::FindValueForCurrentKey() {
         last_not_merge_type = last_key_entry_type;
         PERF_COUNTER_ADD(internal_delete_skipped_count, 1);
         break;
-#ifdef INDIRECT_VALUE_SUPPORT
-      case kINDIRECTMERGE:
+#ifdef INDIRECT_VALUE_SUPPORT    // resolve indirect merge for the key of interest
+      case kTypeIndirectMerge:
 // Resolve the operand if indirect.
 // fall through to...
 #endif
@@ -849,8 +849,8 @@ bool DBIter::FindValueForCurrentKey() {
     case kTypeRangeDeletion:
       valid_ = false;
       return false;
-#ifdef INDIRECT_VALUE_SUPPORT
-    case kINDIRECTMERGE:
+#ifdef INDIRECT_VALUE_SUPPORT   // treat IndirectMerge like Merge once we have resolved the indirection
+    case kTypeIndirectMerge:
 #endif
     case kTypeMerge:
       current_entry_is_merged_ = true;
@@ -879,8 +879,8 @@ bool DBIter::FindValueForCurrentKey() {
             env_, &pinned_value_, true);
       }
       break;
-#ifdef INDIRECT_VALUE_SUPPORT
-    case kINDIRECTVALUE:
+#ifdef INDIRECT_VALUE_SUPPORT   // treat IndirectValue like Value once we have resolved the indirection
+    case kTypeIndirectValue:
 #endif
     case kTypeValue:
       // do nothing - we've already has value in saved_value_

@@ -61,8 +61,8 @@ namespace {
 
 EntryType GetEntryType(ValueType value_type) {
   switch (value_type) {
-#ifdef INDIRECT_VALUE_SUPPORT
-    case kINDIRECTVALUE:
+#ifdef INDIRECT_VALUE_SUPPORT   // treat indirect value as value for stats purposes
+    case kTypeIndirectValue:
 #endif
     case kTypeValue:
       return kEntryPut;
@@ -70,8 +70,8 @@ EntryType GetEntryType(ValueType value_type) {
       return kEntryDelete;
     case kTypeSingleDeletion:
       return kEntrySingleDelete;
-#ifdef INDIRECT_VALUE_SUPPORT
-    case kINDIRECTMERGE:
+#ifdef INDIRECT_VALUE_SUPPORT   // treat indirect merge as merge for stats purposes
+    case kTypeIndirectMerge:
 #endif
     case kTypeMerge:
       return kEntryMerge;

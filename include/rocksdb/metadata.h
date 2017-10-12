@@ -34,10 +34,8 @@ struct ColumnFamilyMetaData {
   std::string name;
   // The metadata of all levels in this column family.
   std::vector<LevelMetaData> levels;
-#ifdef INDIRECT_VALUE_SUPPORT
-  // The VLog rings, if any, for this column family
-
-  // for each level, the number of the ring it writes into, or -1 if none
+#ifdef INDIRECT_VALUE_SUPPORT   // declare the VLog struct for the column family
+  // The VLog, if any, for this column family
 #endif
 };
 
@@ -75,11 +73,11 @@ struct SstFileMetaData {
         largestkey(_largestkey),
         num_reads_sampled(_num_reads_sampled),
         being_compacted(_being_compacted)
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT   // add earliest_ref to SstFileMetaData
         ,earliest_indirect_ref(0) 
 #endif
         {}
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT   // define constructor that includes earliest_ref (optional since not all table types use it)
   SstFileMetaData(const std::string& _file_name, const std::string& _path,
                   uint64_t _size, SequenceNumber _smallest_seqno,
                   SequenceNumber _largest_seqno,
@@ -111,7 +109,7 @@ struct SstFileMetaData {
   std::string largestkey;      // Largest user defined key in the file.
   uint64_t num_reads_sampled;  // How many times the file is read.
   bool being_compacted;  // true if the file is currently being compacted.
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT   // declare the fields added to SstFileMetaData
   uint64_t earliest_indirect_ref;  // file# of the oldest value referred to in this ring.  Set to HIGH-VALUE (~0>>1) if there are no indirect references
 #endif
 };

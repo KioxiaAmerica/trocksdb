@@ -585,7 +585,7 @@ static std::unordered_map<std::string, OptionTypeInfo> cf_options_type_info = {
     {"compaction_pri",
      {offset_of(&ColumnFamilyOptions::compaction_pri),
       OptionType::kCompactionPri, OptionVerificationType::kNormal, false, 0}}
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT   // string translation of option names
 // add settable options for VLog
 #endif
     };

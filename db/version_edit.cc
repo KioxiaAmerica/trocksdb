@@ -45,7 +45,7 @@ enum CustomTag {
   kTerminate = 1,  // The end of customized fields
   kNeedCompaction = 2,
   kPathId = 65,
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT   // add earliest_ref field in Edit record
   kEarliestIndirectRef = 66,
 #endif
 };
@@ -168,6 +168,10 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
         char p = static_cast<char>(1);
         PutLengthPrefixedSlice(dst, Slice(&p, 1));
       }
+
+#ifdef INDIRECT_VALUE_SUPPORT     // fill in earliest_ref field in Edit record
+// write out the earliest_ref etc. info
+#endif
       TEST_SYNC_POINT_CALLBACK("VersionEdit::EncodeTo:NewFile4:CustomizeFields",
                                dst);
 
@@ -255,7 +259,7 @@ const char* VersionEdit::DecodeNewFile4From(Slice* input) {
           }
           f.marked_for_compaction = (field[0] == 1);
           break;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT   // decode earliest_ref field from Edit record
 // handle kEarliestIndirectRef field
 #endif
         default:
@@ -445,7 +449,7 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
         is_column_family_drop_ = true;
         break;
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT   // create text representation of earliest_ref field in Edit record
 // handle kEarliestIndirectRef field
 #endif
 
@@ -546,7 +550,7 @@ std::string VersionEdit::DebugJSON(int edit_num, bool hex_key) const {
   if (has_last_sequence_) {
     jw << "LastSeq" << last_sequence_;
   }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT   // display JSON text for earliest_ref
 // handle kEarliestIndirectRef field
 #endif
 

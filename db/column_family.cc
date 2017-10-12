@@ -272,6 +272,9 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
     result.max_compaction_bytes = result.target_file_size_base * 25;
   }
 
+#ifdef INDIRECT_VALUE_SUPPORT  // sanitize options
+// perform consistency checks on the new options
+#endif
   return result;
 }
 
@@ -369,7 +372,11 @@ ColumnFamilyData::ColumnFamilyData(
       pending_flush_(false),
       pending_compaction_(false),
       prev_compaction_needed_bytes_(0),
-      allow_2pc_(db_options.allow_2pc) {
+      allow_2pc_(db_options.allow_2pc)
+#ifdef INDIRECT_VALUE_SUPPORT   // create VLogs for the column family
+// create empty VLog for the ring
+#endif
+  {
   Ref();
 
   // Convert user defined table properties collector factories to internal ones.

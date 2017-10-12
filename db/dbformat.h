@@ -52,28 +52,17 @@ enum ValueType : unsigned char {
 // The indirect types have values that are pointers to the actual location/length of the values is a separate file.
 // The ring in which the file resides could be inferred from the column family and level; but the iterator doesn't
 // give that information to its caller, which would be the routine that resolves the value; so we encode the ring number
-// into the written reference.  We reserve code points for 4 rings even though only 2 are supported initially
-  kTypeIndirectValue0 = 0x14,
-  kTypeIndirectMerge0 = 0x18,
-  kTypeIndirectValue1 = 0x15,
-  kTypeIndirectMerge1 = 0x19,
-  kTypeIndirectValue2 = 0x16,
-  kTypeIndirectMerge2 = 0x1A,
-  kTypeIndirectValue3 = 0x17,
-  kTypeIndirectMerge3 = 0x1B,
+// into the written reference.
+  kTypeIndirectValue = 0x12,
+  kTypeIndirectMerge = 0x13,
   kMaxValue = 0x7F                        // Not used for storing records.
 };
 
 // convert an indirect type to the ring# in which it resides
-inline int TypeToRingNo(ValueType t) { return t&((kTypeIndirectMerge0-kTypeIndirectValue0)-1); }
 
 // Defined in dbformat.cc
 extern const ValueType kValueTypeForSeek;
 extern const ValueType kValueTypeForSeekForPrev;
-
-// cases
-#define kINDIRECTVALUE kTypeIndirectValue0: case kTypeIndirectValue1: case kTypeIndirectValue2: case kTypeIndirectValue3
-#define kINDIRECTMERGE kTypeIndirectMerge0: case kTypeIndirectMerge1: case kTypeIndirectMerge2: case kTypeIndirectMerge3
 
 // Tests on the Type field
 // These are coded so as to minimize branch misprediction, and to end with a fusable test operation
@@ -81,12 +70,12 @@ extern const ValueType kValueTypeForSeekForPrev;
 // Checks whether a type is an inline value type
 // (i.e. a type used in memtable skiplist and sst file datablock).
 inline bool IsTypeMemorSST(ValueType t) {
-  return (bool) ( (t<=kTypeIndirectMerge3) &  // only if value is in the low range.  Use & to avoid premature branch
+  return (bool) ( (t<=kTypeIndirectMerge) &  // only if value is in the low range.  Use & to avoid premature branch
    ((
     (1LL<< kTypeDeletion) | (1LL << kTypeValue) | (1LL << kTypeMerge) | (1LL << kTypeSingleDeletion) | (1LL << kTypeBlobIndex)
 #ifdef INDIRECT_VALUE_SUPPORT
-      | (1LL << kTypeIndirectValue0) | (1LL << kTypeIndirectValue1) | (1LL << kTypeIndirectValue2) | (1LL << kTypeIndirectValue3)
-      | (1LL << kTypeIndirectMerge0) | (1LL << kTypeIndirectMerge1) | (1LL << kTypeIndirectMerge2) | (1LL << kTypeIndirectMerge3)
+      | (1LL << kTypeIndirectValue)
+      | (1LL << kTypeIndirectMerge)
 #endif
     )>>t // select one bit from the mask to be the result
    ) ); 
@@ -94,11 +83,11 @@ inline bool IsTypeMemorSST(ValueType t) {
 
 // Checks for Value, Blob, or IndirectValue
 inline bool IsTypeValue(ValueType t) {
-  return (bool) ( (t<=kTypeIndirectMerge3) &
+  return (bool) ( (t<=kTypeIndirectMerge) &
    ((
       (1LL << kTypeValue) | (1LL << kTypeBlobIndex)
 #ifdef INDIRECT_VALUE_SUPPORT
-      | (1LL << kTypeIndirectValue0) | (1LL << kTypeIndirectValue1) | (1LL << kTypeIndirectValue2) | (1LL << kTypeIndirectValue3)
+      | (1LL << kTypeIndirectValue)
 #endif
     )>>t
    ) ); 
@@ -106,12 +95,12 @@ inline bool IsTypeValue(ValueType t) {
 
 // Checks for Delete, Value, Merge, Blob, or IndirectValue/Merge
 inline bool IsTypeSingleKey(ValueType t) {
-  return (bool) ( (t<=kTypeIndirectMerge3) &
+  return (bool) ( (t<=kTypeIndirectMerge) &
    ((
       (1LL<< kTypeDeletion) | (1LL << kTypeValue)| (1LL << kTypeMerge) | (1LL << kTypeBlobIndex)
 #ifdef INDIRECT_VALUE_SUPPORT
-      | (1LL << kTypeIndirectValue0) | (1LL << kTypeIndirectValue1) | (1LL << kTypeIndirectValue2) | (1LL << kTypeIndirectValue3)
-      | (1LL << kTypeIndirectMerge0) | (1LL << kTypeIndirectMerge1) | (1LL << kTypeIndirectMerge2) | (1LL << kTypeIndirectMerge3)
+      | (1LL << kTypeIndirectValue)
+      | (1LL << kTypeIndirectMerge)
 #endif
     )>>t
    ) ); 
@@ -119,7 +108,7 @@ inline bool IsTypeSingleKey(ValueType t) {
 
 // Checks for Delete, Value, Merge, Blob - things that can go into memtables
 inline bool IsTypeMemtableSingleValue(ValueType t) {
-  return (bool) ( (t<=kTypeIndirectMerge3) &
+  return (bool) ( (t<=kTypeIndirectMerge) &
    ((
       (1LL << kTypeValue)| (1LL << kTypeMerge) | (1LL << kTypeBlobIndex)
     )>>t
@@ -129,11 +118,11 @@ inline bool IsTypeMemtableSingleValue(ValueType t) {
 
 // Checks for Value, or IndirectValue (no Blob)
 inline bool IsTypeValueNonBlob(ValueType t) {
-  return (bool) ( (t<=kTypeIndirectMerge3) &
+  return (bool) ( (t<=kTypeIndirectMerge) &
    ((
       (1LL << kTypeValue)
 #ifdef INDIRECT_VALUE_SUPPORT
-      | (1LL << kTypeIndirectValue0) | (1LL << kTypeIndirectValue1) | (1LL << kTypeIndirectValue2) | (1LL << kTypeIndirectValue3)
+      | (1LL << kTypeIndirectValue)
 #endif
     )>>t
    ) ); 
@@ -142,11 +131,11 @@ inline bool IsTypeValueNonBlob(ValueType t) {
 // Checks for Merge or IndirectMerge
 #ifdef INDIRECT_VALUE_SUPPORT
 inline bool IsTypeMerge(ValueType t) {
-  return (bool) ( (t<=kTypeIndirectMerge3) &
+  return (bool) ( (t<=kTypeIndirectMerge) &
    ((
       (1LL << kTypeMerge)
 #ifdef INDIRECT_VALUE_SUPPORT
-      | (1LL << kTypeIndirectMerge0) | (1LL << kTypeIndirectMerge1) | (1LL << kTypeIndirectMerge2) | (1LL << kTypeIndirectMerge3)
+      | (1LL << kTypeIndirectMerge)
 #endif
     )>>t
    ) ); 
@@ -157,12 +146,12 @@ inline bool IsTypeMerge(ValueType t) { return (bool) (t == kTypeMerge); }
 
 // Checks for *Value or *Merge
 inline bool IsTypeValueOrMerge(ValueType t) {
-  return (bool) ( (t<=kTypeIndirectMerge3) &
+  return (bool) ( (t<=kTypeIndirectMerge) &
    ((
       (1LL << kTypeValue) | (1LL << kTypeMerge)
 #ifdef INDIRECT_VALUE_SUPPORT
-      | (1LL << kTypeIndirectValue0) | (1LL << kTypeIndirectValue1) | (1LL << kTypeIndirectValue2) | (1LL << kTypeIndirectValue3)
-      | (1LL << kTypeIndirectMerge0) | (1LL << kTypeIndirectMerge1) | (1LL << kTypeIndirectMerge2) | (1LL << kTypeIndirectMerge3)
+      | (1LL << kTypeIndirectValue)
+      | (1LL << kTypeIndirectMerge)
 #endif
     )>>t
    ) ); 
@@ -171,11 +160,11 @@ inline bool IsTypeValueOrMerge(ValueType t) {
 
 // Check for atomic value: whether Delete, Value, or IndirectValue
 inline bool IsTypeAtomic(ValueType t) {
-  return (bool) ( (t<=kTypeIndirectMerge3) &
+  return (bool) ( (t<=kTypeIndirectMerge) &
    ((
     (1LL<< kTypeDeletion) | (1LL << kTypeValue)
 #ifdef INDIRECT_VALUE_SUPPORT
-      | (1LL << kTypeIndirectValue0) | (1LL << kTypeIndirectValue1) | (1LL << kTypeIndirectValue2) | (1LL << kTypeIndirectValue3)
+      | (1LL << kTypeIndirectValue)
 #endif
     )>>t
    ) ); 
@@ -183,7 +172,7 @@ inline bool IsTypeAtomic(ValueType t) {
 
 // Check for any deletion type:  Delete, SingleDelete, RangeDelete
 inline bool IsTypeDelete(ValueType t) {
-    return (bool)((t <= kTypeIndirectMerge3) &
+    return (bool)((t <= kTypeIndirectMerge) &
         ((
         (1LL << kTypeDeletion) | (1LL << kTypeSingleDeletion) | (1LL << kTypeRangeDeletion)
             ) >> t
@@ -193,12 +182,12 @@ inline bool IsTypeDelete(ValueType t) {
 
 // Checks whether a type is from user operation
 inline bool IsTypeExtended(ValueType t) {
-  return (bool) ( (t<=kTypeIndirectMerge3) &
+  return (bool) ( (t<=kTypeIndirectMerge) &
    ((
     (1LL<< kTypeDeletion) | (1LL << kTypeValue) | (1LL << kTypeMerge) | (1LL << kTypeSingleDeletion) | (1LL << kTypeRangeDeletion) | (1LL << kTypeBlobIndex)
 #ifdef INDIRECT_VALUE_SUPPORT
-      | (1LL << kTypeIndirectValue0) | (1LL << kTypeIndirectValue1) | (1LL << kTypeIndirectValue2) | (1LL << kTypeIndirectValue3)
-      | (1LL << kTypeIndirectMerge0) | (1LL << kTypeIndirectMerge1) | (1LL << kTypeIndirectMerge2) | (1LL << kTypeIndirectMerge3)
+      | (1LL << kTypeIndirectValue)
+      | (1LL << kTypeIndirectMerge)
 #endif
     )>>t
    ) ); 
@@ -206,7 +195,7 @@ inline bool IsTypeExtended(ValueType t) {
 
 // Checks for Direct Merge or Value, or Delete, which are all we allow in ingested SSTs
 inline bool IsTypeIngestible(ValueType t) {
-    return (bool)((t <= kTypeIndirectMerge3) &  // only if value is in the low range.  Use & to avoid premature branch
+    return (bool)((t <= kTypeIndirectMerge) &  // only if value is in the low range.  Use & to avoid premature branch
         ((
         (1LL << kTypeDeletion) | (1LL << kTypeValue) | (1LL << kTypeMerge)
             ) >> t // select one bit from the mask to be the result

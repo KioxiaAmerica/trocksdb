@@ -30,11 +30,11 @@ namespace rocksdb {
 
 const ValueType kValueTypeForSeek =
 #ifdef INDIRECT_VALUE_SUPPORT  // kValueTypeForSeek must be the highest type that is recognized by IsTypeExtended
-kTypeIndirectMerge3;
+kTypeIndirectMerge;
 #else
 kTypeBlobIndex;
 #endif
-const ValueType kValueTypeForSeekForPrev = kTypeDeletion;
+const ValueType kValueTypeForSeekForPrev = kTypeDeletion;  // must be the lowest Type
 
 uint64_t PackSequenceAndType(uint64_t seq, ValueType t) {
   assert(seq <= kMaxSequenceNumber);

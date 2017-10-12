@@ -187,7 +187,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       // run compaction filter on it.
       const Slice val = iter->value();
       const Slice* val_ptr = (IsTypeValueNonBlob(ikey.type)) ? &val : nullptr;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT     // resolve indirect Put value before merge
 // Resolve the operand if indirect
 #endif
       std::string merge_result;
@@ -221,7 +221,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       //
       // Keep queuing keys and operands until we either meet a put / delete
       // request or later did a partial merge.
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT  // resolve indirect Merge value before installing it into operands
 // Resolve the operand if indirect.  If there is no compaction filter, it would be slightly better to defer the resolution
 // in case we never get a value entry and there is only one merge; but to reduce code complexity we don't do that.
 #endif
@@ -345,7 +345,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
         keys_.erase(keys_.begin(), keys_.end() - 1);
       }
     }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT   // return unexecuted merge in its original form
 // If there is only one merge, return it in its original form (indirect/direct)
 #endif
   }
