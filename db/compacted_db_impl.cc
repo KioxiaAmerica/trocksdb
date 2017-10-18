@@ -42,10 +42,17 @@ size_t CompactedDBImpl::FindFile(const Slice& key) {
   return right;
 }
 
-Status CompactedDBImpl::Get(const ReadOptions& options, ColumnFamilyHandle*,
+Status CompactedDBImpl::Get(const ReadOptions& options, ColumnFamilyHandle* column_family_handle,
                             const Slice& key, PinnableSlice* value) {
+#ifdef INDIRECT_VALUE_SUPPORT
+  // Even though CompactedDB doesn't support merges, we need a MergeContext to hold the address of the VLog
+  // We could dispense with this at the cost of a segfault if the user turns on indirect in the CompactedDB
+  MergeContext merge_context;
+  // Fill in the VLog field in the merge_context from the column family
+  merge_context.SetCfd(reinterpret_cast<ColumnFamilyHandleImpl*>(column_family_handle)->cfd());
+#endif
   GetContext get_context(user_comparator_, nullptr, nullptr, nullptr,
-                         GetContext::kNotFound, key, value, nullptr, nullptr,
+                         GetContext::kNotFound, key, value, nullptr, &merge_context,
                          nullptr, nullptr);
   LookupKey lkey(key, kMaxSequenceNumber);
   files_.files[FindFile(key)].fd.table_reader->Get(
@@ -57,7 +64,7 @@ Status CompactedDBImpl::Get(const ReadOptions& options, ColumnFamilyHandle*,
 }
 
 std::vector<Status> CompactedDBImpl::MultiGet(const ReadOptions& options,
-    const std::vector<ColumnFamilyHandle*>&,
+    const std::vector<ColumnFamilyHandle*>& column_family_handle,
     const std::vector<Slice>& keys, std::vector<std::string>* values) {
   autovector<TableReader*, 16> reader_list;
   for (const auto& key : keys) {
@@ -72,6 +79,11 @@ std::vector<Status> CompactedDBImpl::MultiGet(const ReadOptions& options,
   }
   std::vector<Status> statuses(keys.size(), Status::NotFound());
   values->resize(keys.size());
+#ifdef INDIRECT_VALUE_SUPPORT
+  // Even though CompactedDB doesn't support merges, we need a MergeContext to hold the address of the VLog
+  // We could dispense with this at the cost of a segfault if the user turns on indirect in the CompactedDB
+  MergeContext merge_context;
+#endif
   int idx = 0;
   for (auto* r : reader_list) {
     if (r != nullptr) {
@@ -79,8 +91,12 @@ std::vector<Status> CompactedDBImpl::MultiGet(const ReadOptions& options,
       std::string& value = (*values)[idx];
       GetContext get_context(user_comparator_, nullptr, nullptr, nullptr,
                              GetContext::kNotFound, keys[idx], &pinnable_val,
-                             nullptr, nullptr, nullptr, nullptr);
+                             nullptr, &merge_context, nullptr, nullptr);
       LookupKey lkey(keys[idx], kMaxSequenceNumber);
+#ifdef INDIRECT_VALUE_SUPPORT
+      // Fill in the VLog field in the merge_context from the column family
+      merge_context.SetCfd(reinterpret_cast<ColumnFamilyHandleImpl*>(column_family_handle[idx])->cfd());
+#endif
       r->Get(options, lkey.internal_key(), &get_context);
       value.assign(pinnable_val.data(), pinnable_val.size());
       if (get_context.State() == GetContext::kFound) {

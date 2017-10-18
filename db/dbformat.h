@@ -202,6 +202,25 @@ inline bool IsTypeIngestible(ValueType t) {
             ));
 }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+// Checks for any direct type (i. e. Value or Merge)
+inline bool IsTypeDirect(ValueType t) {
+    return (bool)((t <= kTypeIndirectMerge) &  // only if value is in the low range.  Use & to avoid premature branch
+        ((
+        (1LL << kTypeValue) | (1LL << kTypeMerge)
+            ) >> t // select one bit from the mask to be the result
+            ));
+}
+// Checks for any Indirect type (i. e. IndirectValue or IndirectMerge)
+inline bool IsTypeIndirect(ValueType t) {
+    return (bool)((t <= kTypeIndirectMerge) &  // only if value is in the low range.  Use & to avoid premature branch
+        ((
+        (1LL << kTypeIndirectValue) | (1LL << kTypeIndirectMerge)
+            ) >> t // select one bit from the mask to be the result
+            ));
+}
+#endif
+
 // Defined in dbformat.cc
 extern const ValueType kValueTypeForSeek;
 extern const ValueType kValueTypeForSeekForPrev;

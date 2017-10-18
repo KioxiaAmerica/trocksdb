@@ -777,6 +777,14 @@ std::string DBTestBase::AllEntriesFor(const Slice& user_key, int cf) {
         }
         first = false;
         switch (ikey.type) {
+#ifdef INDIRECT_VALUE_SUPPORT
+          case kTypeIndirectValue:
+          case kTypeIndirectMerge:
+            {std::string resolution_buffer;  // place to resolve indirect value
+            iter->GetVlogForIteratorCF()->VLogGet(iter->value(),&resolution_buffer);   // turn the reference into a value, in the string
+            result += resolution_buffer;  // append to result
+            }break;
+#endif
           case kTypeValue:
             result += iter->value().ToString();
             break;

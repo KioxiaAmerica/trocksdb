@@ -89,6 +89,9 @@ void GetContext::SaveValue(const Slice& value, SequenceNumber seq) {
 
 bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
                            const Slice& value, Cleanable* value_pinner) {
+#ifdef INDIRECT_VALUE_SUPPORT
+  std::string resolved_value;  // place to read value into.  Persists through this function; the value must be copied before return
+#endif
   assert((state_ != kMerge && !IsTypeMerge(parsed_key.type)) ||
          merge_context_ != nullptr);
   if (ucmp_->Equal(parsed_key.user_key, user_key_)) {
@@ -96,11 +99,15 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
     if (!CheckCallback(parsed_key.sequence)) {
       return true;  // to continue to the next seq
     }
-#ifdef INDIRECT_VALUE_SUPPORT   // resolve the Get() value before putting it through the merge maze
-// Resolve the operand if indirect, and replace the indirect type with a direct one.  Pin the data read from disk
-#endif
-
     appendToReplayLog(replay_log_, parsed_key.type, value);
+
+    bool value_was_indirect = false;  // set if the value was indirect, which means we can't pin it
+#ifdef INDIRECT_VALUE_SUPPORT   // resolve the Get() value before putting it through the merge maze
+    if(value_was_indirect = IsTypeIndirect(parsed_key.type)){
+      merge_context_->GetVlog()->VLogGet((Slice)value,&resolved_value);
+      (Slice&)value = Slice(resolved_value);  // violates const correctness, but that's better than interface changes
+    }
+#endif
 
     if (seq_ != nullptr) {
       // Set the sequence number if it is uninitialized
@@ -116,6 +123,9 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
       type = kTypeRangeDeletion;
     }
     switch (type) {
+#ifdef INDIRECT_VALUE_SUPPORT
+      case kTypeIndirectValue:
+#endif
       case kTypeValue:
       case kTypeBlobIndex:
         assert(state_ == kNotFound || state_ == kMerge);
@@ -127,7 +137,7 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
         if (kNotFound == state_) {
           state_ = kFound;
           if (LIKELY(pinnable_val_ != nullptr)) {
-            if (LIKELY(value_pinner != nullptr)) {
+            if (LIKELY(!value_was_indirect && value_pinner != nullptr)) {
               // If the backing resources for the value are provided, pin them
               pinnable_val_->PinSlice(value, value_pinner);
             } else {
@@ -177,11 +187,14 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
         }
         return false;
 
+#ifdef INDIRECT_VALUE_SUPPORT
+      case kTypeIndirectMerge:
+#endif
       case kTypeMerge:
         assert(state_ == kNotFound || state_ == kMerge);
         state_ = kMerge;
         // value_pinner is not set from plain_table_reader.cc for example.
-        if (pinned_iters_mgr() && pinned_iters_mgr()->PinningEnabled() &&
+        if (!value_was_indirect && pinned_iters_mgr() && pinned_iters_mgr()->PinningEnabled() &&
             value_pinner != nullptr) {
           value_pinner->DelegateCleanupsTo(pinned_iters_mgr());
           merge_context_->PushOperand(value, true /*value_pinned*/);

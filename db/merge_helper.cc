@@ -107,6 +107,7 @@ Status MergeHelper::TimedFullMerge(const MergeOperator* merge_operator,
 //       keys_ stores the list of keys encountered while merging.
 //       operands_ stores the list of merge operands encountered while merging.
 //       keys_[i] corresponds to operands_[i] for each i.
+// This routine is used to support compaction_iterator.
 Status MergeHelper::MergeUntil(InternalIterator* iter,
                                RangeDelAggregator* range_del_agg,
                                const SequenceNumber stop_before,
@@ -114,6 +115,16 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
   // Get a copy of the internal key, before it's invalidated by iter->Next()
   // Also maintain the list of merge operands seen.
   assert(HasOperator());
+#ifdef INDIRECT_VALUE_SUPPORT  // define workareas for resolving merge operands
+  VLog *vlog = iter->GetVlogForIteratorCF();  // the VLog for this CF
+  // We resolve the values for the merge in different strings so that they can be pinned for the merge mill
+  // The storage area is created at the compaction-iterator level, because a merge routine is allowed
+  // to return one of its operands; thus we might end up returning the buffer read here to the
+  // caller of this routine, and that would fail if the buffers were in the scope of this routine.
+  // We do assume that the caller has copied any value returned here to a safe area before they call here
+  // again, so we release any buffers read for the previous operation when we start processing a merge.
+  iter->resolved_indirect_values.clear();  // where the resolved values go
+#endif
   keys_.clear();
   merge_context_.Clear();
   has_compaction_filter_skip_until_ = false;
@@ -166,6 +177,21 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
     // At this point we are guaranteed that we need to process this key.
 
     assert(IsTypeMemorSST(ikey.type));
+    Slice val = (Slice) iter->value();
+#ifdef INDIRECT_VALUE_SUPPORT   // resolve merge operands
+    if(IsTypeIndirect(ikey.type)){
+      // The key specifies an indirect type.  Resolve it
+      // create a new string to hold the resolved value.  We keep all the values for a single result
+      // in separate strings, so that they are all available for merge.  The string is copied to
+      // the persistent name resolved_indirect_values before it is filled.  resolved_indirect_values
+      // is defined at the compaction-iterator level
+      iter->resolved_indirect_values.emplace_back();  // add a new empty string for upcoming read
+      // resolve the value in the new string.
+      vlog->VLogGet(val,&iter->resolved_indirect_values.back());   // turn the reference into a value, in the string
+      // In any case, the key is now the last string in the read buffers.
+      val = Slice(iter->resolved_indirect_values.back());  // create a slice for the resolved value
+    }
+#endif
     if (!IsTypeMerge(ikey.type)) {
 
       // hit a put/delete/single delete
@@ -176,7 +202,8 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
 
       // If there are no operands, just return the Status::OK(). That will cause
       // the compaction iterator to write out the key we're currently at, which
-      // is the put/delete we just encountered.
+      // is the put/delete we just encountered.  Should not occur, since we get here only
+      // when we encounter a merge duribng compaction
       if (keys_.empty()) {
         return Status::OK();
       }
@@ -185,11 +212,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       // (almost) silently dropping the put/delete. That's probably not what we
       // want. Also if we're in compaction and it's a put, it would be nice to
       // run compaction filter on it.
-      const Slice val = iter->value();
       const Slice* val_ptr = (IsTypeValueNonBlob(ikey.type)) ? &val : nullptr;
-#ifdef INDIRECT_VALUE_SUPPORT     // resolve indirect Put value before merge
-// Resolve the operand if indirect
-#endif
       std::string merge_result;
       s = TimedFullMerge(user_merge_operator_, ikey.user_key, val_ptr,
                          merge_context_.GetOperands(), &merge_result, logger_,
@@ -221,12 +244,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       //
       // Keep queuing keys and operands until we either meet a put / delete
       // request or later did a partial merge.
-#ifdef INDIRECT_VALUE_SUPPORT  // resolve indirect Merge value before installing it into operands
-// Resolve the operand if indirect.  If there is no compaction filter, it would be slightly better to defer the resolution
-// in case we never get a value entry and there is only one merge; but to reduce code complexity we don't do that.
-#endif
 
-      Slice value_slice = iter->value();
       // add an operand to the list if:
       // 1) it's included in one of the snapshots. in that case we *must* write
       // it out, no matter what compaction filter says
@@ -234,7 +252,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       CompactionFilter::Decision filter =
           ikey.sequence <= latest_snapshot_
               ? CompactionFilter::Decision::kKeep
-              : FilterMerge(orig_ikey.user_key, value_slice);
+              : FilterMerge(orig_ikey.user_key, val);
       if (filter != CompactionFilter::Decision::kRemoveAndSkipUntil &&
           range_del_agg != nullptr &&
           range_del_agg->ShouldDelete(
@@ -257,9 +275,9 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
         }
         if (filter == CompactionFilter::Decision::kKeep) {
           merge_context_.PushOperand(
-              value_slice, iter->IsValuePinned() /* operand_pinned */);
+              val, iter->IsValuePinned() /* operand_pinned */);
         } else {  // kChangeValue
-          // Compaction filter asked us to change the operand from value_slice
+          // Compaction filter asked us to change the operand from val
           // to compaction_filter_value_.
           merge_context_.PushOperand(compaction_filter_value_, false);
         }
@@ -345,7 +363,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
         keys_.erase(keys_.begin(), keys_.end() - 1);
       }
     }
-#ifdef INDIRECT_VALUE_SUPPORT   // return unexecuted merge in its original form
+#ifdef INDIRECT_VALUE_SUPPORT   // ToDo: return unexecuted merge in its original form
 // If there is only one merge, return it in its original form (indirect/direct)
 #endif
   }

@@ -905,6 +905,10 @@ InternalIterator* DBImpl::NewInternalIterator(
         new IterState(this, &mutex_, super_version,
                       read_options.background_purge_on_iterator_cleanup);
     internal_iter->RegisterCleanup(CleanupIteratorState, cleanup, nullptr);
+#ifdef INDIRECT_VALUE_SUPPORT
+    // Install the VLog object into the iterator so that resolving values can get to it
+    internal_iter->SetVlogForIteratorCF(cfd->vlog());
+#endif
 
     return internal_iter;
   }
@@ -963,7 +967,12 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
   TEST_SYNC_POINT("DBImpl::GetImpl:4");
 
   // Prepare to store a list of merge operations if merge occurs.
+#ifdef INDIRECT_VALUE_SUPPORT
+  // Get() processing needs access to the VLog for the colmn family.  We provide that through the merge context
+  MergeContext merge_context(cfd);
+#else
   MergeContext merge_context;
+#endif
   RangeDelAggregator range_del_agg(cfd->internal_comparator(), snapshot);
 
   Status s;
@@ -1103,6 +1112,10 @@ std::vector<Status> DBImpl::MultiGet(
     if (!done) {
       PinnableSlice pinnable_val;
       PERF_TIMER_GUARD(get_from_output_files_time);
+#ifdef INDIRECT_VALUE_SUPPORT
+      // to support indirect values, Get() must have access to the VLog.  We pass this in through the MergeContext so as not to disturb interfaces
+      merge_context.SetCfd(cfh->cfd());
+#endif
       super_version->current->Get(read_options, lkey, &pinnable_val, &s,
                                   &merge_context, &range_del_agg);
       value->assign(pinnable_val.data(), pinnable_val.size());
@@ -2550,7 +2563,12 @@ Status DBImpl::GetLatestSequenceForKey(SuperVersion* sv, const Slice& key,
                                        bool cache_only, SequenceNumber* seq,
                                        bool* found_record_for_key) {
   Status s;
+#ifdef INDIRECT_VALUE_SUPPORT
+  // Get() processing needs access to the VLog for the column family.  We provide that through the merge context
+  MergeContext merge_context(sv->current->cfd());
+#else
   MergeContext merge_context;
+#endif
   RangeDelAggregator range_del_agg(sv->mem->GetInternalKeyComparator(),
                                    kMaxSequenceNumber);
 

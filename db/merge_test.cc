@@ -298,10 +298,12 @@ void testCounters(Counters& counters, DB* db, bool test_compaction) {
 
   if (test_compaction) {
     db->Flush(o);
+    assert(counters.assert_get("a")== 3);
 
     std::cout << "Compaction started ...\n";
     db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
     std::cout << "Compaction ended\n";
+    assert(counters.assert_get("a")== 3);
 
     dumpDb(db);
 

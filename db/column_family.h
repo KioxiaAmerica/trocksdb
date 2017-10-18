@@ -25,6 +25,9 @@
 #include "rocksdb/env.h"
 #include "rocksdb/options.h"
 #include "util/thread_local.h"
+#ifdef INDIRECT_VALUE_SUPPORT
+#include "db/value_log.h"
+#endif
 
 namespace rocksdb {
 
@@ -337,6 +340,10 @@ class ColumnFamilyData {
 
   bool initialized() const { return initialized_.load(); }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+  VLog* vlog() { return vlog_;}    // the VLog to be used for this column family.  May contain no rings
+#endif
+
  private:
   friend class ColumnFamilySet;
   ColumnFamilyData(uint32_t id, const std::string& name,
@@ -415,6 +422,10 @@ class ColumnFamilyData {
 
   // if the database was opened with 2pc enabled
   bool allow_2pc_;
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  VLog *vlog_;   // the VLog to be used for this column family.  May contain no rings
+#endif
 };
 
 // ColumnFamilySet has interesting thread-safety requirements

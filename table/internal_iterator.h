@@ -10,7 +10,9 @@
 #include "rocksdb/comparator.h"
 #include "rocksdb/iterator.h"
 #include "rocksdb/status.h"
-
+#ifdef INDIRECT_VALUE_SUPPORT
+#include "db/value_log.h"
+#endif
 namespace rocksdb {
 
 class PinnedIteratorsManager;
@@ -95,6 +97,13 @@ class InternalIterator : public Cleanable {
     return Status::NotSupported("");
   }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+  // The iterator remembers the VLog for the column family it is a part of
+  void SetVlogForIteratorCF(VLog* vlog) { iterator_vlog = vlog; }
+  VLog *GetVlogForIteratorCF() { return iterator_vlog; }
+  std::vector<std::string> resolved_indirect_values;  // workarea holding resolved values
+#endif
+
  protected:
   void SeekForPrevImpl(const Slice& target, const Comparator* cmp) {
     Seek(target);
@@ -107,6 +116,11 @@ class InternalIterator : public Cleanable {
   }
 
  private:
+#ifdef INDIRECT_VALUE_SUPPORT
+  // The iterator remembers the VLog for the column family it is a part of
+  VLog *iterator_vlog;
+#endif
+
   // No copying allowed
   InternalIterator(const InternalIterator&) = delete;
   InternalIterator& operator=(const InternalIterator&) = delete;

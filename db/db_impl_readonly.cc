@@ -37,7 +37,12 @@ Status DBImplReadOnly::Get(const ReadOptions& read_options,
   auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
   auto cfd = cfh->cfd();
   SuperVersion* super_version = cfd->GetSuperVersion();
+#ifdef INDIRECT_VALUE_SUPPORT
+  // Get() processing needs access to the VLog for the colmn family.  We provide that through the merge context
+  MergeContext merge_context(cfd);
+#else
   MergeContext merge_context;
+#endif
   RangeDelAggregator range_del_agg(cfd->internal_comparator(), snapshot);
   LookupKey lkey(key, snapshot);
   if (super_version->mem->Get(lkey, pinnable_val->GetSelf(), &s, &merge_context,

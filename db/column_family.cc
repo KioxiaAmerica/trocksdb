@@ -374,11 +374,11 @@ ColumnFamilyData::ColumnFamilyData(
       prev_compaction_needed_bytes_(0),
       allow_2pc_(db_options.allow_2pc)
 #ifdef INDIRECT_VALUE_SUPPORT   // create VLogs for the column family
+      ,vlog_(&VLog(std::vector<int> {}, std::vector<int> {}))
 // create empty VLog for the ring
 #endif
   {
   Ref();
-
   // Convert user defined table properties collector factories to internal ones.
   GetIntTblPropCollectorFactory(ioptions_, &int_tbl_prop_collector_factories_);
 

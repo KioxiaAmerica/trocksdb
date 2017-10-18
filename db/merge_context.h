@@ -8,6 +8,10 @@
 #include <vector>
 #include "db/dbformat.h"
 #include "rocksdb/slice.h"
+#ifdef INDIRECT_VALUE_SUPPORT
+#include "db/value_log.h"
+#include "db/column_family.h"
+#endif
 
 namespace rocksdb {
 
@@ -17,8 +21,17 @@ const std::vector<Slice> empty_operand_list;
 // When doing a Get(), DB will create such a class and pass it when
 // issuing Get() operation to memtables and version_set. The operands
 // will be fetched from the context when issuing partial of full merge.
+// For indirect values, we use this operand as a way of passing in the column info so we can get to the VLog
 class MergeContext {
  public:
+  MergeContext(){}
+#ifdef INDIRECT_VALUE_SUPPORT
+  // Support for passing the VLog address via the MergeContext
+  MergeContext(ColumnFamilyData *cfd) : vlog(cfd->vlog()) {}
+  VLog *GetVlog() { return vlog; }
+  void SetCfd(ColumnFamilyData *cfd) { vlog=cfd->vlog(); }
+#endif
+
   // Clear all the operands
   void Clear() {
     if (operand_list_) {
@@ -111,6 +124,11 @@ class MergeContext {
   // Copy of operands that are not pinned.
   std::unique_ptr<std::vector<std::unique_ptr<std::string>>> copied_operands_;
   bool operands_reversed_ = true;
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  VLog *vlog;  // the value log for this column family
+#endif
 };
+
 
 } // namespace rocksdb

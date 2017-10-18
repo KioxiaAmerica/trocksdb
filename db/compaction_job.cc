@@ -780,13 +780,21 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   size_t data_begin_offset = 0;
   std::string compression_dict;
   compression_dict.reserve(cfd->ioptions()->compression_opts.max_dict_bytes);
+#ifdef INDIRECT_VALUE_SUPPORT
+  // Extract the VLog for the current column family.  We will use it to create and resolve indirect values
+  VLog *current_vlog = compact_->compaction->column_family_data()->vlog();
+  std::string get_result;  // create a string in this stackframe, which can point to the data allocated in VLogGet
+  std::string modified_key;  // we build the key with the new Type here
+#endif
 
   while (status.ok() && !cfd->IsDropped() && c_iter->Valid()) {
     // Invariant: c_iter.status() is guaranteed to be OK if c_iter->Valid()
     // returns true.
-    const Slice& key = c_iter->key();
-    const Slice& value = c_iter->value();
+    Slice& key = (Slice&) c_iter->key();
+    Slice& value = (Slice&) c_iter->value();
 #ifdef INDIRECT_VALUE_SUPPORT   // remap old indirect references
+    ParsedInternalKey ikey;
+    ParseInternalKey(key, &ikey);  // parse the current key so we can detect indirect refs
 // this is where we need to see the raw indirect reference
 // if we have to remap, we will expand it.  Merged results will come back as direct values, and we need to remap them too.
 // Unmerged results may be indirect, and may require remapping
@@ -816,6 +824,15 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     assert(sub_compact->builder != nullptr);
     assert(sub_compact->current_output() != nullptr);
 #ifdef INDIRECT_VALUE_SUPPORT   // create new indirect references (including remapped values)
+    if(IsTypeDirect(ikey.type)){
+      // create the indirect reference to the value
+      status = current_vlog->VLogGet(value,&get_result);   // turn the reference into a value, in the string
+      value = Slice(get_result);   // convert the string to a slice as required below
+      // change the type of the record to the appropriate indirect type
+      InternalKey tkey(ikey.user_key, ikey.sequence, ikey.type==kTypeValue ? kTypeIndirectValue : kTypeIndirectMerge);  // create new key
+      modified_key.assign(*tkey.rep());   // assign it to persistent string
+      key = Slice(modified_key);  // view the string as a Slice, as needed by code below
+    }
 // this is where we convert the value to a reference.  A placeholder reference will be written out to the SST, and then replaced
 // with the actual reference in a postpass
 #endif
