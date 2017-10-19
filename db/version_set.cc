@@ -751,7 +751,7 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
           file->stats.num_reads_sampled.load(std::memory_order_relaxed),
           file->being_compacted
 #ifdef INDIRECT_VALUE_SUPPORT   // add the earliest_ref to the column metadata transferred from LevelFiles
-          ,file->earliest_indirect_ref
+          ,file->indirect_ref_0n
 #endif
           );
       level_size += file->fd.GetFileSize();

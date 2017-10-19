@@ -73,17 +73,19 @@ struct SstFileMetaData {
         largestkey(_largestkey),
         num_reads_sampled(_num_reads_sampled),
         being_compacted(_being_compacted)
+        {
 #ifdef INDIRECT_VALUE_SUPPORT   // add earliest_ref to SstFileMetaData
-        ,earliest_indirect_ref(0) 
+// using constructor of indirect_ref_0n({0,0}) fails on Visual Studio
+          indirect_ref_0n[0] = indirect_ref_0n[1] = 0; // default to 'omitted' 
 #endif
-        {}
+        }
 #ifdef INDIRECT_VALUE_SUPPORT   // define constructor that includes earliest_ref (optional since not all table types use it)
   SstFileMetaData(const std::string& _file_name, const std::string& _path,
                   uint64_t _size, SequenceNumber _smallest_seqno,
                   SequenceNumber _largest_seqno,
                   const std::string& _smallestkey,
                   const std::string& _largestkey, uint64_t _num_reads_sampled,
-                  bool _being_compacted, uint64_t _earliest_indirect_ref)
+                  bool _being_compacted, uint64_t indirect_ref_0n_[2])
       : size(_size),
         name(_file_name),
         db_path(_path),
@@ -92,8 +94,10 @@ struct SstFileMetaData {
         smallestkey(_smallestkey),
         largestkey(_largestkey),
         num_reads_sampled(_num_reads_sampled),
-        being_compacted(_being_compacted),
-        earliest_indirect_ref(_earliest_indirect_ref) {}
+        being_compacted(_being_compacted) {
+// using constructor of indirect_ref_0n({indirect_ref_0n_[0],indirect_ref_0n_[1]}) fails on Visual Studio
+          indirect_ref_0n[0] = indirect_ref_0n_[0]; indirect_ref_0n[1] = indirect_ref_0n_[1]; // install input
+        }
 #endif
 
   // File size in bytes.
@@ -110,7 +114,8 @@ struct SstFileMetaData {
   uint64_t num_reads_sampled;  // How many times the file is read.
   bool being_compacted;  // true if the file is currently being compacted.
 #ifdef INDIRECT_VALUE_SUPPORT   // declare the fields added to SstFileMetaData
-  uint64_t earliest_indirect_ref;  // file# of the oldest value referred to in this ring.  Set to HIGH-VALUE (~0>>1) if there are no indirect references
+  uint64_t indirect_ref_0n[2];  // file# of the {oldest,newest} value referred to in this ring.  Set to HIGH-VALUE (~0>>1) if there are no indirect references
+     // set to 0 to mean 'indirect value omitted'
 #endif
 };
 

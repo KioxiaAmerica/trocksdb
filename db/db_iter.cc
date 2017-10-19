@@ -245,7 +245,7 @@ class DBIter final: public Iterator {
       val = Slice(resolved_indirect_values.back());  // create a slice for the resolved value
     }
 #endif
-    return val;
+  return val;
   }
   virtual Slice value() const override {
     assert(valid_);

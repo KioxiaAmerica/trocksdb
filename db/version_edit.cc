@@ -46,7 +46,7 @@ enum CustomTag {
   kNeedCompaction = 2,
   kPathId = 65,
 #ifdef INDIRECT_VALUE_SUPPORT   // add earliest_ref field in Edit record
-  kEarliestIndirectRef = 66,
+  kIndirectRef0n = 70,
 #endif
 };
 // If this bit for the custom tag is set, opening DB should fail if
@@ -77,6 +77,9 @@ void VersionEdit::Clear() {
   column_family_ = 0;
   is_column_family_add_ = 0;
   is_column_family_drop_ = 0;
+#ifdef INDIRECT_VALUE_SUPPORT
+  has_indirect_ref_0n_ = false;
+#endif
   column_family_name_.clear();
 }
 
@@ -157,6 +160,8 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
       //   tag kPathId: 1 byte as path_id
       //   tag kNeedCompaction:
       //        now only can take one char value 1 indicating need-compaction
+      //   tag kEarliestIndirectRef:
+      //        varint64[2] to hold the earliest and latest file referred to
       //
       if (f.fd.GetPathId() != 0) {
         PutVarint32(dst, CustomTag::kPathId);
@@ -170,7 +175,11 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
       }
 
 #ifdef INDIRECT_VALUE_SUPPORT     // fill in earliest_ref field in Edit record
-// write out the earliest_ref etc. info
+      if (f.indirect_ref_0n[0]) {
+        PutVarint32(dst, CustomTag::kIndirectRef0n);  // write out the record type
+        PutVarint32(dst, VarintLength(f.indirect_ref_0n[0])+VarintLength(f.indirect_ref_0n[1]));  // write out total field length
+        PutVarint64Varint64(dst, f.indirect_ref_0n[0], f.indirect_ref_0n[1]);  // write two fields: ref0 and refn
+      }
 #endif
       TEST_SYNC_POINT_CALLBACK("VersionEdit::EncodeTo:NewFile4:CustomizeFields",
                                dst);
@@ -260,7 +269,10 @@ const char* VersionEdit::DecodeNewFile4From(Slice* input) {
           f.marked_for_compaction = (field[0] == 1);
           break;
 #ifdef INDIRECT_VALUE_SUPPORT   // decode earliest_ref field from Edit record
-// handle kEarliestIndirectRef field
+        case kIndirectRef0n:
+          if(!GetVarint64(&field,&f.indirect_ref_0n[0]))return("indirect ref no start value");
+          if(!GetVarint64(&field,&f.indirect_ref_0n[1]))return("indirect ref no end value");
+          break;
 #endif
         default:
           if ((custom_tag & kCustomTagNonSafeIgnoreMask) != 0) {
@@ -448,10 +460,6 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
       case kColumnFamilyDrop:
         is_column_family_drop_ = true;
         break;
-
-#ifdef INDIRECT_VALUE_SUPPORT   // create text representation of earliest_ref field in Edit record
-// handle kEarliestIndirectRef field
-#endif
 
       default:
         msg = "unknown tag";
