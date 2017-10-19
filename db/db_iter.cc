@@ -192,7 +192,7 @@ class DBIter final: public Iterator {
   }
 
   // This replaces iter_->SeekForPrev()
-  void CallIteratorSeekForPrev(Slice& key) {
+  void CallIteratorSeekForPrev(Slice key) {
     iter_->SeekForPrev(key); NewKeyForIndirect();   // advance, and invalidate resolution buffer
   }
 
@@ -223,9 +223,9 @@ class DBIter final: public Iterator {
   // This gets the next value from the iterator and uses the indirect_state to decide whether it needs
   // resolution now, or was resolved already earlier, or doesn't need resolution at all
   Slice ResolvedValue() const {  // const is a fraud, required by declaration of value()
-    assert(indirect_state!=kISNoKeySeen);
     Slice val = (Slice) iter_->value();  // get the value corresponding to saved_key_
 #ifdef INDIRECT_VALUE_SUPPORT  // resolve the indirect value
+    assert(indirect_state!=kISNoKeySeen);
     if(indirect_state != kISResolveNotNeeded){
       // The key specifies an indirect type.  If we haven't resolved it already, do so now
       if(indirect_state == kISResolveNeeded) {

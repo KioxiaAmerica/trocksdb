@@ -123,7 +123,12 @@ struct FileMetaData {
         refs(0),
         being_compacted(false),
         init_stats_from_file(false),
-        marked_for_compaction(false) {}
+        marked_for_compaction(false) {
+#ifdef INDIRECT_VALUE_SUPPORT
+// constructor initializer not allowed in Visual Studio
+        indirect_ref_0n[0] = indirect_ref_0n[1] = 0;  // 0 means 'omitted'
+#endif
+        }
 
   // REQUIRED: Keys must be given to the function in sorted order (it expects
   // the last key to be the largest).
@@ -220,7 +225,9 @@ class VersionEdit {
     f.largest_seqno = largest_seqno;
     f.marked_for_compaction = marked_for_compaction;
 #ifdef INDIRECT_VALUE_SUPPORT
-    f.indirect_ref_0n[0]=indirect_ref_0n[0]; f.indirect_ref_0n[1]=indirect_ref_0n[1];
+      // older code doesn't know about indirect_ref; use 'omitted' (0) then
+    f.indirect_ref_0n[0]=indirect_ref_0n?indirect_ref_0n[0]:0;
+    f.indirect_ref_0n[1]=indirect_ref_0n?indirect_ref_0n[1]:0;
 #endif
     new_files_.emplace_back(level, std::move(f));
   }
