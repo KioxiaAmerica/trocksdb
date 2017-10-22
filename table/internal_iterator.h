@@ -99,8 +99,8 @@ class InternalIterator : public Cleanable {
 
 #ifdef INDIRECT_VALUE_SUPPORT
   // The iterator remembers the VLog for the column family it is a part of
-  void SetVlogForIteratorCF(VLog* vlog) { iterator_vlog = vlog; }
-  VLog *GetVlogForIteratorCF() { return iterator_vlog; }
+  void SetVlogForIteratorCF(std::shared_ptr<VLog> vlog) { iterator_vlog = vlog; }
+  std::shared_ptr<VLog> GetVlogForIteratorCF() { return iterator_vlog; }
   std::vector<std::string> resolved_indirect_values;  // workarea holding resolved values
 #endif
 
@@ -118,7 +118,7 @@ class InternalIterator : public Cleanable {
  private:
 #ifdef INDIRECT_VALUE_SUPPORT
   // The iterator remembers the VLog for the column family it is a part of
-  VLog *iterator_vlog;
+  std::shared_ptr<VLog> iterator_vlog;
 #endif
 
   // No copying allowed

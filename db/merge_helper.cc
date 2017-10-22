@@ -116,7 +116,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
   // Also maintain the list of merge operands seen.
   assert(HasOperator());
 #ifdef INDIRECT_VALUE_SUPPORT  // define workareas for resolving merge operands
-  VLog *vlog = iter->GetVlogForIteratorCF();  // the VLog for this CF
+  std::shared_ptr<VLog> vlog = iter->GetVlogForIteratorCF();  // the VLog for this CF
   // We resolve the values for the merge in different strings so that they can be pinned for the merge mill
   // The storage area is created at the compaction-iterator level, because a merge routine is allowed
   // to return one of its operands; thus we might end up returning the buffer read here to the

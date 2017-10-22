@@ -114,6 +114,7 @@ std::vector<uint64_t> VLogRingQueueFindLaggingSSTs(
 //
 // Each column family has (possibly many) VLogRing.  VLogRingRef entries in an SST implicitly refer to the VLog of the column family.
 class VLogRing {
+friend class VLog;
 private:
   // The ring:
   std::vector<int> fd_ring;  // the ring of open file descriptors for the VLog files.  -1 means file is not open
@@ -227,6 +228,14 @@ public:
     // for each ring, the number of SSTs expected in the ring.  A ring is defined for each value here
     std::vector<int> ssts_per_ring
   );
+
+  // Return a vector of the end-file-number for each ring.  This is the last file number that has been successfully synced.
+  // NOTE that there is no guarantee that data is written to files in sequential order, and thus on a restart the
+  // end-file-number may cause some space to be lost.  It will be recovered when the ring recycles.
+   void GetRingEnds(std::vector<uint64_t> *result) {
+    for(auto ring : rings_){result->push_back(ring->atomics.fd_ring_head_fileno_shadow);}
+    return;
+  }
 
 // Read the bytes referred to in the given VLogRingRef.  Uses release-acquire ordering to verify validity of ring
 // Returns the bytes.  ?? Should this return to user area to avoid copying?

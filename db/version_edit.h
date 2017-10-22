@@ -107,7 +107,7 @@ struct FileMetaData {
   bool marked_for_compaction;  // True if client asked us nicely to compact this
                                // file.
 #ifdef INDIRECT_VALUE_SUPPORT   // add earliest_ref to FileMetaData
-  uint64_t indirect_ref_0n[2];  // filenumber of the (oldest,newest) value referred to in this SST, or HIGH-VALUE if no reference
+  uint64_t indirect_ref_0;  // filenumber of the oldest value referred to in this SST, or HIGH-VALUE if no reference
      // value of 0 means 'omitted', i. e. this file was created without a value for this field
 #endif
 
@@ -123,12 +123,11 @@ struct FileMetaData {
         refs(0),
         being_compacted(false),
         init_stats_from_file(false),
-        marked_for_compaction(false) {
+        marked_for_compaction(false)
 #ifdef INDIRECT_VALUE_SUPPORT
-// constructor initializer not allowed in Visual Studio
-        indirect_ref_0n[0] = indirect_ref_0n[1] = 0;  // 0 means 'omitted'
+        ,indirect_ref_0(0)  // 0 means 'omitted'
 #endif
-        }
+        {}
 
   // REQUIRED: Keys must be given to the function in sorted order (it expects
   // the last key to be the largest).
@@ -208,6 +207,12 @@ class VersionEdit {
     max_column_family_ = max_column_family;
   }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+  // routines to access the vector of end-of-ring data
+  void SetRingEnds(std::vector<uint64_t>& ring_ends) { ring_ends_ = ring_ends; }
+  std::vector<uint64_t> GetRingEnds() { return ring_ends_; }
+#endif
+
   // Add the specified file at the specified number.
   // REQUIRES: This version has not been saved (see VersionSet::SaveTo)
   // REQUIRES: "smallest" and "largest" are smallest and largest keys in file
@@ -215,7 +220,7 @@ class VersionEdit {
                uint64_t file_size, const InternalKey& smallest,
                const InternalKey& largest, const SequenceNumber& smallest_seqno,
                const SequenceNumber& largest_seqno,
-               bool marked_for_compaction, uint64_t indirect_ref_0n[2] = 0) {
+               bool marked_for_compaction, uint64_t indirect_ref_0 = 0) {
     assert(smallest_seqno <= largest_seqno);
     FileMetaData f;
     f.fd = FileDescriptor(file, file_path_id, file_size);
@@ -226,8 +231,7 @@ class VersionEdit {
     f.marked_for_compaction = marked_for_compaction;
 #ifdef INDIRECT_VALUE_SUPPORT
       // older code doesn't know about indirect_ref; use 'omitted' (0) then
-    f.indirect_ref_0n[0]=indirect_ref_0n?indirect_ref_0n[0]:0;
-    f.indirect_ref_0n[1]=indirect_ref_0n?indirect_ref_0n[1]:0;
+    f.indirect_ref_0=indirect_ref_0;
 #endif
     new_files_.emplace_back(level, std::move(f));
   }
@@ -307,7 +311,7 @@ class VersionEdit {
   bool has_last_sequence_;
   bool has_max_column_family_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  bool has_indirect_ref_0n_;
+  std::vector<uint64_t> ring_ends_;  // ring/file# of last file in ring containing value data.  column_family must be set before write
 #endif
   DeletedFileSet deleted_files_;
   std::vector<std::pair<int, FileMetaData>> new_files_;

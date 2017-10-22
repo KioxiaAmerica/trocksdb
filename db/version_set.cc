@@ -751,7 +751,7 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
           file->stats.num_reads_sampled.load(std::memory_order_relaxed),
           file->being_compacted
 #ifdef INDIRECT_VALUE_SUPPORT   // add the earliest_ref to the column metadata transferred from LevelFiles
-          ,file->indirect_ref_0n
+          ,file->indirect_ref_0
 #endif
           );
       level_size += file->fd.GetFileSize();
@@ -2874,7 +2874,6 @@ Status VersionSet::Recover(
         assert(builder != builders.end());
         builder->second->version_builder()->Apply(&edit);
       }
-
       if (cfd != nullptr) {
         if (edit.has_log_number_) {
           if (cfd->GetLogNumber() > edit.log_number_) {
@@ -2894,6 +2893,12 @@ Status VersionSet::Recover(
               "does not match existing comparator " + edit.comparator_);
           break;
         }
+#ifdef INDIRECT_VALUE_SUPPORT
+        // If the edit has ring information for this column family, move it into the cfd.
+        if(edit.ring_ends_.size()){
+          cfd->SetRingEnds(edit.GetRingEnds());  // copy them in - they're small
+        }
+#endif
       }
 
       if (edit.has_prev_log_number_) {
@@ -3435,6 +3440,15 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
         }
       }
       edit.SetLogNumber(cfd->GetLogNumber());
+#ifdef INDIRECT_VALUE_SUPPORT
+      std::shared_ptr<VLog> vlog=cfd->vlog();  // get address of VLog for this cf, if any 
+      if(vlog!=nullptr) {   // If there is a vlog
+        // the vlog exists: visit each ring to accumulate the end pointers for each one
+        // there may be gaps in or before the end file; they will be filled when we recycle
+        std::vector<uint64_t> ringends; vlog->GetRingEnds(&ringends);
+        edit.SetRingEnds(ringends);
+      }
+#endif
       std::string record;
       if (!edit.EncodeTo(&record)) {
         return Status::Corruption(
@@ -3755,6 +3769,9 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
         filemetadata.largestkey = file->largest.user_key().ToString();
         filemetadata.smallest_seqno = file->smallest_seqno;
         filemetadata.largest_seqno = file->largest_seqno;
+#ifdef INDIRECT_VALUE_SUPPORT
+        filemetadata.indirect_ref_0 = file->indirect_ref_0;
+#endif
         metadata->push_back(filemetadata);
       }
     }

@@ -374,7 +374,8 @@ ColumnFamilyData::ColumnFamilyData(
       prev_compaction_needed_bytes_(0),
       allow_2pc_(db_options.allow_2pc)
 #ifdef INDIRECT_VALUE_SUPPORT   // create VLogs for the column family
-      ,vlog_(&VLog(std::vector<int> {}, std::vector<int> {}))
+      ,vlog_(std::make_shared<VLog>(std::vector<int>(), std::vector<int>()))
+      ,ring_ends(std::vector<uint64_t>())
 // create empty VLog for the ring
 #endif
   {

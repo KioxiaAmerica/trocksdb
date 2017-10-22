@@ -782,7 +782,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   compression_dict.reserve(cfd->ioptions()->compression_opts.max_dict_bytes);
 #ifdef INDIRECT_VALUE_SUPPORT
   // Extract the VLog for the current column family.  We will use it to create and resolve indirect values
-  VLog *current_vlog = compact_->compaction->column_family_data()->vlog();
+  std::shared_ptr<VLog> current_vlog = compact_->compaction->column_family_data()->vlog();
   std::string get_result;  // create a string in this stackframe, which can point to the data allocated in VLogGet
   std::string modified_key;  // we build the key with the new Type here
 #endif

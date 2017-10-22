@@ -28,7 +28,7 @@ class MergeContext {
 #ifdef INDIRECT_VALUE_SUPPORT
   // Support for passing the VLog address via the MergeContext
   MergeContext(ColumnFamilyData *cfd) : vlog(cfd->vlog()) {}
-  VLog *GetVlog() { return vlog; }
+  std::shared_ptr<VLog> GetVlog() { return vlog; }
   void SetCfd(ColumnFamilyData *cfd) { vlog=cfd->vlog(); }
 #endif
 
@@ -126,7 +126,7 @@ class MergeContext {
   bool operands_reversed_ = true;
 
 #ifdef INDIRECT_VALUE_SUPPORT
-  VLog *vlog;  // the value log for this column family
+  std::shared_ptr<VLog> vlog;  // the value log for this column family
 #endif
 };
 

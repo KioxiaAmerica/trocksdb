@@ -173,6 +173,7 @@ VLog::VLog(
   // for each ring, the number of SSTs expected in the ring.  A ring is defined for each value here
   std::vector<int> ssts_per_ring
 ) :
+rings_(std::vector<VLogRing*>()),
 starting_level_for_ring_(starting_level_for_ring)
 {
   // for each requested ring...

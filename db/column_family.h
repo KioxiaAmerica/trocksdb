@@ -341,7 +341,12 @@ class ColumnFamilyData {
   bool initialized() const { return initialized_.load(); }
 
 #ifdef INDIRECT_VALUE_SUPPORT
-  VLog* vlog() { return vlog_;}    // the VLog to be used for this column family.  May contain no rings
+  std::shared_ptr<VLog> vlog() { return vlog_;}    // the VLog to be used for this column family.  May contain no rings
+#ifdef INDIRECT_VALUE_SUPPORT
+  // routines to access the vector of end-of-ring data
+  void SetRingEnds(std::vector<uint64_t>&& ring_ends_) { ring_ends = ring_ends_; }
+  std::vector<uint64_t> GetRingEnds() { return ring_ends; }
+#endif
 #endif
 
  private:
@@ -424,7 +429,18 @@ class ColumnFamilyData {
   bool allow_2pc_;
 
 #ifdef INDIRECT_VALUE_SUPPORT
-  VLog *vlog_;   // the VLog to be used for this column family.  May contain no rings
+  // The VLog persists for the entire life of the database, starting with the creation of the ColumnFamilyData for a CF.
+  // The ColumnFamilyData for the default column is created and then assigned to default_cfd_cache_.  Apparently the
+  // original CFD object may then be destroyed.  This is catastrophic if the VLog was created in the scope of the original object,
+  // because it leaves default_cfd_cache_ holding a pointer to a deleted object.  To avoid this problem, we put the VLog
+  // under control of a shared_ptr, so that the default VLog will be deleted only when the final default_cfd_cache_ is freed.
+  std::shared_ptr<VLog> vlog_;   // the VLog to be used for this column family.  May contain 0 rings
+
+  // ring_ends is set by Recover() to tell us the state  of each ring at the time of the last sync.
+  // During options processing we may add (empty) rings, so that ring_ends can be used for initialization.
+  // After that, it is unused: writing to the manifest queries the rings directly.
+  // Thus we don't need a shared_ptr, because this is not pointing to any freed resources
+  std::vector<uint64_t> ring_ends;
 #endif
 };
 

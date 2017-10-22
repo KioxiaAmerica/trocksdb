@@ -39,6 +39,7 @@ enum Tag {
   kColumnFamilyAdd = 201,
   kColumnFamilyDrop = 202,
   kMaxColumnFamily = 203,
+  kRingRefn = 210,  // ring/file# for the last file in the specified ring at this column#
 };
 
 enum CustomTag {
@@ -46,7 +47,7 @@ enum CustomTag {
   kNeedCompaction = 2,
   kPathId = 65,
 #ifdef INDIRECT_VALUE_SUPPORT   // add earliest_ref field in Edit record
-  kIndirectRef0n = 70,
+  kIndirectRef0 = 70,  // indicates the oldest ref to VLog in this file
 #endif
 };
 // If this bit for the custom tag is set, opening DB should fail if
@@ -78,12 +79,14 @@ void VersionEdit::Clear() {
   is_column_family_add_ = 0;
   is_column_family_drop_ = 0;
 #ifdef INDIRECT_VALUE_SUPPORT
-  has_indirect_ref_0n_ = false;
+  ring_ends_.clear();  // 0 means 'omitted'
 #endif
   column_family_name_.clear();
 }
 
+// create a string form of the edits accumulated in this, suitable for writing to manifest
 bool VersionEdit::EncodeTo(std::string* dst) const {
+  // write out optional records
   if (has_comparator_) {
     PutVarint32(dst, kComparator);
     PutLengthPrefixedSlice(dst, comparator_);
@@ -104,18 +107,24 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
     PutVarint32Varint32(dst, kMaxColumnFamily, max_column_family_);
   }
 
+  // write out a record for each file-deletion
   for (const auto& deleted : deleted_files_) {
     PutVarint32Varint32Varint64(dst, kDeletedFile, deleted.first /* level */,
                                 deleted.second /* file number */);
   }
 
+  // write out a set of records for each SST file added
   for (size_t i = 0; i < new_files_.size(); i++) {
     const FileMetaData& f = new_files_[i].second;
     if (!f.smallest.Valid() || !f.largest.Valid()) {
       return false;
     }
     bool has_customized_fields = false;
-    if (f.marked_for_compaction) {
+    if (f.marked_for_compaction
+#ifdef INDIRECT_VALUE_SUPPORT
+        || f.indirect_ref_0
+#endif
+    ) {
       PutVarint32(dst, kNewFile4);
       has_customized_fields = true;
     } else if (f.fd.GetPathId() == 0) {
@@ -161,7 +170,9 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
       //   tag kNeedCompaction:
       //        now only can take one char value 1 indicating need-compaction
       //   tag kEarliestIndirectRef:
-      //        varint64[2] to hold the earliest and latest file referred to
+      //        varint32  length
+      //        varint32 n - the number of rings for this cf
+      //        varint64[n] last file referred to by each ring
       //
       if (f.fd.GetPathId() != 0) {
         PutVarint32(dst, CustomTag::kPathId);
@@ -175,10 +186,10 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
       }
 
 #ifdef INDIRECT_VALUE_SUPPORT     // fill in earliest_ref field in Edit record
-      if (f.indirect_ref_0n[0]) {
-        PutVarint32(dst, CustomTag::kIndirectRef0n);  // write out the record type
-        PutVarint32(dst, VarintLength(f.indirect_ref_0n[0])+VarintLength(f.indirect_ref_0n[1]));  // write out total field length
-        PutVarint64Varint64(dst, f.indirect_ref_0n[0], f.indirect_ref_0n[1]);  // write two fields: ref0 and refn
+      if (f.indirect_ref_0) {
+        PutVarint32(dst, CustomTag::kIndirectRef0);  // write out the record type
+        PutVarint32(dst, VarintLength(f.indirect_ref_0));  // write out total field length
+        PutVarint64(dst, f.indirect_ref_0);  // write two fields: ref0 and refn
       }
 #endif
       TEST_SYNC_POINT_CALLBACK("VersionEdit::EncodeTo:NewFile4:CustomizeFields",
@@ -187,12 +198,15 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
       PutVarint32(dst, CustomTag::kTerminate);
     }
   }
+  // end of write for each SST file
 
+  // write the column family this applies to
   // 0 is default and does not need to be explicitly written
   if (column_family_ != 0) {
     PutVarint32Varint32(dst, kColumnFamily, column_family_);
   }
 
+  // write records for other non-SST fields
   if (is_column_family_add_) {
     PutVarint32(dst, kColumnFamilyAdd);
     PutLengthPrefixedSlice(dst, Slice(column_family_name_));
@@ -201,6 +215,19 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
   if (is_column_family_drop_) {
     PutVarint32(dst, kColumnFamilyDrop);
   }
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  // If this edit contains end-of-ring markers, write them out
+  if(ring_ends_.size()) {
+   // record is code/total length/#refs/refs
+   int totallength = VarintLength(ring_ends_.size());  // init length to length of #refs
+   for(auto ref : ring_ends_){totallength += VarintLength(ref);}  // add in length of individual refs
+   PutVarint32(dst, kRingRefn);   // write out code
+   PutVarint32(dst, totallength); // write out length
+   PutVarint32(dst, (uint32_t) ring_ends_.size()); // write out # refs
+   for(auto ref : ring_ends_){PutVarint64(dst, ref);}  // write out refs
+  }
+#endif
   return true;
 }
 
@@ -269,9 +296,8 @@ const char* VersionEdit::DecodeNewFile4From(Slice* input) {
           f.marked_for_compaction = (field[0] == 1);
           break;
 #ifdef INDIRECT_VALUE_SUPPORT   // decode earliest_ref field from Edit record
-        case kIndirectRef0n:
-          if(!GetVarint64(&field,&f.indirect_ref_0n[0]))return("indirect ref no start value");
-          if(!GetVarint64(&field,&f.indirect_ref_0n[1]))return("indirect ref no end value");
+        case kIndirectRef0:
+          if(!GetVarint64(&field,&f.indirect_ref_0))return("indirect ref no value");
           break;
 #endif
         default:
@@ -460,6 +486,23 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
       case kColumnFamilyDrop:
         is_column_family_drop_ = true;
         break;
+
+#ifdef INDIRECT_VALUE_SUPPORT
+      case kRingRefn:
+        // record is code/total length/#refs/refs
+        {uint32_t nrings; int ok; uint64_t ref;
+        ring_ends_.clear();  // init to no refs
+        if(ok = GetLengthPrefixedSlice(&input, &str)) {   // get the entire #refs/refs field
+          if (ok = GetVarint32(&str, &nrings)) {   // get #refs
+            while(nrings--){if(!(ok = GetVarint64(&str, &ref)))break; ring_ends_.push_back(ref);} // add each ref to the vector
+          }
+        }
+        if (!ok && !msg) {
+          msg = "set ring ref";
+        }
+        }
+        break;
+#endif
 
       default:
         msg = "unknown tag";
