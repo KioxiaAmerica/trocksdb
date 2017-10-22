@@ -267,6 +267,53 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
 #ifdef INDIRECT_VALUE_SUPPORT  // define column-family options
 // include VLog options for the CF here
   // All are Dynamically changeable through SetOptions() API
+  //TRocks Options
+  //std::vector<uint64_t> IndirectValueSupportOptions(
+  //std:vector<uint64_t> VLogOptions(...);
+  // The idea name VLogOptions can't be used, but we should definitely pick a shorter, more appropriate name.
+  
+  // We need to allow for multiple rings per CF
+  // Each ring is tied to a level (activation_level below)
+  // such that values entering at that level are put into the ring.
+  //Activation Level : values coming into this level are written to the ring. Level 1 is the smallest level on disk.
+  //Activation level should be in increasing order and always >0.
+  std::vector<uint32_t> activation_level;
+  
+  //Minimum Indirect Value Size : only values this size or larger are written to the Value Log(default 0)
+  std::vector<size_t> min_indirect_val_size;
+  
+  //GC Velocity : for each byte of fragmentation added to the ring, this many bytes are recycled from the tail to the head(default 5.0)
+  std::vector<float> gc_velocity;
+  
+  //Space Amp Limit : apply emergency measures if space amp exceeds this (default: 20)
+  std::vector<float> space_amp_limit;
+  
+  //Space Amp Warning : start Active Recycling if the space amp exceeds this (default: 10)
+  std::vector<float> space_amp_warn;
+  
+  //Emergency Size : emergency measures will free up at least this many Value Log files(default 3)
+  std::vector<size_t> emergency_size;
+  
+  //Active Recycling Size : each Active Recycling operation will process this many SSTs
+  std::vector<size_t> active_recycling_size;
+  
+  //Max VLog Filesize : recommended limit in bytes for a Vlog file(default 16MB)
+  std::vector<uint64_t> max_vlog_size;
+
+  //Passive Recycling Leeway : add up to this fraction to an SST's compaction score based on the age of the files in the compaction (default 0.2)
+  std::vector<float> passive_recycling_leeway;
+  
+  //Ring Compression Style: indicates what kind of compression will be applied to the data (default kNoCompression)
+  //kNoCompression = 0x0,
+  //kSnappyCompression = 0x1,
+  //kZlibCompression = 0x2,
+  //kBZip2Compression = 0x3,
+  //kLZ4Compression = 0x4,
+  //kLZ4HCCompression = 0x5,
+  //kXpressCompression = 0x6,
+  //kZSTD = 0x7,
+  std::vector<CompressionType> ring_style_compression;
+//  );
 #endif
 
   // Create ColumnFamilyOptions with default values for all fields
