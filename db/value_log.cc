@@ -204,6 +204,23 @@ Status VLog::VLogGet(
 return Status();  // scaf
 }
 
+#if 0
+
+// Code for building the indirect-value files.
+// This iterator lies between the compaction-iterator and the builder loop.
+// We read all the values, save the key/values, write indirects, and then
+// return the indirect kvs one by one to the builder.
+  IndirectIterator::IndirectIterator(
+   CompactionIterator* c_iter,   // the input iterator that feeds us kvs
+   ColumnFamilyData* cfd,  // the column family we are working on
+   Slice *end  // end+1 key in range, if given
+  ) :
+  c_iter_(c_iter),  // scaf
+  pcfd(cfd) {
+  }
+#endif
+
+
 }   // namespace rocksdb
 
 

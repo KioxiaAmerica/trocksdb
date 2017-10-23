@@ -680,7 +680,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 
   // I/O measurement variables
   PerfLevel prev_perf_level = PerfLevel::kEnableTime;
-  const uint64_t kRecordStatsEvery = 1000;
+  const uint64_t kRecordStatsEvery = 1000;  // not used for INDIRECT_VALUE_SUPPORT - just one record at the end
   uint64_t prev_write_nanos = 0;
   uint64_t prev_fsync_nanos = 0;
   uint64_t prev_range_sync_nanos = 0;
@@ -785,13 +785,16 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   std::shared_ptr<VLog> current_vlog = compact_->compaction->column_family_data()->vlog();
   std::string get_result;  // create a string in this stackframe, which can point to the data allocated in VLogGet
   std::string modified_key;  // we build the key with the new Type here
+  IndirectIterator *value_iter = &IndirectIterator(c_iter,cfd,end);
+#else
+  CompactionIterator *value_iter(c_iter);
 #endif
 
-  while (status.ok() && !cfd->IsDropped() && c_iter->Valid()) {
-    // Invariant: c_iter.status() is guaranteed to be OK if c_iter->Valid()
+  while (status.ok() && !cfd->IsDropped() && value_iter->Valid()) {
+    // Invariant: value_iter.status() is guaranteed to be OK if value_iter->Valid()
     // returns true.
-    Slice& key = (Slice&) c_iter->key();
-    Slice& value = (Slice&) c_iter->value();
+    Slice& key = (Slice&) value_iter->key();
+    Slice& value = (Slice&) value_iter->value();
 #ifdef INDIRECT_VALUE_SUPPORT   // remap old indirect references
     ParsedInternalKey ikey;
     ParseInternalKey(key, &ikey);  // parse the current key so we can detect indirect refs
@@ -804,16 +807,17 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     // If an end key (exclusive) is specified, check if the current key is
     // >= than it and exit if it is because the iterator is out of its range
     if (end != nullptr &&
-        cfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0) {
+        cfd->user_comparator()->Compare(value_iter->user_key(), *end) >= 0) {
       break;
     }
+#ifndef INDIRECT_VALUE_SUPPORT
     if (c_iter_stats.num_input_records % kRecordStatsEvery ==
         kRecordStatsEvery - 1) {
       RecordDroppedKeys(c_iter_stats, &sub_compact->compaction_job_stats);
       c_iter->ResetRecordCounts();
       RecordCompactionIOStats();
     }
-
+#endif
     // Open output file if necessary
     if (sub_compact->builder == nullptr) {
       status = OpenCompactionOutputFile(sub_compact);
@@ -839,7 +843,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     sub_compact->builder->Add(key, value);
     sub_compact->current_output_file_size = sub_compact->builder->FileSize();
     sub_compact->current_output()->meta.UpdateBoundaries(
-        key, c_iter->ikey().sequence);
+        key, value_iter->ikey().sequence);
     sub_compact->num_output_records++;
 
     if (sub_compact->outputs.size() == 1) {  // first output file
@@ -909,11 +913,11 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       input_status = input->status();
       output_file_ended = true;
     }
-    c_iter->Next();
-    if (!output_file_ended && c_iter->Valid() &&
+    value_iter->Next();
+    if (!output_file_ended && value_iter->Valid() &&
         sub_compact->compaction->output_level() != 0 &&
         sub_compact->ShouldStopBefore(
-          c_iter->key(), sub_compact->current_output_file_size) &&
+          value_iter->key(), sub_compact->current_output_file_size) &&
         sub_compact->builder != nullptr) {
       // (2) this key belongs to the next file. For historical reasons, the
       // iterator status after advancing will be given to
@@ -923,8 +927,8 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     }
     if (output_file_ended) {
       const Slice* next_key = nullptr;
-      if (c_iter->Valid()) {
-        next_key = &c_iter->key();
+      if (value_iter->Valid()) {
+        next_key = &value_iter->key();
       }
       CompactionIterationStats range_del_out_stats;
       status = FinishCompactionOutputFile(input_status, sub_compact,
@@ -968,7 +972,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     status = input->status();
   }
   if (status.ok()) {
-    status = c_iter->status();
+    status = value_iter->status();
   }
 
   if (status.ok() && sub_compact->builder == nullptr &&
