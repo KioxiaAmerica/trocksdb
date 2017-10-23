@@ -59,6 +59,10 @@
 #include "util/stop_watch.h"
 #include "util/string_util.h"
 #include "util/sync_point.h"
+#ifdef INDIRECT_VALUE_SUPPORT
+#include "db/value_log_iterator.h"
+
+#endif
 
 namespace rocksdb {
 
