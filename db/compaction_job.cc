@@ -784,12 +784,14 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   size_t data_begin_offset = 0;
   std::string compression_dict;
   compression_dict.reserve(cfd->ioptions()->compression_opts.max_dict_bytes);
+  // Use the name value_iter to access the input values.  If we are producing indirect values, the values will
+  // come from the IndirectIterator; if not, they will come from the original c_iter.
 #ifdef INDIRECT_VALUE_SUPPORT
   // Extract the VLog for the current column family.  We will use it to create and resolve indirect values
   std::shared_ptr<VLog> current_vlog = compact_->compaction->column_family_data()->vlog();
   std::string get_result;  // create a string in this stackframe, which can point to the data allocated in VLogGet
   std::string modified_key;  // we build the key with the new Type here
-  IndirectIterator *value_iter = &IndirectIterator(c_iter,cfd,end);
+  IndirectIterator *value_iter = &IndirectIterator(c_iter,cfd,end,sub_compact->compaction->immutable_cf_options()->table_factory->supports_indirect_values);
 #else
   CompactionIterator *value_iter(c_iter);
 #endif
@@ -808,13 +810,13 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 #endif
 
 
+#ifndef INDIRECT_VALUE_SUPPORT
     // If an end key (exclusive) is specified, check if the current key is
     // >= than it and exit if it is because the iterator is out of its range
     if (end != nullptr &&
         cfd->user_comparator()->Compare(value_iter->user_key(), *end) >= 0) {
       break;
     }
-#ifndef INDIRECT_VALUE_SUPPORT
     if (c_iter_stats.num_input_records % kRecordStatsEvery ==
         kRecordStatsEvery - 1) {
       RecordDroppedKeys(c_iter_stats, &sub_compact->compaction_job_stats);
@@ -832,7 +834,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     assert(sub_compact->builder != nullptr);
     assert(sub_compact->current_output() != nullptr);
 #ifdef INDIRECT_VALUE_SUPPORT   // create new indirect references (including remapped values)
-    if(IsTypeDirect(ikey.type)){
+    if(IsTypeDirect(ikey.type) && sub_compact->compaction->immutable_cf_options()->table_factory->supports_indirect_values){
       // create the indirect reference to the value
       status = current_vlog->VLogGet(value,&get_result);   // turn the reference into a value, in the string
       value = Slice(get_result);   // convert the string to a slice as required below

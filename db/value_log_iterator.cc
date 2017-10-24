@@ -22,10 +22,14 @@ namespace rocksdb {
   IndirectIterator::IndirectIterator(
    CompactionIterator* c_iter,   // the input iterator that feeds us kvs
    ColumnFamilyData* cfd,  // the column family we are working on
-   Slice *end  // end+1 key in range, if given
+   Slice *end,  // end+1 key in range, if given
+   bool use_indirects  // if false, just pass c_iter through
   ) :
-  c_iter_(c_iter),  // scaf
-  pcfd(cfd) {
+  c_iter_(c_iter),
+  pcfd(cfd),
+  end_(end),
+  use_indirects_(0 && use_indirects)  // scaf
+  {
   }
 
 

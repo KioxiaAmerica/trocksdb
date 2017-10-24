@@ -344,7 +344,8 @@ BlockBasedTableBuilder::BlockBasedTableBuilder(
     const CompressionType compression_type,
     const CompressionOptions& compression_opts,
     const std::string* compression_dict, const bool skip_filters,
-    const std::string& column_family_name, const uint64_t creation_time) {
+    const std::string& column_family_name, const uint64_t creation_time)
+  {
   BlockBasedTableOptions sanitized_table_options(table_options);
   if (sanitized_table_options.format_version == 0 &&
       sanitized_table_options.checksum != kCRC32c) {

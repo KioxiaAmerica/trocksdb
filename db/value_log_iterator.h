@@ -31,17 +31,22 @@ public:
   IndirectIterator(
    CompactionIterator* c_iter,   // the input iterator that feeds us kvs
    ColumnFamilyData* cfd,  // the column family we are working on
-   Slice *end   // the last+1 key to include (i. e. end of open interval), or nullptr if not given
+   Slice *end,   // the last+1 key to include (i. e. end of open interval), or nullptr if not given
+   bool use_indirects   // if false, do not do any indirect processing, just pass through c_iter_
   );
 
 // the following lines are the interface that is shared with CompactionIterator, so these entry points
 // must not be modified
-#if 0
-  const Slice& key() { return key_; }
-  const Slice& value() { return value_; }
-  const Status& status() { return status_; }
-  const ParsedInternalKey& ikey() { return ikey_; }
-  bool Valid() { return valid_; }
+#if 1
+  const Slice& key() { return use_indirects_ ? key_ : c_iter_->key(); }
+  const Slice& value() { return use_indirects_ ? value_ : c_iter_->value(); }
+  const Status& status() { return use_indirects_ ? status_ : c_iter_->status(); }
+  const ParsedInternalKey& ikey() { return use_indirects_ ? ikey_ : c_iter_->ikey(); }
+    // If an end key (exclusive) is specified, check if the current key is
+    // >= than it and return invalid if it is because the iterator is out of its range
+  bool Valid() { return use_indirects_ ? valid_ : c_iter_->Valid() && 
+           !(end_ != nullptr && pcfd->user_comparator()->Compare(c_iter_->user_key(), *end_) >= 0); }
+  void Next() { return c_iter_->Next(); }  // scaf
 #else
   const Slice& key() { return c_iter_->key(); }
   const Slice& value() { return c_iter_->value(); }
@@ -59,8 +64,10 @@ private:
   Status status_;  // the status to return
   ParsedInternalKey ikey_;  // like key_, but parsed
   bool valid_;  // set when there is another kv to be read
-  ColumnFamilyData* pcfd;
-  CompactionIterator* c_iter_;   // scaf
+  ColumnFamilyData* pcfd;  // ColumnFamilyData for this run
+  CompactionIterator* c_iter_;  // underlying c_iter_, the source for our values
+  Slice *end_;   // if given, the key+1 of the end of range
+  bool use_indirects_;  // if false, just pass c_iter_ result through
 };
 
 } // namespace rocksdb
