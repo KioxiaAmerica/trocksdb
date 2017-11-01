@@ -107,7 +107,7 @@ struct FileMetaData {
   bool marked_for_compaction;  // True if client asked us nicely to compact this
                                // file.
 #ifdef INDIRECT_VALUE_SUPPORT   // add earliest_ref to FileMetaData
-  uint64_t indirect_ref_0;  // filenumber of the oldest value referred to in this SST, or HIGH-VALUE if no reference
+  std::vector<uint64_t> indirect_ref_0;  // for each ring: filenumber of the oldest value referred to in this SST, or HIGH-VALUE if no reference
      // value of 0 means 'omitted', i. e. this file was created without a value for this field
 #endif
 
@@ -125,7 +125,7 @@ struct FileMetaData {
         init_stats_from_file(false),
         marked_for_compaction(false)
 #ifdef INDIRECT_VALUE_SUPPORT
-        ,indirect_ref_0(0)  // 0 means 'omitted'
+        ,indirect_ref_0(std::vector<uint64_t>())  // 0 means 'omitted'
 #endif
         {}
 
@@ -220,7 +220,7 @@ class VersionEdit {
                uint64_t file_size, const InternalKey& smallest,
                const InternalKey& largest, const SequenceNumber& smallest_seqno,
                const SequenceNumber& largest_seqno,
-               bool marked_for_compaction, uint64_t indirect_ref_0 = 0) {
+               bool marked_for_compaction, std::vector<uint64_t> indirect_ref_0 = std::vector<uint64_t>()) {
     assert(smallest_seqno <= largest_seqno);
     FileMetaData f;
     f.fd = FileDescriptor(file, file_path_id, file_size);

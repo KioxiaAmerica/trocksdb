@@ -791,7 +791,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   std::shared_ptr<VLog> current_vlog = compact_->compaction->column_family_data()->vlog();
   std::string get_result;  // create a string in this stackframe, which can point to the data allocated in VLogGet
   std::string modified_key;  // we build the key with the new Type here
-  IndirectIterator *value_iter = &IndirectIterator(c_iter,cfd,end,sub_compact->compaction->immutable_cf_options()->table_factory->supports_indirect_values);
+  IndirectIterator *value_iter = &IndirectIterator(c_iter,cfd,sub_compact->compaction->output_level(),end,sub_compact->compaction->immutable_cf_options()->table_factory->supports_indirect_values);
 #else
   CompactionIterator *value_iter(c_iter);
 #endif

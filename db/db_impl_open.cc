@@ -1091,8 +1091,27 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
       }
     }
   }
-#ifdef INDIRECT_VALUE_SUPPORT   // fill in the rings for each colmn family
+#ifdef INDIRECT_VALUE_SUPPORT   // fill in the rings for each column family
+  {
+    // Initialize the rings for each column family.
+    // First, get the list of all the .vlg files in the database (they are all in the last path)
+    std::vector<std::string> existing_files;  // all the files in the last level
+    impl->immutable_db_options_.env->GetChildren(impl->immutable_db_options_.db_paths.back().path, &existing_files);
+    std::vector<std::string> existing_vlog_files;  // .vlg* files in the last level
+    for(auto fname : existing_files){
+      uint64_t number;  // return value, not used
+      FileType type;  // return value, giving type of file
+      if(ParseFileName(fname, &number, &type) && type==kVLogFile)existing_vlog_files.emplace_back(fname);
+    }
+// errors? scaf
+    // Get the options to use for the VLog files   scaf perhaps we need to modify these based on column options
+    EnvOptions vlog_options(db_options);
+    // for each column family, init the VLogs
+    for (auto cfd : *impl->versions_->GetColumnFamilySet()){
+      if(cfd->vlog()!=nullptr)cfd->vlog()->VLogInit(existing_vlog_files,impl->immutable_db_options_.env,vlog_options);
+    }
 // if no error, create the VLog rings for those CFs that support indirect values, and initialize the early-reference values in the priority queue
+  }
 #endif
   TEST_SYNC_POINT("DBImpl::Open:Opened");
   Status persist_options_status;

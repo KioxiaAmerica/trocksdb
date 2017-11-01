@@ -122,7 +122,7 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
     bool has_customized_fields = false;
     if (f.marked_for_compaction
 #ifdef INDIRECT_VALUE_SUPPORT
-        || f.indirect_ref_0
+        || f.indirect_ref_0.size()
 #endif
     ) {
       PutVarint32(dst, kNewFile4);
@@ -169,10 +169,14 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
       //   tag kPathId: 1 byte as path_id
       //   tag kNeedCompaction:
       //        now only can take one char value 1 indicating need-compaction
-      //   tag kEarliestIndirectRef:
+      //   tag kRingRefn:
       //        varint32  length
       //        varint32 n - the number of rings for this cf
       //        varint64[n] last file referred to by each ring
+      //   tag kIndirectRef0:
+      //        varint32  length
+      //        varint32 n - the number of rings for this cf
+      //        varint64[n] earliest file referred to in each ring
       //
       if (f.fd.GetPathId() != 0) {
         PutVarint32(dst, CustomTag::kPathId);
@@ -186,10 +190,13 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
       }
 
 #ifdef INDIRECT_VALUE_SUPPORT     // fill in earliest_ref field in Edit record
-      if (f.indirect_ref_0) {
+      if (f.indirect_ref_0.size()) {
         PutVarint32(dst, CustomTag::kIndirectRef0);  // write out the record type
-        PutVarint32(dst, VarintLength(f.indirect_ref_0));  // write out total field length
-        PutVarint64(dst, f.indirect_ref_0);  // write two fields: ref0 and refn
+        uint32_t totallength = VarintLength(f.indirect_ref_0.size());  // init length to length of # refs
+        for(auto ref : f.indirect_ref_0)totallength += VarintLength(ref);  // add in length of refs themselves
+        PutVarint32(dst, totallength);  // write out total field length
+        PutVarint32(dst, (uint32_t)f.indirect_ref_0.size());  // write out total field length
+        for(auto ref : f.indirect_ref_0)PutVarint64(dst, ref);  // write two fields: ref0 and refn
       }
 #endif
       TEST_SYNC_POINT_CALLBACK("VersionEdit::EncodeTo:NewFile4:CustomizeFields",
@@ -297,7 +304,14 @@ const char* VersionEdit::DecodeNewFile4From(Slice* input) {
           break;
 #ifdef INDIRECT_VALUE_SUPPORT   // decode earliest_ref field from Edit record
         case kIndirectRef0:
-          if(!GetVarint64(&field,&f.indirect_ref_0))return("indirect ref no value");
+          uint32_t nrings;   // number of rings in this field
+          if(!GetVarint32(&field,&nrings))return("indirect ref no # values");
+          f.indirect_ref_0.clear();  // empty the return area
+          uint64_t earlyref;  // place to decode the ref # for each ring
+          while(nrings--){
+            if(!GetVarint64(&field,&earlyref))return("indirect ref no value");
+            f.indirect_ref_0.push_back(earlyref);
+          }
           break;
 #endif
         default:

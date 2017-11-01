@@ -22,6 +22,9 @@
 #include "util/stop_watch.h"
 #include "util/string_util.h"
 #include "util/sync_point.h"
+#ifdef INDIRECT_VALUE_SUPPORT
+#include "db/value_log.h"
+#endif
 
 namespace rocksdb {
 
@@ -123,6 +126,18 @@ std::string TableFileName(const std::vector<DbPath>& db_paths, uint64_t number,
   }
   return MakeTableFileName(path, number);
 }
+
+#ifdef INDIRECT_VALUE_SUPPORT
+// Return the name of the VLog file with the specified number
+// in the db named by "dbname".  The result will be prefixed with
+// "dbname".  cf_name is the name of the column family
+std::string VLogFileName(const std::vector<DbPath>& db_paths,
+                                 uint64_t number, uint32_t path_id, const std::string cf_name) {
+  // The filename is aaa999.vlgxxx where aaa is the path, 999 is number, and xxx is cfname
+  return MakeFileName(db_paths[path_id].path, number, (kRocksDbVLogFileExt + cf_name).c_str());
+}
+#endif
+
 
 void FormatFileNumber(uint64_t number, uint32_t path_id, char* out_buf,
                       size_t out_buf_size) {
@@ -345,6 +360,10 @@ bool ParseFileName(const std::string& fname, uint64_t* number,
       *type = kBlobFile;
     } else if (suffix == Slice(kTempFileNameSuffix)) {
       *type = kTempFile;
+#ifdef INDIRECT_VALUE_SUPPORT
+    } else if (rest.starts_with(kRocksDbVLogFileExt)) {
+      *type = kVLogFile;
+#endif
     } else {
       return false;
     }

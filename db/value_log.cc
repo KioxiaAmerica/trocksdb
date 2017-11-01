@@ -10,6 +10,11 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/value_log.h"
+#include "db/column_family.h"
+#include "db/version_edit.h"
+#include "db/version_set.h"
+#include "options/cf_options.h"
+#include "rocksdb/status.h"
 
 namespace rocksdb {
 
@@ -75,7 +80,9 @@ std::vector<uint64_t> VLogRingQueueFindLaggingSSTs(
 return std::vector<uint64_t>{};  // scaf
 }
 
-
+static const VLogRingRefFileno high_value = ((VLogRingRefFileno)-1)>>1;  // biggest positive value
+static const float expansion_fraction = 0.25;  // fraction of valid files to leave for expansion
+static const int expansion_minimum = 1000;  // minimum number of expansion files
 
 // A VLogRing is a set of sequentially-numbered files, with a common prefix and extension .vlg, that contain
 // values for a column family.  Each value is pointed to by an SST, which uses a VLogRingRef for the purpose.
@@ -85,18 +92,74 @@ return std::vector<uint64_t>{};  // scaf
 // see if there are VLogRing files that are no longer referred to by any SST, and delete any such that are found.
 //
 // Each column family has (possibly many) VLogRing.  VLogRingRef entries in an SST implicitly refer to the VLog of the column family.
-// Constructor.  Find all the VLogRing files and open them.  Create the ring buffer for the files.
-// Perform validity checks, which are nothing for the moment.
-// Remember the file number/size of the last file that has been marked as synced in the Manifest, and delete any files that
-// come after that one (they must have been written just before a crash).  Also allocate the queue/hashtable for the SSTs
+// Constructor.  Find all the VLogRing files and open them.  Create the VLogRingQueue for the files.
+// Delete files that have numbers higher than the last valid one.
 VLogRing::VLogRing(
-  VLogRingRefFileno lastsyncedfile,  // file number of the last file acked in the Manifest
-  VLogRingRefFileOffset lastsyncedoffset,  // Number of bytes successfully written
-  int estimatednumssts    // approximate number of SSTs expected
-) :
-queue(VLogRingQueue(estimatednumssts))
-{};
+  int ringno,   // ring number of this ring within the CF
+  ColumnFamilyData *cfd,  // info for the CF for this ring
+  std::vector<std::string> filenames,  // the filenames that might be vlog files for this ring
+  VLogRingRefFileno earliest_ref,   // earliest file number referred to in manifest
+  VLogRingRefFileno latest_ref,   // last file number referred to in manifest
+  Env *env,   // The current Env
+  EnvOptions& file_options  // options to use for all VLog files
+)   : 
+    ringno_(ringno),
+    cfd_(cfd),
+    env_(env),
+    envopts_(file_options)  // must copy into heap storage here
+{
+  // If there are no references to the ring, set the limits to empty
+  if(earliest_ref==high_value){earliest_ref = 1; latest_ref = 0;}
+  // Note that file 0 is not allocated.  It is reserved to mean 'file number not given'
 
+  // Allocate the rings for files and references.  Allocate as many files as we need to hold the
+  // valid files, plus some room for expansion (here, the larger of a fraction of the number of valid files
+  // and a constant)
+  int ringexpansion = (int)((latest_ref-earliest_ref)*expansion_fraction);
+  if(ringexpansion<expansion_minimum)ringexpansion = expansion_minimum;
+  fd_ring.resize(latest_ref-earliest_ref+ringexpansion);  // establish initial size of ring
+
+  // For each file in this ring, open it (if its number is valid) or delete it (if not)
+  for(auto fname : filenames) {
+    // Extract the file number (which includes the ring) from the filename
+    uint64_t number;  // return value, giving file number
+    FileType type;  // return value, giving type of file
+    ParseFileName(fname, &number, &type);  // get file number (can't fail)
+
+    // Parse the file number into file number/ring
+    ParsedFnameRing fnring = ParsedFnameRing(number);
+
+    if(fnring.ringno==ringno) {// If this file is for our ring...
+      if(earliest_ref<=fnring.fileno && fnring.fileno<=latest_ref) {
+        // the file is referenced by the SSTs.  Open it
+        env_->ReopenWritableFile(fname, &fd_ring[fnring.fileno-earliest_ref],envopts_);  // open the file
+// scaf error?
+      } else {
+        // The file is not referenced.  We must have crashed during deletion.  Delete it now
+        env_->DeleteFile(fname);   // ignore error - what could we do?
+  // should log? scaf
+      }
+    }
+  }
+
+  // Set up the pointers for the ring, indicating validity
+  // Set up so ring entry 0 corresponds to the first file
+  // The ring tail is in entry 0, and corresponds to the earliest file number
+  atomics.fd_ring_index_offset = earliest_ref;  // the bias for ring entry 0
+  // The tail pointers point to the oldest ref
+  atomics.fd_ring_tail_fileno_shadow = atomics.fd_ring_tail_fileno = 0;  // init at 0
+  // The head pointers point to the next file AFTER the last.  In other words, we always start by
+  // creating a new file.  The oldest file may have some junk at the end, which will hand around until
+  // the ring recycles.  Like all references, this is relative to fd_ring_tail_fileno_shadow
+  atomics.fd_ring_head_fileno = atomics.fd_ring_head_fileno_shadow = latest_ref+1-earliest_ref;
+  // The index into the last file is always 0, since we are starting on a new file
+  atomics.fd_ring_head_fileoffset = atomics.fd_ring_head_fileoffset_shadow = 0;
+  // Init ring usecount to 0, meaning 'not in use'
+  atomics.usecount = 0;
+
+  // install references into queue  scaf
+
+}
 // Delete files that are no longer referred to by the SSTs.  Returns error status
 Status VLogRing::VLogRingCompact(
 )
@@ -120,8 +183,8 @@ return Status();  // scaf
 // We use release-acquire ordering for the VLogRing file and offset to avoid needing a Mutex in the reader
 // If the circular buffer gets full we have to relocate it, so we use release-acquire
 Status VLogRing::VLogRingWrite(
-std::vector<char>& bytes,   // The bytes to be written, jammed together
-std::vector<int>& rcdend,  // The running length of all records up to and including this one
+std::string& bytes,   // The bytes to be written, jammed together
+std::vector<size_t>& rcdend,  // The running length of all records up to and including this one
 VLogRingRef* firstdataref,   // result: reference to the first values written
 std::vector<int>* filelengths   // result: length of amount written to each file.  The file written are sequential
           // following the one in firstdataref.  The offset in the first file is in firstdataref; it is 0 for the others
@@ -164,27 +227,63 @@ void VLogRing::VLogRingDeleteSST(
 ) {}
 
 
-
 // A VLog is a set of VLogRings for a single column family.  The VLogRings are distinguished by an index.
 VLog::VLog(
-  // for each ring, the database level at which to start using it.  The ring remains in use until
-  // the value passes into a level with a higher ring number.  This list may be shorter than the number of rings defined
-  std::vector<int> starting_level_for_ring,
-  // for each ring, the number of SSTs expected in the ring.  A ring is defined for each value here
-  std::vector<int> ssts_per_ring
+  // the info for the column family
+  ColumnFamilyData *cfd
 ) :
-rings_(std::vector<VLogRing*>()),
-starting_level_for_ring_(starting_level_for_ring)
-{
-  // for each requested ring...
-  for(auto sstct : ssts_per_ring) {
-    // look up the last verified write to the ring.  That will be the starting point
-    // for future writes.
+  rings_(std::vector<std::unique_ptr<VLogRing>>()),  // start with empty rings
+  starting_level_for_ring_(std::vector<int>()),
+  cfd_(cfd)
+{}
 
-    // Create the ring
-    rings_.push_back(&VLogRing(0,0,sstct));   // scaf
+
+// Initialize each ring to make it ready for reading and writing.
+// It would be better to do this when the ring is created, but with the existing interfaces there is
+// no way to get the required information to the constructor
+Status VLog::VLogInit(
+    std::vector<std::string> vlg_filenames,    // all the filenames that exist for this database - at least, all the vlg files
+    Env *env,   // The current Env
+    EnvOptions& file_options  // options to use for all VLog files
+) {
+  // Save the ring starting levels
+    starting_level_for_ring_.push_back(1);  // scaf
+
+  // Go through all the SSTs and create a vector of filerefs for each ring
+  std::vector<VLogRingRefFileno> early_refs;  // place to hold earliest refs
+  for(int i = 0; i<starting_level_for_ring_.size(); ++i)early_refs.push_back(high_value);  // init to none
+  std::vector<VLogRingRefFileno> earliest_ref;  // for each ring, the earliest file referred to in the ring
+  for(int level = cfd_->NumberLevels();--level>=0;) {  // for each level in the CF
+    VersionStorageInfo* sinfo = cfd_->GetSuperVersion()->current->storage_info();  // factor out storage_info
+    for(FileMetaData* fmd : sinfo->LevelFiles(level)){
+      // accumulate the earliest nonzero reference across all SSTs in this CF
+      // We have to include all rings for all levels, in case the user changes the
+      // starting level for a ring after the initial opening of the ring.
+      for(int i = 0; i < starting_level_for_ring_.size(); ++i) {
+        if(fmd->indirect_ref_0[i])if((VLogRingRefFileno)fmd->indirect_ref_0[i]<early_refs[i])early_refs[i]=(VLogRingRefFileno)fmd->indirect_ref_0[i];
+      }
+    }
   }
+
+  // cull the list of files to leave only those that apply to this cf
+  std::vector<std::string> existing_vlog_files_for_cf;  // .vlg files for this cf
+  std::string columnsuffix = "." + kRocksDbVLogFileExt + cfd_->GetName();  // suffix for this CF's vlog files
+  for(auto fname : vlg_filenames){
+    if(fname.size()>columnsuffix.size() && 0==fname.substr(fname.size()-columnsuffix.size()).compare(columnsuffix))
+      existing_vlog_files_for_cf.emplace_back(fname);  // if suffix matches, keep the filename
+  }
+
+  // For each ring, initialize the ring and queue, and save the resulting object address
+  for(int i = 0; i<early_refs.size(); ++i) {
+    rings_.push_back(std::move(std::make_unique<VLogRing>(i /* ring# */, cfd_ /* ColumnFamilyData */, existing_vlog_files_for_cf /* filenames */,
+      (VLogRingRefFileno)early_refs[i] /* earliest_ref */, (VLogRingRefFileno)cfd_->GetRingEnds()[i]/* latest_ref */,
+      env /* Env */, file_options)));
+  }
+
+// status? scaf
+  return Status();
 }
+
 
 // Read the bytes referred to in the given VLogRingRef.  Uses release-acquire ordering to verify validity of ring
 // Returns the bytes.  ?? Should this return to user area to avoid copying?
@@ -196,7 +295,7 @@ Status VLog::VLogGet(
 // scaf for hardwired testing, just reverse the bytes
 //  size_t i; result->clear(); for(i = reference.size_-1; i>=0; --i)result->push_back(reference.data_[i]);
   size_t i; result->clear(); for(i = 0; i<reference.size_; ++i)result->push_back(0xff^reference.data_[i]);
-    
+
 
   // extract the ring# from the reference
 

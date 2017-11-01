@@ -342,11 +342,9 @@ class ColumnFamilyData {
 
 #ifdef INDIRECT_VALUE_SUPPORT
   std::shared_ptr<VLog> vlog() { return vlog_;}    // the VLog to be used for this column family.  May contain no rings
-#ifdef INDIRECT_VALUE_SUPPORT
   // routines to access the vector of end-of-ring data
   void SetRingEnds(std::vector<uint64_t>&& ring_ends_) { ring_ends = ring_ends_; }
-  std::vector<uint64_t> GetRingEnds() { return ring_ends; }
-#endif
+  std::vector<uint64_t>& GetRingEnds() { return ring_ends; }
 #endif
 
  private:

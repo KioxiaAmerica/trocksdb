@@ -31,6 +31,7 @@ public:
   IndirectIterator(
    CompactionIterator* c_iter,   // the input iterator that feeds us kvs
    ColumnFamilyData* cfd,  // the column family we are working on
+   int level,   // output level for this iterator - where the files will be written to
    Slice *end,   // the last+1 key to include (i. e. end of open interval), or nullptr if not given
    bool use_indirects   // if false, do not do any indirect processing, just pass through c_iter_
   );
@@ -38,7 +39,7 @@ public:
 // the following lines are the interface that is shared with CompactionIterator, so these entry points
 // must not be modified
 #if 1
-  const Slice& key() { return use_indirects_ ? key_ : c_iter_->key(); }
+  const Slice& key() { return  use_indirects_ ? key_ : c_iter_->key(); }
   const Slice& value() { return use_indirects_ ? value_ : c_iter_->value(); }
   const Status& status() { return use_indirects_ ? status_ : c_iter_->status(); }
   const ParsedInternalKey& ikey() { return use_indirects_ ? ikey_ : c_iter_->ikey(); }
@@ -68,6 +69,17 @@ private:
   CompactionIterator* c_iter_;  // underlying c_iter_, the source for our values
   Slice *end_;   // if given, the key+1 of the end of range
   bool use_indirects_;  // if false, just pass c_iter_ result through
+  std::vector<Slice> keys;  // all the keys read from the iterator
+  std::vector<Slice> passthroughdata;  // pinned data that is passed through unchanged
+  std::vector<char> valueclass;   // one entry per key.  bit 0 means 'value is a passthrough'; bit 1 means 'value is being converted from direct to indirect'
+  std::shared_ptr<VLog> current_vlog;
+
+  void SetReturnVariables();  // establish key_ etc. for the next value
+  int keyno_;  // number of keys processed previously
+  int passx_;  // number of passthrough bytes returned previously
+  int diskx_;  // number of disk references returned previously
+  VLogRingRef startingref_;  // reference for the first data written to VLog
+  std::vector<int>filelengths_;   // number of bytes written to successive VLog files
 };
 
 } // namespace rocksdb
