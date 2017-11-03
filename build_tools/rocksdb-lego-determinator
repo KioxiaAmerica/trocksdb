@@ -89,8 +89,8 @@ LITE="OPT=\"-DROCKSDB_LITE -g\""
 TSAN="COMPILE_WITH_TSAN=1"
 UBSAN="COMPILE_WITH_UBSAN=1"
 DISABLE_JEMALLOC="DISABLE_JEMALLOC=1"
-HTTP_PROXY="https_proxy=http://fwdproxy.29.prn1:8080 http_proxy=http://fwdproxy.29.prn1:8080 ftp_proxy=http://fwdproxy.29.prn1:8080"
-SETUP_JAVA_ENV="export $HTTP_PROXY; export JAVA_HOME=/usr/local/jdk-8u60-64/; export PATH=\$JAVA_HOME/bin:\$PATH"
+HTTP_PROXY=""
+SETUP_JAVA_ENV="export $HTTP_PROXY; export JAVA_HOME=$(which javac | rev | cut -d'/' -f2- | rev); export PATH=\$JAVA_HOME/bin:\$PATH"
 PARSER="'parser':'python build_tools/error_filter.py $1'"
 
 CONTRUN_NAME="ROCKSDB_CONTRUN_NAME"
@@ -434,7 +434,7 @@ ASAN_TEST_COMMANDS="[
             $CLEANUP_ENV,
             {
                 'name':'Test RocksDB debug under ASAN',
-'shell':'set -o pipefail && ($SHM $ASAN $DEBUG make $PARALLELISM asan_check || $CONTRUN_NAME=asan_check $TASK_CREATION_TOOL) |& /usr/facebook/ops/scripts/asan_symbolize.py -d',
+'shell':'$SHM $ASAN $DEBUG make $PARALLELISM asan_check || $CONTRUN_NAME=asan_check $TASK_CREATION_TOOL',
                 'user':'root',
                 $PARSER
             }
@@ -476,7 +476,7 @@ UBSAN_TEST_COMMANDS="[
             $CLEANUP_ENV,
             {
                 'name':'Test RocksDB debug under UBSAN',
-                'shell':'set -o pipefail && $SHM $UBSAN $DEBUG make $PARALLELISM ubsan_check || $CONTRUN_NAME=ubsan_check $TASK_CREATION_TOOL',
+                'shell':'$SHM $UBSAN $DEBUG make $PARALLELISM ubsan_check || $CONTRUN_NAME=ubsan_check $TASK_CREATION_TOOL',
                 'user':'root',
                 $PARSER
             }
@@ -542,7 +542,7 @@ TSAN_UNIT_TEST_COMMANDS="[
             {
                 'name':'Run RocksDB debug unit test',
                 'timeout': 86400,
-                'shell':'set -o pipefail && $SHM $DEBUG $TSAN make $PARALLELISM check || $CONTRUN_NAME=tsan_check $TASK_CREATION_TOOL',
+                'shell':'$SHM $DEBUG $TSAN make $PARALLELISM check || $CONTRUN_NAME=tsan_check $TASK_CREATION_TOOL',
                 'user':'root',
                 $PARSER
             },
@@ -564,7 +564,7 @@ TSAN_CRASH_TEST_COMMANDS="[
             {
                 'name':'Compile and run',
                 'timeout': 86400,
-                'shell':'set -o pipefail && $SHM $DEBUG $TSAN CRASH_TEST_KILL_ODD=1887 CRASH_TEST_EXT_ARGS=--log2_keys_per_lock=22  make J=1 crash_test || $CONTRUN_NAME=tsan_crash_test $TASK_CREATION_TOOL',
+                'shell':'$SHM $DEBUG $TSAN CRASH_TEST_KILL_ODD=1887 CRASH_TEST_EXT_ARGS=--log2_keys_per_lock=22  make J=1 crash_test || $CONTRUN_NAME=tsan_crash_test $TASK_CREATION_TOOL',
                 'user':'root',
                 $PARSER
             },
