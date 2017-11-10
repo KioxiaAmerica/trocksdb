@@ -22,6 +22,33 @@ class ColumnFamilyData;
 class Status;
 class Slice;
 
+// The Value Log is the place where values are stored separate from their keys.  Values are written to the Value Log
+// during compaction.
+
+// There is one VLog per column family, created when the column family is initialized (provided that the
+// column family has a table type that supports indirect values).  After options have been vetted and all columns created, the
+// Value Log is initialized for operation.
+
+// Each VLog has one or more VLogRings, under programmer control.  Each VLogRing is associated with a set of levels.  Each compaction
+// writes to the ring associated with its output level.  The association of output levels to VLogRings can be changed, but it may
+// take some time for the values to be migrated to the correct output ring.
+
+// The VLogRing contains the Ring: a list of all the files containing values; and the Queue: for each VLog file, a linked-list of SSTs whose
+// earliest reference is to the file.  We use chain fields inside the SST's metadata to hold the chain fields for the Queue.
+
+// Files containing values are sequences of bytes, jammed together with no record marks.  Each value can be compressed and CRCd
+// independently.  The filename for a value file is path###.vlg$$$ where
+// path is the last db_path for the column family
+// ### is an ASCII string of the number of the file
+// $$$ is the name of the column family, which must be suitable for inclusion in a file name
+//
+// With the file number, the ring number occupies the low 2 bits and the upper bits are a sequential number.
+
+// During compaction, each value above a user-specified size is written to a file and replaced by a VLogRingRef, a fixed-length string
+// that identifies the ring number, file, offset, and length of the stored value.  Calls to Get() that encounter a VLogRingRef (which
+// is identified by a special Value Type) call the VLog to read from disk to replace the indirect reference withthe value data.
+
+
 static const std::string kRocksDbVLogFileExt = "vlg";   // extension for vlog files is vlgxxx when xxx is CF name
 
 typedef uint64_t VLogRingRefFileno;
@@ -34,26 +61,86 @@ public:
   int ringno;
   uint64_t fileno;
   ParsedFnameRing(VLogRingRefFileno file_ring) :
-    fileno(file_ring>>2), ringno((int)fileno&3) {}
+    fileno(file_ring>>2), ringno((int)file_ring&3) {}
 };
 
-// The VLogRingRef is a fixed-length reference to data in a VLogRing.  The length is fixed so that references in an SST
-// can be easily remapped in place.  The reference indicates the file, offset, and length of the reference
+// The VLogRingRef is a reference to data in a VLogRing.  It can be converted to an opaque string
+// form, whose length is fixed so that references in an SST
+// can be easily remapped in place.  The reference indicates the ring, file, offset, and length of the reference
+//
+// Opaque string holds the 16 bytes from 2 int64s, which are FFFooooo ffrlllll  (file/ring is FFFffr)
 class VLogRingRef {
+public:
+// Constructor
+VLogRingRef(int r, VLogRingRefFileno f, VLogRingRefFileOffset o, VLogRingRefFileLen l) : ringno(r), fileno(f), offset(o), len(l) {}  // with data
+VLogRingRef() { }   // placeholder only
+VLogRingRef(int r) : ringno(r), fileno(0), offset(0), len(0) {}  // ring only
+VLogRingRef(int r, VLogRingRefFileno f) : ringno(r), fileno(f), offset(0), len(0) {}  // ring & filenumber only
+VLogRingRef(const char *opaqueref) {  // creating ref from OpaqueRef array
+  memcpy(workarea.extform,opaqueref,sizeof(workarea.extform));  // move ref to aligned storage
+  // extract fields from 64-bit names to be independent of byte order, as long as the machine architecture
+  // doesn't change over the life of the database
+  offset = workarea.intform[0]&((1LL<<40)-1);
+  len = workarea.intform[1]&((1LL<<40)-1);
+  ringno = (workarea.intform[1]>>40)&3;
+  fileno = ((workarea.intform[0]&(-(1LL<<40)))>>(40-(64-42))) + ((workarea.intform[1]&(-(1LL<<42)))>>(42-0));  // move ff from bit 42 to bit 0; FFF from 40 to 22
+}
+VLogRingRef(std::string& opaqueref) {  // creating ref from OpaqueRef
+  assert(16==opaqueref.size());   // make sure size of ref is right
+  VLogRingRef(opaqueref.data());  // make ref from data array
+}
+
+// Fill in an existing RingRef
+void FillVLogRingRef(int r, VLogRingRefFileno f, VLogRingRefFileOffset o, VLogRingRefFileLen l)
+  {ringno=r; fileno=f; offset=o; len=l;}
+
+// Create OpaqueRef (a character array)
+void OpaqueRef(char *result) {
+  MakeWorkarea();
+  memcpy(result,workarea.extform,sizeof(workarea.extform));  // move ref user area
+}
+void OpaqueRef(std::string &result) {
+  MakeWorkarea();
+  result.assign(workarea.extform,sizeof(workarea.extform));  // make ref from data array
+}
+
+// Create an OpaqueRef in the workarea for this ref and fill in the given slice to point to it
+void IndirectSlice(Slice& slice) {
+  MakeWorkarea();
+  slice.install(workarea.extform,sizeof(workarea.extform));  // point the argument slice to our workarea
+}
+
+// Extract portions of the ref
+VLogRingRefFileOffset Offset() { return offset; }
+VLogRingRefFileLen Len() { return len; }
+int Ringno() { return ringno; }
+VLogRingRefFileno Fileno() { return fileno; }
+// Set portions of the ref
+void SetOffset(VLogRingRefFileOffset o) { offset = o; }
+void SetFileno(VLogRingRefFileno f) { fileno = f; }
+void SetLen(VLogRingRefFileLen l) { len = l; }
+
+// Create Filenumber from RingRef
+uint64_t FileNumber() {return (fileno<<2)+ringno;}
+
 private:
 VLogRingRefFileno fileno;
 VLogRingRefFileOffset offset;
 VLogRingRefFileLen len;
 int ringno;
-public:
-// Constructor
-VLogRingRef(int r, VLogRingRefFileno f, VLogRingRefFileOffset o, VLogRingRefFileLen l) : ringno(r), fileno(f), offset(o), len(l) {}
-VLogRingRef() { }
+union {
+  uint64_t intform[2];   // internal form
+  char extform[16];   // external form
+} workarea;
+void MakeWorkarea() {
+  assert(offset<=((1LL<<40)-1));  // offset and length should be 5 bytes max
+  assert(len<=((1LL<<40)-1));  // offset and length should be 5 bytes max
+  assert(fileno<=((1LL<<46)-1));  // fileno should be 46 bits max
+  assert(ringno<=3);  // ring should be 2 bits max; fileno+ringno is 48 bits
+  workarea.intform[0] = offset + ((((fileno*4)+ringno)&(-(1LL<<(64-40))))<<(40-24));  // isolate FFF starting in bit 24; move to bit 40 of offset
+  workarea.intform[1] = len + (((fileno*4)+ringno)<<40);   ///  move ffr to bit 40 of len
+}
 
-// Add fileoffset/byteoffset to the given ref
-void VLogRingAdd(VLogRingRefFileno fileoffset, VLogRingRefFileOffset byteoffset) {fileno+=fileoffset; offset=(fileoffset?0:offset)+byteoffset;}
-
-// we will need functions to move a ref to and from the SST
 };
 
 
@@ -135,7 +222,7 @@ class VLogRing {
 friend class VLog;
 private:
   // The ring:
-  std::vector<std::unique_ptr<WritableFile>> fd_ring;  // the ring of open file descriptors for the VLog files.  nullptr
+  std::vector<std::unique_ptr<RandomAccessFile>> fd_ring;  // the ring of open file descriptors for the VLog files.
 
   // The queue contains one entry for each entry in the fd_ring.  That entry is a linked list of pointers to the SST files whose earliest
   // reference in this ring is in the corresponding file.  When an SST is created, an element is added, and when the SST is finally deleted, one
@@ -143,31 +230,31 @@ private:
   std::vector<FileMetaData*> queue;
 
   // We group the atomics together so they can be aligned to a cacheline boundary
-  struct {
+  struct /* alignas(64) */ {   // alignment is desirable, but not available till C++17.  This struct is 1 full cache line
   // The ring head/tail pointers:
-  // These must be WRITTEN in the order fileno,fileoffset and READ in the reverse order, using acquire/release memory model.  This will ensure that
-  // both variables are valid everywhere
-  VLogRingRefFileno fd_ring_head_fileno;   // file number of the last file in the ring.  We are appending to this file
-  VLogRingRefFileno fd_ring_head_fileno_shadow;   // we move head_fileno to reserve space, before the files have been created.  Move the shadow after they are valid
-  std::atomic<VLogRingRefFileOffset> fd_ring_head_fileoffset;  // the offset that the next write will go to
-  std::atomic<VLogRingRefFileOffset> fd_ring_head_fileoffset_shadow;  // shadow, as with fileno
+  // For the initial implementation we write only entire files and thus don't need offsets.
+  // The file numbers are actual disk-file numbers.  The conversion function Ringx converts a file number to a ring index.
+  std::atomic<VLogRingRefFileno> fd_ring_head_fileno;   // file number of the last file in the ring.
+  std::atomic<VLogRingRefFileno> fd_ring_head_fileno_shadow;   // we move head_fileno to reserve space, before the files have been created.  Move the shadow after they are synced
+//   std::atomic<VLogRingRefFileOffset> fd_ring_head_fileoffset;  // the offset that the next write will go to
+//  std::atomic<VLogRingRefFileOffset> fd_ring_head_fileoffset_shadow;  // shadow, as with fileno
   std::atomic<VLogRingRefFileno> fd_ring_tail_fileno;   // smallest valid file# in ring
   std::atomic<VLogRingRefFileno> fd_ring_tail_fileno_shadow;   // We move tail_fileno to remove files from validity, but before we have erased them.
      // after we erase them we move the shadow pointer.  So tests for ring-full must use the shadow pointer
-  std::atomic<VLogRingRefFileOffset> fd_ring_index_offset;  // The file number corresponding to fd_ring[0], in the frame of
-     // fd_ring_tail_fileno_shadow.  The earliest valid entry is at index fd_ring_head_fileoffset, and it corresponds to
-     // file number fd_ring_index_offset+fd_ring_head_fileoffset+(fd_ring_head_fileoffset<fd_ring_tail_fileno_shadow)*fd_ring.size()
-     // in other words, when the ring wraps, add its size to fd_ring_index_offset.
   // The usecount of the current ring.  Set to 0 initially, incr/decr during Get.  Set to a negative value, which
   // quiesces Get, when we need to resize the ring.  We use this as a sync point for the ringpointer/len so we don't have to use atomic reads on them.
-  std::atomic<int> usecount;
+  std::atomic<uint32_t> usecount;
+  std::atomic<uint32_t> writelock;  // 0 normally, 1 when the ring is in use for writing
   } atomics;
+
+// Convert a file number to a ring slot in the current ring.  To avoid the divide we require the ring have power-of-2 size
+size_t Ringx(VLogRingRefFileno f) { return (size_t) f & (fd_ring.size()-1); }
 
 
   // Non-ring variables:
   int ringno_;  // The ring number of this ring within its CF
   ColumnFamilyData *cfd_;  // The data for this CF
-  Env *env_;  // Env for this database
+  const ImmutableDBOptions *immdbopts_;  // Env for this database
   EnvOptions envopts_;  // Options to use for files in this VLog
 public:
 // Constructor.  Find all the VLogRing files and open them.  Create the VLogRingQueue for the files.
@@ -178,9 +265,11 @@ VLogRing(
   std::vector<std::string> filenames,  // the filenames that might be vlog files for this ring
   VLogRingRefFileno earliest_ref,   // earliest file number referred to in manifest
   VLogRingRefFileno latest_ref,   // last file number referred to in manifest
-  Env *env,   // The current Env
+  const ImmutableDBOptions *immdbopts,   // The current Env
   EnvOptions& file_options  // options to use for all VLog files
 );
+
+  // Ensure the ring is not copyable
   VLogRing(VLogRing const&) = delete;
   VLogRing& operator=(VLogRing const&) = delete;
 
@@ -207,8 +296,8 @@ Status VLogRingCompact(
 Status VLogRingWrite(
 std::string& bytes,   // The bytes to be written, jammed together
 std::vector<size_t>& rcdend,  // The running length of all records up to and including this one
-VLogRingRef* firstdataref,   // result: reference to the first values written
-std::vector<int>* filelengths   // result: length of amount written to each file.  The file written are sequential
+VLogRingRef& firstdataref,   // result: reference to the first value written
+std::vector<VLogRingRefFileLen>& fileendoffsets   // result: length of amount written to each file.  The file written are sequential
           // following the one in firstdataref.  The offset in the first file is in firstdataref; it is 0 for the others
 )
 // acquire spin lock
@@ -230,7 +319,7 @@ std::vector<int>* filelengths   // result: length of amount written to each file
 // Returns the bytes.  ?? Should this return to user area to avoid copying?
 Status VLogRingGet(
   VLogRingRef& request,  // the values to read
-  std::string& response   // the data pointed to by the reference
+  std::string *response   // the data pointed to by the reference
 )
 // atomic incr of ring usecount -  if negative, atomic decr & wait for nonnegative
 // read ring base & length (protected by usecount)
@@ -268,7 +357,7 @@ public:
   // no way to get the required information to the constructor
   Status VLogInit(
     std::vector<std::string> vlg_filenames,    // all the filenames that exist for this database - at least, all the vlg files
-    Env *env,  // the currect Env
+    const ImmutableDBOptions *immdbopts,  // the currect Env
     EnvOptions& file_options   // options to use for VLog files
   )
     // Go through all the SSTs and create a vector of filerefs for each ring

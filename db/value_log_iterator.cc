@@ -11,6 +11,7 @@
 
 #include "db/value_log_iterator.h"
 #include "db/value_log.h"
+#include "rocksdb/status.h"
 
 namespace rocksdb {
 
@@ -29,28 +30,27 @@ namespace rocksdb {
   c_iter_(c_iter),
   pcfd(cfd),
   end_(end),
-  use_indirects_(0 && use_indirects),  // scaf
+  use_indirects_(use_indirects),  // scaf
   current_vlog(cfd->vlog())
   {
     // If indirects are disabled, we have nothing to do.  We will just be returning values from c_iter_.
-    if(!use_indirects)return;
+    if(!use_indirects_)return;
     int outputringno = current_vlog->VLogRingNoForLevelOutput(level);  // get the ring number we will write output to
-    if(outputringno<0)return;  // if no output ring, skip looking for indirects
-    VLogRing *outputring = current_vlog->VLogRingFromNo(outputringno);
+    if(outputringno<0){use_indirects_ = false; return;}  // if no output ring, skip looking for indirects
+    VLogRing *outputring = current_vlog->VLogRingFromNo(outputringno);  // the ring we will write values to
 // scaf handle status;
 
     // Read all the kvs from c_iter and save them.  We start at the first kv
     // We create:
     // diskdata - the compressed, CRCd, values to write to disk.  Stored in key order.
     // diskrecl - the length of each value in diskdata
-    // keys - the keys read from c_iter (Slice)
+    // keys - the keys read from c_iter read as a Slice but converted to string
     // passthroughdata - values from c_iter that should be passed through (Slice)
     // valueclass - bit 0 means 'value is a passthrough'; bit 1 means 'value is being converted from direct to indirect'
     //
     // The Slices are references to pinned tables and we return them unchanged as the result of our iterator.
     // They are immediately passed to Builder which must make a copy of the data.
     std::string diskdata;  // where we accumulate the data to write
-    std::vector<size_t> diskrecl;  // length of each record in diskdata
     while(c_iter->Valid() && 
            !(end != nullptr && pcfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0)) {
       // process this kv.  It is valid and the key is not past the specified ending key
@@ -62,49 +62,127 @@ namespace rocksdb {
       // For case 1, the value is copied to passthroughdata
       // For case 2, the value is compressed and CRCd and written to diskdata
       // For case 0, the (compressed & CRCd) value is read from disk into diskdata and not modified
-      Slice &key = (Slice &) c_iter->key();  // read the key
-      keys.push_back(key);  // put it in our saved list of keys
+      const Slice &key = c_iter->key();  // read the key
+      // Because the compaction_iterator builds all its return keys in the same buffer, we have to move the key
+      // into an area that won't get overwritten.  To avoid lots of memory allocation we jam all the keys into one vector,
+      // and keep a vector of lengths
+      keys.append(key.data(),key.size());   // save the key...
+      keylens.push_back(key.size());    // ... and its length
       Slice &val = (Slice &) c_iter->value();  // read the value
-      char vclass = 1;  // init class to 'passthrough'
+      char vclass;   // disposition of this value
       if(IsTypeDirect(c_iter->ikey().type) && val.size() > 0 ) {  // scaf include length
         // direct value that should be indirected
-        vclass = 2;  // indicate the conversion
+        vclass = vIndirectFirstMap;  // indicate the conversion
         // compress the data scaf
         // CRC the data  scaf
-        diskrecl.push_back(val.size());  // scaf use modified size
         diskdata.append(val.data(),val.size());  // scaf
-      } else if(IsTypeIndirect(c_iter->ikey().type) && 0) {
+        diskrecl.push_back(diskdata.size());   // write running sum of record lengths, i. e. current total size of diskdata
+      } else if(IsTypeIndirect(c_iter->ikey().type) && 0) {  // scaf
         // indirect value being remapped
-        vclass = 0;  // indicate remapping
-        // read the data, no decompression
-        diskrecl.push_back(val.size());  // scaf use modified size
-        diskdata.append(val.data(),val.size());  // scaf
+        vclass = vIndirectRemapped;  // indicate remapping
+        // read the data, no decompression  scaf
+        diskdata.append(val.data(),val.size());   // copy the opaque compressed data being remapped
+        diskrecl.push_back(diskdata.size());   // write running sum of record lengths, i. e. current total size of diskdata
       } else {
         // otherwise must be passthrough
-        vclass = 1;  // indicate passthrough
-        passthroughdata.push_back(val);    // put the slice in our list.  It is pinned so this is safe
+        vclass = vPassthrough;  // indicate passthrough
+        // Regrettably we have to make a copy of the passthrough data.  Even though the original data is pinned in SSTs,
+        // anything returned from a merge uses buffers in the compaction_iterator that are overwritten after each merge.
+        // Since most passthrough data is short (otherwise why use indirects?), this is probably not a big problem; the
+        // solution would be to keep all merge results valid for the life of the compaction_iterator.
+         passthroughdata.append(val.data(),val.size());    // copy the data
+         passthroughrecl.push_back(val.size());
       }
       // save the type of record for use in the replay
       valueclass.push_back(vclass);
+
+      // We have processed one key from the compaction iterator - get the next one
+      c_iter->Next();
     }
 
     // All values have been read from c_iter
 
     // Allocate space in the Value Log and write the values out, and save the information for assigning references
-    status_ = outputring->VLogRingWrite(diskdata,diskrecl,&startingref_,&filelengths_);
+    status_ = outputring->VLogRingWrite(diskdata,diskrecl,nextdiskref,fileendoffsets);
 
     // set up the variables for the first key
     keyno_ = 0;  // we start on the first key
+    keysx_ = 0;   // it is at position 0 in keys[]
     passx_ = 0;  // initialize data pointers to start of region
     diskx_ = 0;
-    SetReturnVariables();
+    nextpassthroughref = 0;  // init offset of first passthrough record
+    filex_ = 0;  // indicate that we are creating references to the first file in filelengths
+    Next();   // first Next() gets the first key; subsequent ones return later keys
   }
 
-  // set up key_ etc. with the data for the next valid key
-  void IndirectIterator::SetReturnVariables() {
-// scaf  fill it in
-  }
+  // set up key_ etc. with the data for the next valid key, whose index in our tables is keyno_
+  // We copy all these into temp variables, because the user is allowed to call key() and value() repeatedly and
+  // we don't want to repeat any work
+  //
+  // keyno_ is the index of the key we are about to return, if valid
+  // passx_ is the index of the next passthrough record
+  // nextpassthroughref is the index of the next passthrough byte to return
+  // diskx_ is the index of the next disk data offset (into diskrecl_)
+  // nextdiskref_ has the file info for the next disk block
+  // diskrecl_ has running total (i. e. record-end points) of each record written en bloc
+  // We update all these variables to be ready for the next record
+  void IndirectIterator::Next() {
+    VLogRingRefFileOffset currendlen;  // the cumulative length of disk records up to the current one
 
+    // If this table type doesn't support indirects, revert to the standard compaction iterator
+    if(!use_indirects_){ c_iter_->Next(); return; }
+    // Here indirects are supported.  If we have returned all the keys, set this one as invalid
+    if(valid_ = keyno_ < valueclass.size()) {
+      // There is another key to return.  Retrieve the key info and parse it
+      ParseInternalKey(Slice(keys.data()+keysx_,keylens[keyno_]),&ikey_);  // Fill in the parsed result area
+      keysx_ += keylens[keyno_];  // advance keysx_ to point to start of next key, for next time
+      
+      // Create its info based on its class
+      switch(valueclass[keyno_]) {
+      case vPassthrough:
+        // passthrough.  Fill in the slice from the buffered data, and advance pointers to next record
+        value_.install(passthroughdata.data() + nextpassthroughref,passthroughrecl[passx_++]);  // nextpassthroughref is current data offset
+        nextpassthroughref += value_.size_;  // advance data offset for next time
+        break;
+      case vIndirectFirstMap:
+        // first mapping: change the value type to indicate indirect
+        ikey_.type = (ikey_.type==kTypeValue) ? kTypeIndirectValue : kTypeIndirectMerge;  // must be one or the other
+        // fall through to...
+      case vIndirectRemapped:
+        // Data taken from disk.  Fill in the slice with the current disk reference; then advance the reference to the next record
+        nextdiskref.IndirectSlice(value_);  // convert nextdiskref to string form in its workarea, and point value_ to the workarea
+        // Advance to the next record - or the next file, getting the new file/offset/length ready in nextdiskref
+        // If there is no next indirect value, don't set up for it
+        currendlen = diskrecl[diskx_++];  // save end offset of current record, advance to next record
+        if(diskx_<diskrecl.size()) {  // if there is going to be a next record...
+          nextdiskref.SetOffset(nextdiskref.Offset()+nextdiskref.Len());   // offset of current + len of current = offset of next
+          nextdiskref.SetLen(diskrecl[diskx_]-currendlen);    // endpos of next - endpos of current = length of next
+          // Subtlety: if the length of the trailing values is 0, we could advance the file pointer past the last file.
+          // To ensure that doesn't happen, we advance the output file only when the length of the value is nonzero.
+          // It is still possible that a zero-length reference will have a filenumber past the ones we have allocated, so
+          // we have to make sure that zero-length indirects (which shouldn't exist!) are not read
+          if(nextdiskref.Len()){   // advance to next file only on nonempty value
+            if(nextdiskref.Offset()==fileendoffsets[filex_]) {   // if start of next rcd = endpoint of current file
+              // The next reference is in the next output file.  Advance to the start of the next output file
+              nextdiskref.SetFileno(nextdiskref.Fileno()+1);  // next file...
+              nextdiskref.SetOffset(0);  // at the beginning...
+              ++filex_;   // ... and advance to look at the ending position of the NEXT output file
+            }
+          }
+        }
+        break;
+      }
+
+      // Now that we know we have the value type right, create the total key to return to the user
+      npikey.clear();  // clear the old key
+      AppendInternalKey(&npikey, ikey_);
+      key_.install(npikey.data(),npikey.size());  // Install data & size into the object buffer, to avoid returning stack variable
+
+      // Advance to next position for next time
+      ++keyno_;   // keyno_ always has the key-number to use for the next call to Next()
+    }
+    status_ = Status();  // scaf
+  }
 
 }   // namespace rocksdb
 

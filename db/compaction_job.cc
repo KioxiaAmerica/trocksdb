@@ -787,11 +787,13 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   // Use the name value_iter to access the input values.  If we are producing indirect values, the values will
   // come from the IndirectIterator; if not, they will come from the original c_iter.
 #ifdef INDIRECT_VALUE_SUPPORT
-  // Extract the VLog for the current column family.  We will use it to create and resolve indirect values
-  std::shared_ptr<VLog> current_vlog = compact_->compaction->column_family_data()->vlog();
-  std::string get_result;  // create a string in this stackframe, which can point to the data allocated in VLogGet
-  std::string modified_key;  // we build the key with the new Type here
-  IndirectIterator *value_iter = &IndirectIterator(c_iter,cfd,sub_compact->compaction->output_level(),end,sub_compact->compaction->immutable_cf_options()->table_factory->supports_indirect_values);
+// obsolete  // Extract the VLog for the current column family.  We will use it to create and resolve indirect values
+// obsolete  std::shared_ptr<VLog> current_vlog = compact_->compaction->column_family_data()->vlog();
+// obsolete  std::string get_result;  // create a string in this stackframe, which can point to the data allocated in VLogGet
+// obsolete   std::string modified_key;  // we build the key with the new Type here
+  // The IndirectIterator will do all mapping/remapping and will return the new key/values one by one
+  // If there is no VLog it means this table type doesn't support indirects, and the iterator will be a passthrough
+  auto value_iter = std::make_unique<IndirectIterator>(c_iter,cfd,sub_compact->compaction->output_level(),end,cfd->vlog()!=nullptr);  // keep iterator around till end of function
 #else
   CompactionIterator *value_iter(c_iter);
 #endif
@@ -801,7 +803,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     // returns true.
     Slice& key = (Slice&) value_iter->key();
     Slice& value = (Slice&) value_iter->value();
-#ifdef INDIRECT_VALUE_SUPPORT   // remap old indirect references
+#if 0 // scaf obsolete  INDIRECT_VALUE_SUPPORT   // remap old indirect references
     ParsedInternalKey ikey;
     ParseInternalKey(key, &ikey);  // parse the current key so we can detect indirect refs
 // this is where we need to see the raw indirect reference
@@ -833,7 +835,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     }
     assert(sub_compact->builder != nullptr);
     assert(sub_compact->current_output() != nullptr);
-#ifdef INDIRECT_VALUE_SUPPORT   // create new indirect references (including remapped values)
+#if 0  // scaf obsolete INDIRECT_VALUE_SUPPORT   // create new indirect references (including remapped values)
     if(IsTypeDirect(ikey.type) && sub_compact->compaction->immutable_cf_options()->table_factory->supports_indirect_values){
       // create the indirect reference to the value
       status = current_vlog->VLogGet(value,&get_result);   // turn the reference into a value, in the string

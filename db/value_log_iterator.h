@@ -38,16 +38,16 @@ public:
 
 // the following lines are the interface that is shared with CompactionIterator, so these entry points
 // must not be modified
-#if 1
+#if 1  // scaf
   const Slice& key() { return  use_indirects_ ? key_ : c_iter_->key(); }
   const Slice& value() { return use_indirects_ ? value_ : c_iter_->value(); }
   const Status& status() { return use_indirects_ ? status_ : c_iter_->status(); }
   const ParsedInternalKey& ikey() { return use_indirects_ ? ikey_ : c_iter_->ikey(); }
     // If an end key (exclusive) is specified, check if the current key is
     // >= than it and return invalid if it is because the iterator is out of its range
-  bool Valid() { return use_indirects_ ? valid_ : c_iter_->Valid() && 
-           !(end_ != nullptr && pcfd->user_comparator()->Compare(c_iter_->user_key(), *end_) >= 0); }
-  void Next() { return c_iter_->Next(); }  // scaf
+  bool Valid() { return use_indirects_ ? valid_ : (c_iter_->Valid() && 
+           !(end_ != nullptr && pcfd->user_comparator()->Compare(c_iter_->user_key(), *end_) >= 0)); }
+  void Next();
 #else
   const Slice& key() { return c_iter_->key(); }
   const Slice& value() { return c_iter_->value(); }
@@ -64,22 +64,31 @@ private:
   Slice value_;  // the next value to return, if it is Valid()
   Status status_;  // the status to return
   ParsedInternalKey ikey_;  // like key_, but parsed
+  std::string npikey;  // string form of ikey_
   bool valid_;  // set when there is another kv to be read
   ColumnFamilyData* pcfd;  // ColumnFamilyData for this run
   CompactionIterator* c_iter_;  // underlying c_iter_, the source for our values
   Slice *end_;   // if given, the key+1 of the end of range
   bool use_indirects_;  // if false, just pass c_iter_ result through
-  std::vector<Slice> keys;  // all the keys read from the iterator
-  std::vector<Slice> passthroughdata;  // pinned data that is passed through unchanged
+  std::string keys;  // all the keys read from the iterator, jammed together
+  std::vector<size_t> keylens;   // length of each string in keys
+  size_t keysx_;   // position in keys[] where the next key starts
+  std::string passthroughdata;  // data that is passed through unchanged
+  std::vector<VLogRingRefFileOffset> passthroughrecl;  // record lengths (NOT running total) of records in passthroughdata
   std::vector<char> valueclass;   // one entry per key.  bit 0 means 'value is a passthrough'; bit 1 means 'value is being converted from direct to indirect'
+  std::vector<VLogRingRefFileOffset> diskrecl;  // running total of record lengths in diskdata
+  VLogRingRef nextdiskref;  // reference for the first or next first data written to VLog
+  std::vector<VLogRingRefFileLen>fileendoffsets;   // end+1 offsets of the data written to successive VLog files
   std::shared_ptr<VLog> current_vlog;
 
-  void SetReturnVariables();  // establish key_ etc. for the next value
   int keyno_;  // number of keys processed previously
-  int passx_;  // number of passthrough bytes returned previously
+  int passx_;  // number of passthrough references returned previously
   int diskx_;  // number of disk references returned previously
-  VLogRingRef startingref_;  // reference for the first data written to VLog
-  std::vector<int>filelengths_;   // number of bytes written to successive VLog files
+  int filex_;  // number of files (as returned by RingWrite) that have been completely returned to the user
+  VLogRingRefFileOffset nextpassthroughref;  // index of next passthrough byte to return
+
+enum valtype { vIndirectRemapped, vPassthrough, vIndirectFirstMap };
+
 };
 
 } // namespace rocksdb

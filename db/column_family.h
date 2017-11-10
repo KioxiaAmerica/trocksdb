@@ -344,7 +344,9 @@ class ColumnFamilyData {
   std::shared_ptr<VLog> vlog() { return vlog_;}    // the VLog to be used for this column family.  May contain no rings
   // routines to access the vector of end-of-ring data
   void SetRingEnds(std::vector<uint64_t>&& ring_ends_) { ring_ends = ring_ends_; }
+  void SetRingEnd(size_t index, uint64_t fileno) { ring_ends[index] = fileno; } 
   std::vector<uint64_t>& GetRingEnds() { return ring_ends; }
+  void ResizeRingEnds(size_t count) { ring_ends.resize(count,0); }  // 0 means 'invalid value'
 #endif
 
  private:
