@@ -336,6 +336,7 @@ class InternalKey {
   InternalKey(const Slice& _user_key, SequenceNumber s, ValueType t) {
     AppendInternalKey(&rep_, ParsedInternalKey(_user_key, s, t));
   }
+  InternalKey(const ParsedInternalKey& pkey) { AppendInternalKey(&rep_, pkey);} 
 
   // sets the internal key to be bigger or equal to all internal keys with this
   // user key

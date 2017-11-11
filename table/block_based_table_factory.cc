@@ -53,6 +53,9 @@ BlockBasedTableFactory::BlockBasedTableFactory(
     // We do not support partitioned filters without partitioning indexes
     table_options_.partition_filters = false;
   }
+#ifdef INDIRECT_VALUE_SUPPORT
+  supports_indirect_values = true;  // indicate that compaction may introduce indirect values
+#endif
 }
 
 Status BlockBasedTableFactory::NewTableReader(

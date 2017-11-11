@@ -396,6 +396,7 @@ set(SOURCES
         db/table_properties_collector.cc
         db/transaction_log_impl.cc
         db/value_log.cc
+        db/value_log_iterator.cc
         db/version_builder.cc
         db/version_edit.cc
         db/version_set.cc

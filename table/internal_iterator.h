@@ -11,6 +11,7 @@
 #include "rocksdb/iterator.h"
 #include "rocksdb/status.h"
 #ifdef INDIRECT_VALUE_SUPPORT
+#include <memory>
 #include "db/value_log.h"
 #endif
 namespace rocksdb {

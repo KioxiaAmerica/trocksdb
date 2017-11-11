@@ -59,6 +59,10 @@
 #include "util/stop_watch.h"
 #include "util/string_util.h"
 #include "util/sync_point.h"
+#ifdef INDIRECT_VALUE_SUPPORT
+#include "db/value_log_iterator.h"
+
+#endif
 
 namespace rocksdb {
 
@@ -680,7 +684,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 
   // I/O measurement variables
   PerfLevel prev_perf_level = PerfLevel::kEnableTime;
-  const uint64_t kRecordStatsEvery = 1000;
+  const uint64_t kRecordStatsEvery = 1000;  // not used for INDIRECT_VALUE_SUPPORT - just one record at the end
   uint64_t prev_write_nanos = 0;
   uint64_t prev_fsync_nanos = 0;
   uint64_t prev_range_sync_nanos = 0;
@@ -780,31 +784,34 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   size_t data_begin_offset = 0;
   std::string compression_dict;
   compression_dict.reserve(cfd->ioptions()->compression_opts.max_dict_bytes);
+  // Use the name value_iter to access the input values.  If we are producing indirect values, the values will
+  // come from the IndirectIterator; if not, they will come from the original c_iter.
 #ifdef INDIRECT_VALUE_SUPPORT
-  // Extract the VLog for the current column family.  We will use it to create and resolve indirect values
-  std::shared_ptr<VLog> current_vlog = compact_->compaction->column_family_data()->vlog();
-  std::string get_result;  // create a string in this stackframe, which can point to the data allocated in VLogGet
-  std::string modified_key;  // we build the key with the new Type here
+// obsolete  // Extract the VLog for the current column family.  We will use it to create and resolve indirect values
+// obsolete  std::shared_ptr<VLog> current_vlog = compact_->compaction->column_family_data()->vlog();
+// obsolete  std::string get_result;  // create a string in this stackframe, which can point to the data allocated in VLogGet
+// obsolete   std::string modified_key;  // we build the key with the new Type here
+  // The IndirectIterator will do all mapping/remapping and will return the new key/values one by one
+  // The constructor called here immediately reads all the values from c_iter, buffers them, and writes values to the Value Log.
+  // Then in the loop it returns the references to the values that were written.  Errors encountered during c_iter are preserved
+  // and associated with the failing keys.
+  // If there is no VLog it means this table type doesn't support indirects, and the iterator will be a passthrough
+  auto value_iter = std::make_unique<IndirectIterator>(c_iter,cfd,sub_compact->compaction->output_level(),end,cfd->vlog()!=nullptr);  // keep iterator around till end of function
+#else
+  CompactionIterator *value_iter(c_iter);
 #endif
 
-  while (status.ok() && !cfd->IsDropped() && c_iter->Valid()) {
-    // Invariant: c_iter.status() is guaranteed to be OK if c_iter->Valid()
+  while (status.ok() && !cfd->IsDropped() && value_iter->Valid()) {
+    // Invariant: value_iter.status() is guaranteed to be OK if value_iter->Valid()
     // returns true.
-    Slice& key = (Slice&) c_iter->key();
-    Slice& value = (Slice&) c_iter->value();
-#ifdef INDIRECT_VALUE_SUPPORT   // remap old indirect references
-    ParsedInternalKey ikey;
-    ParseInternalKey(key, &ikey);  // parse the current key so we can detect indirect refs
-// this is where we need to see the raw indirect reference
-// if we have to remap, we will expand it.  Merged results will come back as direct values, and we need to remap them too.
-// Unmerged results may be indirect, and may require remapping
-#endif
+    Slice& key = (Slice&) value_iter->key();
+    Slice& value = (Slice&) value_iter->value();
 
-
+#ifndef INDIRECT_VALUE_SUPPORT
     // If an end key (exclusive) is specified, check if the current key is
     // >= than it and exit if it is because the iterator is out of its range
     if (end != nullptr &&
-        cfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0) {
+        cfd->user_comparator()->Compare(value_iter->user_key(), *end) >= 0) {
       break;
     }
     if (c_iter_stats.num_input_records % kRecordStatsEvery ==
@@ -813,7 +820,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       c_iter->ResetRecordCounts();
       RecordCompactionIOStats();
     }
-
+#endif
     // Open output file if necessary
     if (sub_compact->builder == nullptr) {
       status = OpenCompactionOutputFile(sub_compact);
@@ -823,23 +830,11 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     }
     assert(sub_compact->builder != nullptr);
     assert(sub_compact->current_output() != nullptr);
-#ifdef INDIRECT_VALUE_SUPPORT   // create new indirect references (including remapped values)
-    if(IsTypeDirect(ikey.type)){
-      // create the indirect reference to the value
-      status = current_vlog->VLogGet(value,&get_result);   // turn the reference into a value, in the string
-      value = Slice(get_result);   // convert the string to a slice as required below
-      // change the type of the record to the appropriate indirect type
-      InternalKey tkey(ikey.user_key, ikey.sequence, ikey.type==kTypeValue ? kTypeIndirectValue : kTypeIndirectMerge);  // create new key
-      modified_key.assign(*tkey.rep());   // assign it to persistent string
-      key = Slice(modified_key);  // view the string as a Slice, as needed by code below
-    }
-// this is where we convert the value to a reference.  A placeholder reference will be written out to the SST, and then replaced
-// with the actual reference in a postpass
-#endif
+
     sub_compact->builder->Add(key, value);
     sub_compact->current_output_file_size = sub_compact->builder->FileSize();
     sub_compact->current_output()->meta.UpdateBoundaries(
-        key, c_iter->ikey().sequence);
+        key, value_iter->ikey().sequence);
     sub_compact->num_output_records++;
 
     if (sub_compact->outputs.size() == 1) {  // first output file
@@ -909,11 +904,11 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       input_status = input->status();
       output_file_ended = true;
     }
-    c_iter->Next();
-    if (!output_file_ended && c_iter->Valid() &&
+    value_iter->Next();
+    if (!output_file_ended && value_iter->Valid() &&
         sub_compact->compaction->output_level() != 0 &&
         sub_compact->ShouldStopBefore(
-          c_iter->key(), sub_compact->current_output_file_size) &&
+          value_iter->key(), sub_compact->current_output_file_size) &&
         sub_compact->builder != nullptr) {
       // (2) this key belongs to the next file. For historical reasons, the
       // iterator status after advancing will be given to
@@ -923,8 +918,8 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     }
     if (output_file_ended) {
       const Slice* next_key = nullptr;
-      if (c_iter->Valid()) {
-        next_key = &c_iter->key();
+      if (value_iter->Valid()) {
+        next_key = &value_iter->key();
       }
       CompactionIterationStats range_del_out_stats;
       status = FinishCompactionOutputFile(input_status, sub_compact,
@@ -968,7 +963,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     status = input->status();
   }
   if (status.ok()) {
-    status = c_iter->status();
+    status = value_iter->status();
   }
 
   if (status.ok() && sub_compact->builder == nullptr &&
