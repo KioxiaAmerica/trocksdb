@@ -1112,12 +1112,14 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
         // Use the full path/filename to interface to file routines and to pass to later levels, in case we ever support .vlg files not in last path
         std::string pathfname(impl->immutable_db_options_.db_paths.back().path + "/" + fname);
 
-        impl->immutable_db_options_.env->GetFileSize(pathfname,&filesize);  // scaf error
-        if(filesize)existing_vlog_files.emplace_back(pathfname);  // if file has length, keep it
-        else impl->immutable_db_options_.env->DeleteFile(pathfname);  // if not, delete it
+        if((impl->immutable_db_options_.env->GetFileSize(pathfname,&filesize)).ok()) {  // check size of file
+          // If we get an error looking for filesize, there's not much we can do, so we ignore it.  If no error, we keep or delete the file
+          if(filesize)existing_vlog_files.emplace_back(pathfname);  // if file has length, keep it
+          else impl->immutable_db_options_.env->DeleteFile(pathfname);  // if not, delete it
+        }
       }
-    }
-// errors? scaf
+    }  // if name not recognized a VLog name, ignore the file - maybe the user created it
+
     // Get the options to use for the VLog files   scaf perhaps we need to modify these based on column options
     EnvOptions vlog_options(db_options);
     // for each column family, init the VLogs

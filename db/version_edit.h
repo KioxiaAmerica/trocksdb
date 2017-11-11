@@ -109,6 +109,10 @@ struct FileMetaData {
 #ifdef INDIRECT_VALUE_SUPPORT   // add earliest_ref to FileMetaData
   std::vector<uint64_t> indirect_ref_0;  // for each ring: filenumber of the oldest value referred to in this SST, or HIGH-VALUE if no reference
      // value of 0 means 'omitted', i. e. this file was created without a value for this field
+  // The SSTs are chained off the VLogRings on doubly-linked lists, one chain-pair per ring.  The SST is chained for as long
+  // as it is current, i. e. part of the current version
+  std::vector<FileMetaData*> ringfwdchain;
+  std::vector<FileMetaData*> ringbwdchain;
 #endif
 
   FileMetaData()
@@ -126,6 +130,8 @@ struct FileMetaData {
         marked_for_compaction(false)
 #ifdef INDIRECT_VALUE_SUPPORT
         ,indirect_ref_0(std::vector<uint64_t>())  // 0 means 'omitted'
+        ,ringfwdchain(std::vector<FileMetaData*>())
+        ,ringbwdchain(std::vector<FileMetaData*>())
 #endif
         {}
 

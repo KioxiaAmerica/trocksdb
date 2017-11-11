@@ -15,6 +15,7 @@
 #include <memory>
 #include "rocksdb/env.h"
 #include "rocksdb/transaction_log.h"
+#include "db/version_edit.h"
 
 namespace rocksdb {
 struct FileMetaData;
@@ -52,7 +53,7 @@ class Slice;
 static const std::string kRocksDbVLogFileExt = "vlg";   // extension for vlog files is vlgxxx when xxx is CF name
 
 typedef uint64_t VLogRingRefFileno;
-typedef uint64_t VLogRingRefFileOffset;
+typedef int64_t VLogRingRefFileOffset;   // signed because negative values are used to indicate error
 typedef uint64_t VLogRingRefFileLen;
 
 // Convert file number to file number and ring
@@ -144,76 +145,9 @@ void MakeWorkarea() {
 };
 
 
-// We have two occasions to search through the SSTs to find the ones with the oldest VLogRing entries: (1) scheduling
-// compactions, where we give priority to the SSTs with the oldest VLogRing; (2) SST destruction, which may remove the
-// last reference to a VLogRing file, allowing its deletion.  Searching all SSTs is potentially slow, and SST destruction
-// may be asynchronous with compaction (since it can happen when a Range Query completes); so we are moved to implement
-// a priority-queue mechanism for efficiently finding the earliest SSTs/VLogRingRefs.  We have a priority queue and a hash table.
-// When an SST is created, its entry goes into the hash table and the priority queue.  When the SST is deleted, its entry is removed
-// from the hash table.  When the oldest entries are looked up, we ignore any that are marked as deleted in the hashtable
-class VLogRingQueue {
-private: 
-public:
-// Constructor.  We need an estimate of the number of SSTs so we can size the hashtable
-VLogRingQueue(
-  int sstcount  // estimated number of SSTs.  We size the hash table for fast lookup at this size
-);
-
-// Constructor with an initial set of SST information.  Faster to generate the priority queue in bulk
-VLogRingQueue(
-  int sstcount,  // estimated number of SSTs.  We size the hash table for fast lookup at this size
-  std::vector<uint64_t> sstids,  // vector of unique IDs for SSTs
-  std::vector<VLogRingRefFileno> earlyfileno   // corresponding earliest reference to VLogRing
-);
-
-
-// Add an SST to the table, with the given minimum filenumber
-// Arguments can be replaced by the metadata for the SST, or the Manifest entry?
-void VLogRingQueueAdd(
-  uint64_t sstid,  // SST that has been recalculated
-  VLogRingRefFileno fileno  // Earliest VLogRing file referred to therein
-)
-// acquire spin lock
-// expand table if needed
-// add SST to hash
-// add SST/fileno to the priority queue
-// release spin lock
-;
-
-// Delete an SST from the table.  It is possible that some of the SSTs are not in the table.
-void VLogRingQueueDeleteSST(
-  uint64_t sstid  // SST that has been deleted
-)
-// acquire spin lock
-// delete SST from the hashtable
-// release spin lock
-;
-
-// Return the earliest reference to a VLogRing value
-// It is the value of the top of the heap, unless that is stale.  We keep discarding stale elements until we find a good one.
-VLogRingRefFileno VLogRingQueueFindOldestFileno();
-
-// Return a vector of up to n SSTs that have the smallest oldest-reference-filenumbers.  If extend is true, return all SSTs
-// whose filenumber does not exceed that of the nth-smallest SST's (in other words, return every SST that is tied with n).
-// For each value we encounter, we look up the SST in the hashtable; if the SST is no longer alive, we delete the entry from
-// the priority queue
-std::vector<uint64_t> VLogRingQueueFindLaggingSSTs(
-  int n,  // number of smallest filenumbers to return
-  int extend=0   // if 1, report all 
-)
-// Do this operation under spin lock.  Reheap to close up deleted SSTs whenever we encounter them
-;
-
-
-};
-
-
 // A VLogRing is a set of sequentially-numbered files, with a common prefix and extension .vlg, that contain
 // values for a column family.  Each value is pointed to by an SST, which uses a VLogRingRef for the purpose.
 // During compaction, bursts of values are written to the VLogRing, lumped into files of approximately equal size.
-//
-// Each SST remembers the oldest VLogRingRef that it contains.  Whenever an SST is destroyed, we check to
-// see if there are VLogRing files that are no longer referred to by any SST, and delete any such that are found.
 //
 // Each column family has (possibly many) VLogRing.  VLogRingRef entries in an SST implicitly refer to the VLog of the column family.
 
@@ -221,13 +155,41 @@ std::vector<uint64_t> VLogRingQueueFindLaggingSSTs(
 class VLogRing {
 friend class VLog;
 private:
+
+// We have to cross-index the VLog files and the SSTs for two purposes: (1) to see which VLog files can be deleted when they
+// are no longer used by an SST; (2) to see which SSTs are pointing to the oldest VLog files, so we can Active Recycle them (or
+// give priority to compacting them).
+//
+// Each SST saves, as part of its metadata, the oldest VLog reference in the SST (there is one of these for each ring in the CF,
+// because it is possible though unusual for a single SST to have references to multiple rings).  These VLog references are
+// calculated for each compaction and are kept in the Manifest so they can be recovered quickly during recovery.
+//
+// The SSTs whose earliest reference is to a given VLog file are chained together on a doubly-linked list that is anchored in
+// a vector of anchors, one per file.  In addition, each VLog file is assigned a counter indicating how many SSTs hold an earliest-reference
+// to it.  An SST is (1) added to the chain when it is created during compaction; (2) removed from the chain
+// when it becomes inactive, i. e. no longer in the current view.  Even though the SST is inactive it may be part of a snapshot, so
+// the reference counter is not decremented until the SST is finally destroyed (after all snapshots it appears in have been deleted).
+//
+// When the reference count in the oldest VLog file is zero, that file can be deleted.  The tail pointer in the ring indicates the
+// earliest file that has not been inactivated, and the shadow tail pointer indicates the earliest file that has not been deleted.
+//
+// An SST can be chained to more than one ring.  Because the chain anchors may move, end-of-chain is indicated by a nullptr rather
+// than a pointer to the root.
+//
+// The design of the rings is complicated by two considerations: (1) we want to make the Get() path absolutely as fast as possible,
+// without even a read-for-acquire in the normal case; (2) as the database grows, the ring may fill up and have to be relocated.
+// In mitigation, reallocation of the ring will be very rare, and any modification, even adding a file, should occur long in advance of the
+// first time the file is used as a reference.  We acquire a lock on the ring to make a modification, including reallocation, and we
+// double-buffer the ring so that after a reallocation the old ring persists until the next reallocation, which should be days later.
+
   // The ring:
   std::vector<std::unique_ptr<RandomAccessFile>> fd_ring;  // the ring of open file descriptors for the VLog files.
 
   // The queue contains one entry for each entry in the fd_ring.  That entry is a linked list of pointers to the SST files whose earliest
   // reference in this ring is in the corresponding file.  When an SST is created, an element is added, and when the SST is finally deleted, one
   // is removed.
-  std::vector<FileMetaData*> queue;
+  std::vector<FileMetaData*> queue;  // base of forward chain
+  std::vector<int> refcount;   // Number of SSTs that hold a reference to this file
 
   // We group the atomics together so they can be aligned to a cacheline boundary
   struct /* alignas(64) */ {   // alignment is desirable, but not available till C++17.  This struct is 1 full cache line
@@ -249,7 +211,6 @@ private:
 
 // Convert a file number to a ring slot in the current ring.  To avoid the divide we require the ring have power-of-2 size
 size_t Ringx(VLogRingRefFileno f) { return (size_t) f & (fd_ring.size()-1); }
-
 
   // Non-ring variables:
   int ringno_;  // The ring number of this ring within its CF
@@ -273,16 +234,6 @@ VLogRing(
   VLogRing(VLogRing const&) = delete;
   VLogRing& operator=(VLogRing const&) = delete;
 
-// Delete files that are no longer referred to by the SSTs.  Returns error status
-Status VLogRingCompact(
-)
-// get smallest file# in SSTs
-// if that's greater than the tail pointer
-//   compare-and-swap tail pointer; exit if incumbent value >= our new, otherwise retry
-//   erase files (if any), set fd to 0
-//   atomic incr ring usecount by 0 (to force update of new fds)
-//   compare-and-swap shadow tail pointer; exit if incumbent >= new, else retry
-;
 
 
 // Write accumulated bytes to the VLogRing.  First allocate the bytes to files, being
@@ -291,14 +242,15 @@ Status VLogRingCompact(
 // The result is a VLogRingRef for the first (of possibly several sequential) file, and a vector indicating the
 // number of bytes written to each file
 // We housekeep the end-of-VLogRing information
-// We use release-acquire ordering for the VLogRing file and offset to avoid needing a Mutex in the reader
-// If the circular buffer gets full we have to relocate it, so we use release-acquire
-Status VLogRingWrite(
+void VLogRingWrite(
 std::string& bytes,   // The bytes to be written, jammed together
-std::vector<size_t>& rcdend,  // The running length of all records up to and including this one
+std::vector<VLogRingRefFileOffset>& rcdend,  // The running length of all records up to and including this one
 VLogRingRef& firstdataref,   // result: reference to the first value written
-std::vector<VLogRingRefFileLen>& fileendoffsets   // result: length of amount written to each file.  The file written are sequential
-          // following the one in firstdataref.  The offset in the first file is in firstdataref; it is 0 for the others
+std::vector<VLogRingRefFileLen>& fileendoffsets,   // result: ending offset of the data written to each file.  The file numbers written are sequential
+          // following the one in firstdataref.  The starting offset in the first file is in firstdataref; it is 0 for the others
+std::vector<Status>& resultstatus   // place to save error status.  For any file that got an error in writing or reopening,
+          // we add the error status to resultstatus and change the sign of the file's entry in fileendoffsets.  (no entry in fileendoffsets
+          // can be 0)
 )
 // acquire spin lock
 //   allocate data to files, create filelengths return value
@@ -328,10 +280,41 @@ Status VLogRingGet(
 // atomic decr of ring usecount
 ;
 
-// delete one SST from the queue, and delete any files that frees up
-void VLogRingDeleteSST(
-    uint64_t sstid  // SST that has been deleted
+// Install a new SST into the ring, with the given earliest-VLog reference
+// Arguments can be replaced by the metadata for the SST, or the Manifest entry?
+void VLogRingSstInstall(
+  FileMetaData& newsst   // the SST that has just been created & filled in
+)
+// acquire spin lock
+// expand table if needed
+// add SST to hash
+// add SST/fileno to the priority queue
+// release spin lock
+;
+
+// Remove an SST from the ring when it is no longer current
+void VLogRingSstUnCurrent(
+  FileMetaData& retiringsst   // the SST that has just been obsoleted
+)
+// acquire spin lock
+// delete SST from the hashtable
+// release spin lock
+;
+
+// Remove the VLog file's dependency on an SST, and delete the VLog file if it is now unused
+void VLogRingSstDelete(
+  FileMetaData& expiringsst   // the SST that is about to be destroyed
 );
+
+// Return a vector of up to n SSTs that have the smallest oldest-reference-filenumbers.  If extend is true, return all SSTs
+// whose filenumber does not exceed that of the nth-smallest SST's (in other words, return every SST that is tied with n).
+void VLogRingFindLaggingSsts(
+  int n,  // number of lagging ssts to return
+  std::vector<FileMetaData*>& laggingssts,  // result: vector of SSTs that should be recycled
+  int extend=0   // if 1, report all 
+)
+// Do this operation under spin lock.  Reheap to close up deleted SSTs whenever we encounter them
+;
 
 };
 
@@ -373,14 +356,13 @@ public:
     return;
   }
 
-// Read the bytes referred to in the given VLogRingRef.  Uses release-acquire ordering to verify validity of ring
-// Returns the bytes.  ?? Should this return to user area to avoid copying?
-Status VLogGet(
-  Slice& reference,  // the reference
-  std::string *result   // where the result is built
-)
+  // Read the bytes referred to in the given VLogRingRef.  Uses release-acquire ordering to verify validity of ring
+  // Returns the bytes.  ?? Should this return to user area to avoid copying?
+  Status VLogGet(
+    Slice& reference,  // the reference
+    std::string *result   // where the result is built
+  )
   // extract the ring# from the reference
-
   // Call VLogRingGet in the selected ring
 ;
 
@@ -389,7 +371,29 @@ Status VLogGet(
 
   // Return the VLogRing for the given level
   VLogRing *VLogRingFromNo(int ringno) { return rings_[ringno].get(); }
+
+  // Install a new SST into the ring, with the given earliest-VLog reference
+  // Arguments can be replaced by the metadata for the SST, or the Manifest entry?
+  void VLogSstInstall(
+    FileMetaData& newsst   // the SST that has just been created & filled in
+  ) {for (int i=0;i<newsst.indirect_ref_0.size();++i)if(newsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstInstall(newsst);}
+
+  // Remove an SST from the ring when it is no longer current
+  void VLogSstUnCurrent(
+    FileMetaData& retiringsst   // the SST that has just been obsoleted
+  ) {for (int i=0;i<retiringsst.indirect_ref_0.size();++i)if(retiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstUnCurrent(retiringsst);}
+  // acquire spin lock
+  // delete SST from the hashtable
+  // release spin lock
+
+
+  // Remove the VLog file's dependency on an SST, and delete the VLog file if it is now unused
+  void VLogSstDelete(
+    FileMetaData& expiringsst   // the SST that is about to be destroyed
+  ) {for (int i=0;i<expiringsst.indirect_ref_0.size();++i)if(expiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstDelete(expiringsst);}
+
 };
+
 
 } // namespace rocksdb
 	

@@ -21,67 +21,6 @@
 namespace rocksdb {
 
 
-
-// We have two occasions to search through the SSTs to find the ones with the oldest VLogRing entries: (1) scheduling
-// compactions, where we give priority to the SSTs with the oldest VLogRing; (2) SST destruction, which may remove the
-// last reference to a VLogRing file, allowing its deletion.  Searching all SSTs is potentially slow, and SST destruction
-// may be asynchronous with compaction (since it can happen when a Range Query completes); so we are moved to implement
-// a priority-queue mechanism for efficiently finding the earliest SSTs/VLogRingRefs.  We have a priority queue and a hash table.
-// When an SST is created, its entry goes into the hash table and the priority queue.  When the SST is deleted, its entry is removed
-// from the hash table.  When the oldest entries are looked up, we ignore any that are marked as deleted in the hashtable
-// Constructor.  We need an estimate of the number of SSTs so we can size the hashtable
-VLogRingQueue::VLogRingQueue(
-  int sstcount  // estimated number of SSTs.  We size the hash table for fast lookup at this size
-){}
-
-// Constructor with an initial set of SST information.  Faster to generate the priority queue in bulk
-VLogRingQueue::VLogRingQueue(
-  int sstcount,  // estimated number of SSTs.  We size the hash table for fast lookup at this size
-  std::vector<uint64_t> sstids,  // vector of unique IDs for SSTs
-  std::vector<VLogRingRefFileno> earlyfileno   // corresponding earliest reference to VLogRing
-){}
-
-// Add an SST to the table, with the given minimum filenumber
-// Arguments can be replaced by the metadata for the SST, or the Manifest entry?
-void VLogRingQueue::VLogRingQueueAdd(
-  uint64_t sstid,  // SST that has been recalculated
-  VLogRingRefFileno fileno  // Earliest VLogRing file referred to therein
-)
-{
-// acquire spin lock
-// expand table if needed
-// add SST to hash
-// add SST/fileno to the priority queue
-// release spin lock
-}
-
-// Delete an SST from the table.  It is possible that some of the SSTs are not in the table.
-void VLogRingQueue::VLogRingQueueDeleteSST(
-  uint64_t sstid  // SST that has been deleted
-)
-{
-// acquire spin lock
-// delete SST from the hashtable
-// release spin lock
-}
-
-// Return the earliest reference to a VLogRing value
-// It is the value of the top of the heap, unless that is stale.  We keep discarding stale elements until we find a good one.
-VLogRingRefFileno VLogRingQueueFindOldestFileno(){return 0;}  // scaf
-
-// Return a vector of up to n SSTs that have the smallest filenumbers.  If extend is true, return all SSTs
-// whose filenumber does not exceed that of the nth-smallest SST's (in other words, return every SST that is tied with n).
-// For each value we encounter, we look up the SST in the hashtable; if the SST is no longer alive, we delete the entry from
-// the priority queue
-std::vector<uint64_t> VLogRingQueueFindLaggingSSTs(
-  int n,  // number of smallest filenumbers to return
-  int extend=0   // if 1, report all 
-)
-{
-// Do this operation under spin lock.  Reheap to close up deleted SSTs whenever we encounter them
-return std::vector<uint64_t>{};  // scaf
-}
-
 static const VLogRingRefFileno high_value = ((VLogRingRefFileno)-1)>>1;  // biggest positive value
 static const float expansion_fraction = 0.25;  // fraction of valid files to leave for expansion
 static const int expansion_minimum = 1000;  // minimum number of expansion files
@@ -148,12 +87,13 @@ if(latest_ref<fnring.fileno)latest_ref = fnring.fileno;  // scaf
       if(earliest_ref<=fnring.fileno && fnring.fileno<=latest_ref) {
         // the file is referenced by the SSTs.  Open it
         std::unique_ptr<RandomAccessFile> fileptr;  // pointer to the opened file
-        immdbopts_->env->NewRandomAccessFile(pathfname, &fileptr,envopts_);  // open the file if it exists
-        // move the file reference into the ring, and publish it to all threads
-        fd_ring[Ringx(fnring.fileno)]=std::move(fileptr);
+        if((immdbopts_->env->NewRandomAccessFile(pathfname, &fileptr,envopts_)).ok()){  // open the file if it exists
+          // move the file reference into the ring, and publish it to all threads
+          fd_ring[Ringx(fnring.fileno)]=std::move(fileptr);
+        }   // if error opening file, we can't do anything useful, so leave file unopened, which will give an error if a value in it is referenced
 // scaf error?
       } else {
-        // The file is not referenced.  We must have crashed during deletion.  Delete it now
+        // The file is not referenced.  We must have crashed while deleting it.  Delete it now
         immdbopts_->env->DeleteFile(pathfname);   // ignore error - what could we do?
   // should log? scaf
       }
@@ -179,18 +119,7 @@ if(latest_ref<fnring.fileno)latest_ref = fnring.fileno;  // scaf
   // install references into queue  scaf
 
 }
-// Delete files that are no longer referred to by the SSTs.  Returns error status
-Status VLogRing::VLogRingCompact(
-)
-{
-// get smallest file# in SSTs
-// if that's greater than the tail pointer
-//   compare-and-swap tail pointer; exit if incumbent value >= our new, otherwise retry
-//   erase files (if any), set fd to 0
-//   atomic incr ring usecount by 0 (to force update of new fds)
-//   compare-and-swap shadow tail pointer; exit if incumbent >= new, else retry
-return Status();  // scaf
-}
+
 
 
 // Write accumulated bytes to the VLogRing.  First allocate the bytes to files, being
@@ -201,14 +130,19 @@ return Status();  // scaf
 // We housekeep the end-of-VLogRing information
 // We use release-acquire ordering for the VLogRing file and offset to avoid needing a Mutex in the reader
 // If the circular buffer gets full we have to relocate it, so we use release-acquire
-Status VLogRing::VLogRingWrite(
+void VLogRing::VLogRingWrite(
 std::string& bytes,   // The bytes to be written, jammed together
-std::vector<size_t>& rcdend,  // The running length of all records up to and including this one
+std::vector<VLogRingRefFileOffset>& rcdend,  // The running length of all records up to and including this one
 VLogRingRef& firstdataref,   // result: reference to the first values written
-std::vector<VLogRingRefFileLen>& fileendoffsets   // result: length of amount written to each file.  The file written are sequential
-          // following the one in firstdataref.  The offset in the first file is in firstdataref; it is 0 for the others
+std::vector<VLogRingRefFileLen>& fileendoffsets,   // result: ending offset of the data written to each file.  The file numbers written are sequential
+          // following the one in firstdataref.  The starting offset in the first file is in firstdataref; it is 0 for the others
+std::vector<Status>& resultstatus   // place to save error status.  For any file that got an error in writing or reopening,
+          // we add the error status to resultstatus and change the sign of the file's entry in fileendoffsets.  (no entry in fileendoffsets
+          // can be 0).  must be initialized to empty by the caller
 )
 {
+  Status iostatus;  // where we save status from the file I/O
+
   // In this implementation, we write only complete files, rather than adding on to the last one
   // written by the previous call.  That way we don't have to worry about who is going to open the last file, and
   // whether it gets opened in time for the next batch to be added on.
@@ -219,7 +153,7 @@ std::vector<VLogRingRefFileLen>& fileendoffsets   // result: length of amount wr
 
   // If there is nothing to write, abort early.  We must, because 0-length files are not allowed when memory-mapping is turned on
   // This also avoids errors if there are no references
-  if(!bytes.size())return Status();   // fast exit if no data
+  if(!bytes.size())return;   // fast exit if no data
 
   // scaf version for single file
 
@@ -251,17 +185,16 @@ std::vector<VLogRingRefFileLen>& fileendoffsets   // result: length of amount wr
   // Create the file as sequential, and write it out
   {
     unique_ptr<WritableFile> writable_file;
-    immdbopts_->env->NewWritableFile(fname,&writable_file,envopts_);  // open the file
-// scaf errors
-    writable_file->Append(Slice(bytes));  // write out the data
+    iostatus = immdbopts_->env->NewWritableFile(fname,&writable_file,envopts_);  // open the file
+    if(iostatus.ok())iostatus = writable_file->Append(Slice(bytes));  // write out the data
 
   // Sync the written data.  We must make sure it is synced before the SSTs referring to it are committed to the manifest.
   // We might as well sync it right now
-    writable_file->Fsync();
+    if(iostatus.ok())iostatus = writable_file->Fsync();
   }  // this closes the file
 
   // Reopen the file as randomly readable; install the new file into the ring
-  immdbopts_->env->NewRandomAccessFile(fname, &fd_ring[new_ring_slot], envopts_);  // open the file - it must exist
+  if(iostatus.ok())iostatus = immdbopts_->env->NewRandomAccessFile(fname, &fd_ring[new_ring_slot], envopts_);  // open the file - it must exist
   // move the file reference into the ring, and publish it to all threads
 
   // Advance the shadow file pointer to indicate that the file is ready for reading.  Since other threads may be
@@ -276,7 +209,17 @@ std::vector<VLogRingRefFileLen>& fileendoffsets   // result: length of amount wr
   firstdataref.FillVLogRingRef(ringno_,fileno_for_writing,0,rcdend[0]);  // scaf offset goes away
 
   // Return all as a single file
-  fileendoffsets.clear(); fileendoffsets.push_back(bytes.size());
+  fileendoffsets.clear();
+
+  // if there was an I/O error on the file, return the error, localized to the file by a negative offset in the return area.
+  // (the offset can never be zero)
+  if(iostatus.ok())fileendoffsets.push_back(bytes.size());
+  else {
+    resultstatus.push_back(iostatus);  // save the error details
+    fileendoffsets.push_back(-(VLogRingRefFileOffset)bytes.size());  // flag the offending file
+  }
+
+  return;
 
 // acquire spin lock
 //   allocate data to files, create filelengths return value
@@ -291,7 +234,6 @@ std::vector<VLogRingRefFileLen>& fileendoffsets   // result: length of amount wr
 // open new files, write data, put fd pointer into ring
 // atomic write to head/offset
 // atomic incr ring usecount by 0 (to force update of new fds)
-return Status();  // scaf
 }
 
 // Read the bytes referred to in the given VLogRingRef.  Uses release-acquire ordering to verify validity of ring
@@ -304,7 +246,7 @@ Status VLogRing::VLogRingGet(
   response->resize(request.Len());  // allocate area for return
   Slice resultslice;  // place to get back pointer to data, which may be different from scratch (if cached)
   // Read the reference.  Make sure we have the most recent copy of the ring information, and the most recent
-  // copy of the file pointer.  scaf avoid race on index_offset_load using %; other ring ptrs
+  // copy of the file pointer.
 
   // We have to get the latest copy of the validity information, and also the latest copy of the memory pointer.
   // We have no way of knowing when these become valid, as they are not protected by any lock.  But they should have
@@ -320,21 +262,46 @@ Status VLogRing::VLogRingGet(
 
   Status iostatus = selectedfile->Read(request.Offset(), request.Len(), &resultslice, (char *)response->data());  // read the data
   // If the result is not in the user's buffer, copy it to there
-  if(response->data()!=resultslice.data())response->assign(resultslice.data(),resultslice.size());
-  return iostatus;  // scaf
-
-// atomic incr of ring usecount -  if negative, atomic decr & wait for nonnegative
-// read ring base & length (protected by usecount)
-// (debug only) atomic read ring offset/head & tail, verify in range
-//   NOTE that there may be trouble resolving ring position if index is changed - perhaps use mod(length)
-// read fd, verify non0, read data (protected by usecount)
-// atomic decr of ring usecount
+  if(iostatus.ok()){
+    if(response->data()!=resultslice.data())response->assign(resultslice.data(),resultslice.size());  // no error: copy data is not already in user's buffer
+  }else{resultslice.clear();}  // error: return empty string
+  return iostatus;
 }
 
-// delete one SST from the queue, and delete any files that frees up
-void VLogRing::VLogRingDeleteSST(
-    uint64_t sstid  // SST that has been deleted
+// Install a new SST into the ring, with the given earliest-VLog reference
+// Arguments can be replaced by the metadata for the SST, or the Manifest entry?
+void VLogRing::VLogRingSstInstall(
+  FileMetaData& newsst   // the SST that has just been created & filled in
+){}
+// acquire spin lock
+// expand table if needed
+// add SST to hash
+// add SST/fileno to the priority queue
+// release spin lock
+
+// Remove an SST from the ring when it is no longer current
+void VLogRing::VLogRingSstUnCurrent(
+  FileMetaData& retiringsst   // the SST that has just been obsoleted
 ) {}
+// acquire spin lock
+// delete SST from the hashtable
+// release spin lock
+
+// Remove the VLog file's dependency on an SST, and delete the VLog file if it is now unused
+void VLogRing::VLogRingSstDelete(
+  FileMetaData& expiringsst   // the SST that is about to be destroyed
+) {}
+
+// Return a vector of up to n SSTs that have the smallest oldest-reference-filenumbers.  If extend is true, return all SSTs
+// whose filenumber does not exceed that of the nth-smallest SST's (in other words, return every SST that is tied with n).
+void VLogRing::VLogRingFindLaggingSsts(
+  int n,  // number of lagging ssts to return
+  std::vector<FileMetaData*>& laggingssts,  // result: vector of SSTs that should be recycled
+  int extend   // if 1, report all (default 0)
+) {}
+// Do this operation under spin lock.  Reheap to close up deleted SSTs whenever we encounter them
+
+
 
 
 // A VLog is a set of VLogRings for a single column family.  The VLogRings are distinguished by an index.
@@ -412,6 +379,7 @@ Status VLog::VLogGet(
 )
 {
   assert(reference.size()==16);  // should be a reference
+  if(reference.size()!=16){return Status::Corruption("indirect reference is ill-formed.");}
   VLogRingRef ref = VLogRingRef(reference.data());   // analyze the reference
 
   // Because of the OS kludge that doesn't allow zero-length files to be memory-mapped, we have to check to make

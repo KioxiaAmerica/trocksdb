@@ -38,7 +38,6 @@ public:
 
 // the following lines are the interface that is shared with CompactionIterator, so these entry points
 // must not be modified
-#if 1  // scaf
   const Slice& key() { return  use_indirects_ ? key_ : c_iter_->key(); }
   const Slice& value() { return use_indirects_ ? value_ : c_iter_->value(); }
   const Status& status() { return use_indirects_ ? status_ : c_iter_->status(); }
@@ -48,15 +47,6 @@ public:
   bool Valid() { return use_indirects_ ? valid_ : (c_iter_->Valid() && 
            !(end_ != nullptr && pcfd->user_comparator()->Compare(c_iter_->user_key(), *end_) >= 0)); }
   void Next();
-#else
-  const Slice& key() { return c_iter_->key(); }
-  const Slice& value() { return c_iter_->value(); }
-  const Status& status() { return c_iter_->status(); }
-  const Slice& user_key() { return c_iter_->user_key(); }
-  const ParsedInternalKey& ikey() { return c_iter_->ikey(); }
-  bool Valid() { return c_iter_->Valid(); }
-  void Next() { return c_iter_->Next(); }
-#endif
 // end of shared interface
 
 private:
@@ -79,15 +69,19 @@ private:
   std::vector<VLogRingRefFileOffset> diskrecl;  // running total of record lengths in diskdata
   VLogRingRef nextdiskref;  // reference for the first or next first data written to VLog
   std::vector<VLogRingRefFileLen>fileendoffsets;   // end+1 offsets of the data written to successive VLog files
+  std::vector<Status> inputerrorstatus;  // error status returned by the iterator
+  std::vector<Status> outputerrorstatus;  // error status returned when writing the output files
   std::shared_ptr<VLog> current_vlog;
 
   int keyno_;  // number of keys processed previously
   int passx_;  // number of passthrough references returned previously
   int diskx_;  // number of disk references returned previously
   int filex_;  // number of files (as returned by RingWrite) that have been completely returned to the user
+  int statusx_;  // number of input error statuses returned to user
+  int ostatusx_;  // number of output error statuses returned to user
   VLogRingRefFileOffset nextpassthroughref;  // index of next passthrough byte to return
 
-enum valtype { vIndirectRemapped, vPassthrough, vIndirectFirstMap };
+enum valtype : int { vIndirectRemapped=0, vPassthrough=1, vIndirectFirstMap=2, vHasError=4 };
 
 };
 

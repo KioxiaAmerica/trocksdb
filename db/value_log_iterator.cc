@@ -30,7 +30,7 @@ namespace rocksdb {
   c_iter_(c_iter),
   pcfd(cfd),
   end_(end),
-  use_indirects_(use_indirects),  // scaf
+  use_indirects_(use_indirects),
   current_vlog(cfd->vlog())
   {
     // If indirects are disabled, we have nothing to do.  We will just be returning values from c_iter_.
@@ -38,7 +38,6 @@ namespace rocksdb {
     int outputringno = current_vlog->VLogRingNoForLevelOutput(level);  // get the ring number we will write output to
     if(outputringno<0){use_indirects_ = false; return;}  // if no output ring, skip looking for indirects
     VLogRing *outputring = current_vlog->VLogRingFromNo(outputringno);  // the ring we will write values to
-// scaf handle status;
 
     // Read all the kvs from c_iter and save them.  We start at the first kv
     // We create:
@@ -54,6 +53,14 @@ namespace rocksdb {
     while(c_iter->Valid() && 
            !(end != nullptr && pcfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0)) {
       // process this kv.  It is valid and the key is not past the specified ending key
+      char vclass;   // disposition of this value
+
+      // If there is error status, save it.  We save only errors
+      if(c_iter->status().ok())vclass = 0;
+      else {
+        vclass = vHasError;   // indicate error on this key
+        inputerrorstatus.push_back(c_iter->status());  // save the full error
+      }
 
       // Classify the value, as (1) a value to be passed through, either too short to encode or an indirect
       // reference that doesn't need changing; (2) a direct value that needs to be converted to indirect;
@@ -69,23 +76,22 @@ namespace rocksdb {
       keys.append(key.data(),key.size());   // save the key...
       keylens.push_back(key.size());    // ... and its length
       Slice &val = (Slice &) c_iter->value();  // read the value
-      char vclass;   // disposition of this value
       if(IsTypeDirect(c_iter->ikey().type) && val.size() > 0 ) {  // scaf include length
         // direct value that should be indirected
-        vclass = vIndirectFirstMap;  // indicate the conversion
+        vclass += vIndirectFirstMap;  // indicate the conversion
         // compress the data scaf
         // CRC the data  scaf
         diskdata.append(val.data(),val.size());  // scaf
         diskrecl.push_back(diskdata.size());   // write running sum of record lengths, i. e. current total size of diskdata
       } else if(IsTypeIndirect(c_iter->ikey().type) && 0) {  // scaf
         // indirect value being remapped
-        vclass = vIndirectRemapped;  // indicate remapping
+        vclass += vIndirectRemapped;  // indicate remapping
         // read the data, no decompression  scaf
         diskdata.append(val.data(),val.size());   // copy the opaque compressed data being remapped
         diskrecl.push_back(diskdata.size());   // write running sum of record lengths, i. e. current total size of diskdata
       } else {
         // otherwise must be passthrough
-        vclass = vPassthrough;  // indicate passthrough
+        vclass += vPassthrough;  // indicate passthrough
         // Regrettably we have to make a copy of the passthrough data.  Even though the original data is pinned in SSTs,
         // anything returned from a merge uses buffers in the compaction_iterator that are overwritten after each merge.
         // Since most passthrough data is short (otherwise why use indirects?), this is probably not a big problem; the
@@ -103,7 +109,7 @@ namespace rocksdb {
     // All values have been read from c_iter
 
     // Allocate space in the Value Log and write the values out, and save the information for assigning references
-    status_ = outputring->VLogRingWrite(diskdata,diskrecl,nextdiskref,fileendoffsets);
+    outputring->VLogRingWrite(diskdata,diskrecl,nextdiskref,fileendoffsets,outputerrorstatus);
 
     // set up the variables for the first key
     keyno_ = 0;  // we start on the first key
@@ -112,6 +118,9 @@ namespace rocksdb {
     diskx_ = 0;
     nextpassthroughref = 0;  // init offset of first passthrough record
     filex_ = 0;  // indicate that we are creating references to the first file in filelengths
+    statusx_ = 0;  // reset input error pointer to first error
+    ostatusx_ = 0;  // reset output error pointer to first error
+
     Next();   // first Next() gets the first key; subsequent ones return later keys
   }
 
@@ -134,11 +143,23 @@ namespace rocksdb {
     // Here indirects are supported.  If we have returned all the keys, set this one as invalid
     if(valid_ = keyno_ < valueclass.size()) {
       // There is another key to return.  Retrieve the key info and parse it
+
+      // If there are errors about, we need to make sure we attach the errors to the correct keys.
+      // First we see if there was an input error for the key we are working on
+      int vclass = valueclass[keyno_];   // extract key type
+      if(vclass<vHasError)status_ = Status();  // if no error on input, init status to good
+      else {
+        // There was an input error when this key was read.  Set the return status based on the that error.
+        // We will go ahead and process the key normally, in case the error was not fatal
+        status_ = inputerrorstatus[statusx_++];  // recover input error status, advance to next error
+        vclass -= vHasError;  // remove error flag, leaving the value type
+      }
+
       ParseInternalKey(Slice(keys.data()+keysx_,keylens[keyno_]),&ikey_);  // Fill in the parsed result area
       keysx_ += keylens[keyno_];  // advance keysx_ to point to start of next key, for next time
       
       // Create its info based on its class
-      switch(valueclass[keyno_]) {
+      switch(vclass) {
       case vPassthrough:
         // passthrough.  Fill in the slice from the buffered data, and advance pointers to next record
         value_.install(passthroughdata.data() + nextpassthroughref,passthroughrecl[passx_++]);  // nextpassthroughref is current data offset
@@ -149,7 +170,8 @@ namespace rocksdb {
         ikey_.type = (ikey_.type==kTypeValue) ? kTypeIndirectValue : kTypeIndirectMerge;  // must be one or the other
         // fall through to...
       case vIndirectRemapped:
-        // Data taken from disk.  Fill in the slice with the current disk reference; then advance the reference to the next record
+        // Data taken from disk, either to be written the first time or to be rewritten for remapping
+        // Fill in the slice with the current disk reference; then advance the reference to the next record
         nextdiskref.IndirectSlice(value_);  // convert nextdiskref to string form in its workarea, and point value_ to the workarea
         // Advance to the next record - or the next file, getting the new file/offset/length ready in nextdiskref
         // If there is no next indirect value, don't set up for it
@@ -162,8 +184,18 @@ namespace rocksdb {
           // It is still possible that a zero-length reference will have a filenumber past the ones we have allocated, so
           // we have to make sure that zero-length indirects (which shouldn't exist!) are not read
           if(nextdiskref.Len()){   // advance to next file only on nonempty value
-            if(nextdiskref.Offset()==fileendoffsets[filex_]) {   // if start of next rcd = endpoint of current file
+            // Here, for nonempty current values only, we check to see whether there was an I/O error writing the
+            // file.  We haven't advanced to the next file yet.  A negative value in the fileendoffset indicates an error.
+            VLogRingRefFileOffset endofst = fileendoffsets[filex_];
+            if(endofst<0){
+              // error on the output file.  Return the full error information.  If there was an input error AND an output
+              // error, keep the input error, since the output error will probably be reported later
+              if(status_.ok())status_ = outputerrorstatus[ostatusx_];  // use error for the current file
+              endofst = -endofst;  // restore endofst to positive so it can test correctly below
+            }
+            if(nextdiskref.Offset()==endofst) {   // if start of next rcd = endpoint of current file
               // The next reference is in the next output file.  Advance to the start of the next output file
+              if(fileendoffsets[filex_]<0)++ostatusx_;  // if we are leaving a file with error, point to the next error (if any)
               nextdiskref.SetFileno(nextdiskref.Fileno()+1);  // next file...
               nextdiskref.SetOffset(0);  // at the beginning...
               ++filex_;   // ... and advance to look at the ending position of the NEXT output file
@@ -180,8 +212,7 @@ namespace rocksdb {
 
       // Advance to next position for next time
       ++keyno_;   // keyno_ always has the key-number to use for the next call to Next()
-    }
-    status_ = Status();  // scaf
+    }else status_ = Status();  // if key not valid, give good status
   }
 
 }   // namespace rocksdb
