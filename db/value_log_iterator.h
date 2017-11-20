@@ -28,6 +28,8 @@ namespace rocksdb {
 // return the possibly modified kvs one by one as the iterator result
 class IndirectIterator {
 public: 
+  static const VLogRingRefFileno high_value = ((VLogRingRefFileno)-1)>>1;  // biggest positive value
+
   IndirectIterator(
    CompactionIterator* c_iter,   // the input iterator that feeds us kvs
    ColumnFamilyData* cfd,  // the column family we are working on
@@ -48,6 +50,21 @@ public:
            !(end_ != nullptr && pcfd->user_comparator()->Compare(c_iter_->user_key(), *end_) >= 0)); }
   void Next();
 // end of shared interface
+  // Return the vector of earliest-references to each ring within the current file, and clear the value for next file.
+  // This should be called AFTER the last key of the current file has been retrieved.
+  // We initialize the references to high_value for ease in comparison; but when we return to the user we replace
+  // high_value by 0 to indicate 'no reference' to that ring
+  // Because of the way this is called from the compaction loop, Next() is called to look ahead one key before
+  // closing the output file.  So, ref0_ does not include the last fileref that was returned.  On the very last file, we need to
+  // include that key
+  void ref0(std::vector<uint64_t>& result, bool include_last) {
+    if(!use_indirects_){result = std::vector<uint64_t>(); return; }  // return null value if no indirects
+    if(include_last)  // include the last key only for the last file
+      if(ref0_[prevringfno.ringno]>prevringfno.fileno)
+        ref0_[prevringfno.ringno]=prevringfno.fileno;  // if current > new, switch to new
+    result = ref0_; for(size_t i=0;i<ref0_.size();++i){if(result[i]==high_value)result[i]=0; ref0_[i]=high_value;}
+    return;
+  }
 
 private:
   Slice key_;  // the next key to return, if it is Valid()
@@ -72,6 +89,14 @@ private:
   std::vector<Status> inputerrorstatus;  // error status returned by the iterator
   std::vector<Status> outputerrorstatus;  // error status returned when writing the output files
   std::shared_ptr<VLog> current_vlog;
+  std::vector<uint64_t> ref0_;  // for each ring, the earliest reference found into the ring.  Reset when we start each new file
+struct RingFno {
+  int ringno;
+  VLogRingRefFileno fileno;
+};
+  std::vector<RingFno> diskfileref;   // where we hold the reference values from the input passthroughs
+  RingFno prevringfno;  // set to the ring/file for the key we are returning now.  It is not included in the ref0_ value until
+    // the NEXT key is returned (this to match the way the compaction job uses the iterator), at which time it is the previous key to use
 
   int keyno_;  // number of keys processed previously
   int passx_;  // number of passthrough references returned previously
@@ -79,9 +104,10 @@ private:
   int filex_;  // number of files (as returned by RingWrite) that have been completely returned to the user
   int statusx_;  // number of input error statuses returned to user
   int ostatusx_;  // number of output error statuses returned to user
+  int passthroughrefx_;  // number of passthrough indirects returned to user
   VLogRingRefFileOffset nextpassthroughref;  // index of next passthrough byte to return
 
-enum valtype : int { vIndirectRemapped=0, vPassthrough=1, vIndirectFirstMap=2, vHasError=4 };
+enum valtype : int { vNone=0, vIndirectRemapped=1, vPassthroughDirect=2, vIndirectFirstMap=3, vPassthroughIndirect=4, vHasError=8 };
 
 };
 

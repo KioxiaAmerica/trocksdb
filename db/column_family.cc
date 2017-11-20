@@ -373,7 +373,7 @@ ColumnFamilyData::ColumnFamilyData(
       pending_compaction_(false),
       prev_compaction_needed_bytes_(0),
       allow_2pc_(db_options.allow_2pc)
-#ifdef INDIRECT_VALUE_SUPPORT   // create VLogs for the column family
+#if 0  // scaf will be deleted
       ,ring_ends(std::vector<uint64_t>())
 // create empty VLog for the ring
 #endif
@@ -422,10 +422,13 @@ ColumnFamilyData::ColumnFamilyData(
     } else {
       ROCKS_LOG_INFO(ioptions_.info_log, "\t(skipping printing options)\n");
     }
+
+#ifdef INDIRECT_VALUE_SUPPORT
+    // If the selected table doesn't support indirect values, leave the vlog_ pointer at its initial (nullptr) value
+    // If it supports indirect values, create a vlog
+    if(cf_options.table_factory->supports_indirect_values)vlog_ = std::make_shared<VLog>(this);
+#endif
   }
-  // If the selected table doesn't support indirect values, leave the vlog_ pointer at its initial (nullptr) value
-  // If it supports indirect values, create a vlog
-  if(cf_options.table_factory->supports_indirect_values)vlog_ = std::make_shared<VLog>(this);
 
   RecalculateWriteStallConditions(mutable_cf_options_);
 }

@@ -13,9 +13,9 @@
 #include <vector>
 #include <atomic>
 #include <memory>
+#include "options/db_options.h"
 #include "rocksdb/env.h"
 #include "rocksdb/transaction_log.h"
-#include "db/version_edit.h"
 
 namespace rocksdb {
 struct FileMetaData;
@@ -144,6 +144,68 @@ void MakeWorkarea() {
 
 };
 
+// A VLogRingFile is a random-access file along with a refcount, queue, and filename.
+// It is created to add the file to a VLogRing.  When the file is no longer referenced it is deleted; when
+// the VLogRingFile object is deleted, the file is simply closed.
+class VLogRingFile {
+public:
+  // The ring:
+  std::unique_ptr<RandomAccessFile> filepointer;  // the open file
+  // The queue contains one entry for each entry in the fd_ring.  That entry is a linked list of pointers to the SST files whose earliest
+  // reference in this ring is in the corresponding file.  When an SST is created, an element is added, and when the SST is finally deleted, one
+  // is removed.
+  FileMetaData* queue;  // base of forward chain
+  int refcount;   // Number of SSTs that hold a reference to this file
+  std::string filename;
+
+  VLogRingFile(std::string pathfname,  // fully qualified pathname
+    const ImmutableDBOptions *immdbopts,   // The current Env
+    EnvOptions& file_options  // options to use for all VLog files
+  ) :
+    queue(nullptr),
+    refcount(0),
+    filename(pathfname) {
+  // Open the file as random-access and install the pointer.  If error, pointer will be null
+  immdbopts->env->NewRandomAccessFile(filename, &filepointer, file_options);
+}
+  VLogRingFile() :   // used to initialize empty slot
+    filepointer(nullptr),
+    queue(nullptr),
+    refcount(0),
+    filename("") {
+}
+
+  // Delete the file.  Close it as random-access, then delete it
+  void DeleteFile(const ImmutableDBOptions *immdbopts,   // The current Env
+    EnvOptions& file_options  // options to use for all VLog files
+  ) {
+    filepointer = nullptr;  // This closes the file if it was open
+    immdbopts->env->DeleteFile(filename);  // delete the file
+// scaf ignore error - what could we do?
+  }
+
+  // Ensure the file is not copyable
+  VLogRingFile(VLogRingFile const&) = delete;
+  VLogRingFile& operator=(VLogRingFile const&) = delete;
+
+  // But make it movable, needed for emplace_back
+    // Move constructor
+  VLogRingFile(VLogRingFile&& other) noexcept
+  : queue(other.queue), refcount(other.refcount), filename(other.filename)
+  {
+    filepointer = std::move(other.filepointer);
+  }
+
+  // move assignment operator
+  VLogRingFile& operator=(VLogRingFile&& rhs) noexcept {
+    queue = rhs.queue;
+    refcount = rhs.refcount;
+    filename = rhs.filename;
+    filepointer = std::move(rhs.filepointer);
+    return *this;
+  }
+
+};
 
 // A VLogRing is a set of sequentially-numbered files, with a common prefix and extension .vlg, that contain
 // values for a column family.  Each value is pointed to by an SST, which uses a VLogRingRef for the purpose.
@@ -154,6 +216,7 @@ void MakeWorkarea() {
 
 class VLogRing {
 friend class VLog;
+friend class IndirectIterator;
 private:
 
 // We have to cross-index the VLog files and the SSTs for two purposes: (1) to see which VLog files can be deleted when they
@@ -183,13 +246,15 @@ private:
 // double-buffer the ring so that after a reallocation the old ring persists until the next reallocation, which should be days later.
 
   // The ring:
-  std::vector<std::unique_ptr<RandomAccessFile>> fd_ring;  // the ring of open file descriptors for the VLog files.
+  std::vector<VLogRingFile> fd_ring;  // the ring of open file descriptors for the VLog files.
 
+#if 0 // scaf will be deleted
   // The queue contains one entry for each entry in the fd_ring.  That entry is a linked list of pointers to the SST files whose earliest
   // reference in this ring is in the corresponding file.  When an SST is created, an element is added, and when the SST is finally deleted, one
   // is removed.
   std::vector<FileMetaData*> queue;  // base of forward chain
   std::vector<int> refcount;   // Number of SSTs that hold a reference to this file
+#endif
 
   // We group the atomics together so they can be aligned to a cacheline boundary
   struct /* alignas(64) */ {   // alignment is desirable, but not available till C++17.  This struct is 1 full cache line
@@ -201,22 +266,36 @@ private:
 //   std::atomic<VLogRingRefFileOffset> fd_ring_head_fileoffset;  // the offset that the next write will go to
 //  std::atomic<VLogRingRefFileOffset> fd_ring_head_fileoffset_shadow;  // shadow, as with fileno
   std::atomic<VLogRingRefFileno> fd_ring_tail_fileno;   // smallest valid file# in ring
-  std::atomic<VLogRingRefFileno> fd_ring_tail_fileno_shadow;   // We move tail_fileno to remove files from validity, but before we have erased them.
-     // after we erase them we move the shadow pointer.  So tests for ring-full must use the shadow pointer
+  std::atomic<VLogRingRefFileno> fd_ring_tail_fileno_shadow;   // We move tail_fileno_shadow to remove files from currency, but before we have erased them.
+     // after we erase them we move the tail pointer.  So tests for ring-full must use the tail pointer
   // The usecount of the current ring.  Set to 0 initially, incr/decr during Get.  Set to a negative value, which
   // quiesces Get, when we need to resize the ring.  We use this as a sync point for the ringpointer/len so we don't have to use atomic reads on them.
   std::atomic<uint32_t> usecount;
   std::atomic<uint32_t> writelock;  // 0 normally, 1 when the ring is in use for writing
   } atomics;
 
-// Convert a file number to a ring slot in the current ring.  To avoid the divide we require the ring have power-of-2 size
-size_t Ringx(VLogRingRefFileno f) { return (size_t) f & (fd_ring.size()-1); }
+  // Convert a file number to a ring slot in the current ring.  To avoid the divide we require the ring have power-of-2 size
+  size_t Ringx(VLogRingRefFileno f) { return (size_t) f & (fd_ring.size()-1); }
 
   // Non-ring variables:
   int ringno_;  // The ring number of this ring within its CF
   ColumnFamilyData *cfd_;  // The data for this CF
   const ImmutableDBOptions *immdbopts_;  // Env for this database
   EnvOptions envopts_;  // Options to use for files in this VLog
+
+  // Acquire write lock on the VLogRing.  Won't happen often, and only for a short time
+  void AcquireLock() {
+    do{
+      uint32_t expected_atomic_value = 0;
+      if(atomics.writelock.compare_exchange_weak(expected_atomic_value,1,std::memory_order_acq_rel))break;
+    }while(1);  // get lock on file
+  }
+
+  // Release the lock
+  void ReleaseLock() {
+  atomics.writelock.store(0,std::memory_order_release);
+  }
+
 public:
 // Constructor.  Find all the VLogRing files and open them.  Create the VLogRingQueue for the files.
 // Delete files that have numbers higher than the last valid one.
@@ -225,7 +304,6 @@ VLogRing(
   ColumnFamilyData *cfd,  // info for the CF for this ring
   std::vector<std::string> filenames,  // the filenames that might be vlog files for this ring
   VLogRingRefFileno earliest_ref,   // earliest file number referred to in manifest
-  VLogRingRefFileno latest_ref,   // last file number referred to in manifest
   const ImmutableDBOptions *immdbopts,   // The current Env
   EnvOptions& file_options  // options to use for all VLog files
 );
@@ -281,24 +359,15 @@ Status VLogRingGet(
 ;
 
 // Install a new SST into the ring, with the given earliest-VLog reference
-// Arguments can be replaced by the metadata for the SST, or the Manifest entry?
 void VLogRingSstInstall(
   FileMetaData& newsst   // the SST that has just been created & filled in
 )
-// acquire spin lock
-// expand table if needed
-// add SST to hash
-// add SST/fileno to the priority queue
-// release spin lock
 ;
 
 // Remove an SST from the ring when it is no longer current
 void VLogRingSstUnCurrent(
   FileMetaData& retiringsst   // the SST that has just been obsoleted
 )
-// acquire spin lock
-// delete SST from the hashtable
-// release spin lock
 ;
 
 // Remove the VLog file's dependency on an SST, and delete the VLog file if it is now unused
@@ -322,14 +391,32 @@ void VLogRingFindLaggingSsts(
 // A VLog is a set of VLogRings for a single column family.  The VLogRings are distinguished by an index.
 class VLog {
 private:
+  friend class IndirectIterator;
   std::vector<std::unique_ptr<VLogRing>> rings_;  // the VLogRing objects for this CF
   std::vector<int> starting_level_for_ring_;
   ColumnFamilyData *cfd_;
+  std::vector<FileMetaData *> waiting_sst_queues;  // queue headers when SSTs are queued awaiting init.  One per possible ring
+  std::atomic<uint32_t> writelock;  // 0 normally, 1 when the ring headers are being modified
+
+  // Acquire write lock on the VLog.  Won't happen often, and only for a short time
+  void AcquireLock() {
+    do{
+      uint32_t expected_atomic_value = 0;
+      if(writelock.compare_exchange_weak(expected_atomic_value,1,std::memory_order_acq_rel))break;
+    }while(1);  // get lock on file
+  }
+
+  // Release the lock
+  void ReleaseLock() {
+  writelock.store(0,std::memory_order_release);
+  }
+
 public:
   VLog(
     // the info for the column family
     ColumnFamilyData *cfd
   );
+  size_t nrings() { return rings_.size(); }
 
   // No copying
   VLog(VLog const&) = delete;
@@ -348,6 +435,7 @@ public:
     // For each ring, initialize the ring and queue
 ;
 
+#if 0 // scaf will be removed
   // Return a vector of the end-file-number for each ring.  This is the last file number that has been successfully synced.
   // NOTE that there is no guarantee that data is written to files in sequential order, and thus on a restart the
   // end-file-number may cause some space to be lost.  It will be recovered when the ring recycles.
@@ -355,6 +443,7 @@ public:
     for(int i = 0;i<rings_.size();++i){result->push_back(rings_[i]->atomics.fd_ring_head_fileno_shadow);}
     return;
   }
+#endif
 
   // Read the bytes referred to in the given VLogRingRef.  Uses release-acquire ordering to verify validity of ring
   // Returns the bytes.  ?? Should this return to user area to avoid copying?
@@ -367,30 +456,47 @@ public:
 ;
 
   // Given the level of an output file, return the ring number, if any, to write to (-1 if no ring)
-  int VLogRingNoForLevelOutput(int level) { int i; for(i=0; i<starting_level_for_ring_.size() && level<starting_level_for_ring_[i];++i); return i-1;}
+  int VLogRingNoForLevelOutput(int level) { int i; for(i=0; i<starting_level_for_ring_.size() && level>=starting_level_for_ring_[i];++i); return i-1;}  // advance if output can go into ring; back up to last such
 
   // Return the VLogRing for the given level
   VLogRing *VLogRingFromNo(int ringno) { return rings_[ringno].get(); }
 
   // Install a new SST into the ring, with the given earliest-VLog reference
-  // Arguments can be replaced by the metadata for the SST, or the Manifest entry?
+  // This routine is called whenever a file is added to a column family, which means either
+  // during recovery or compaction/ingestion (though note, ingested files have no VLog references and
+  // don't need to come through here).  During recovery, the files are encountered before the rings have
+  // been created: necessarily, because we don't know how big to make the ring until we have seen what the
+  // earliest reference is.  So, if we get called before the rings have been created, we chain them onto
+  // a waiting list (one list per eventual ring, using the same chain fields that will normally be used for
+  // the doubly-linked list of SSTs per VLog file) and then process them en bloc when the rings are created.
+  // Whether this is good design or a contemptible kludge is a matter of opinion.  To be sure, it would
+  // be possible to avoid queueing the SSTs by simply using the list of SSTs in each CF as the files to add to the rings
+  //
+  // We detect pre-initialization by the absence of rings (i. e. rings_.size()==0).  If the CF doesn't turn on
+  // indirect values, the number of rings will simply stay at 0.  We will make sure to take no action in removing from the
+  // rings in that case.
+  //
+  // It is OVERWHELMINGLY likely that there will be exactly one nonzero earliest-ref.  The only way to have more
+  // is for the ring boundaries to change during operation, and the only way to have less is for an SST to have no
+  // indirect values (either too short or all deletes or the like).  Nevertheless we lock most operations at the VLogRing level
+  // rather than the VLog level, because it is possible to have compactions going on to the same CF at different levels.
+  // In any case all locks are short-lived.
+  //
+  // We could avoid locks on the chain operations if we were sure that all SST operations held the SST mutex.  They probably do,
+  // but I can't guarantee it.  We would still need locks on the queue operations because VLogRingWrite does NOT require the mutex
+  // and has to interlock with Get() without locking.
   void VLogSstInstall(
     FileMetaData& newsst   // the SST that has just been created & filled in
-  ) {for (int i=0;i<newsst.indirect_ref_0.size();++i)if(newsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstInstall(newsst);}
-
-  // Remove an SST from the ring when it is no longer current
+  );
+  // Remove an SST from the ring when it is no longer current.
   void VLogSstUnCurrent(
     FileMetaData& retiringsst   // the SST that has just been obsoleted
-  ) {for (int i=0;i<retiringsst.indirect_ref_0.size();++i)if(retiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstUnCurrent(retiringsst);}
-  // acquire spin lock
-  // delete SST from the hashtable
-  // release spin lock
-
+  );
 
   // Remove the VLog file's dependency on an SST, and delete the VLog file if it is now unused
   void VLogSstDelete(
     FileMetaData& expiringsst   // the SST that is about to be destroyed
-  ) {for (int i=0;i<expiringsst.indirect_ref_0.size();++i)if(expiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstDelete(expiringsst);}
+  );
 
 };
 

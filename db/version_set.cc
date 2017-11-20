@@ -2357,7 +2357,7 @@ VersionSet::~VersionSet() {
   }
   obsolete_files_.clear();
 }
-
+//INDIRECTTODO
 void VersionSet::AppendVersion(ColumnFamilyData* column_family_data,
                                Version* v) {
   // compute new compaction score
@@ -2464,7 +2464,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
         batch_edits.push_back(edit);
       }
     }
-    builder->SaveTo(v->storage_info());
+    builder->SaveTo(v->storage_info(),column_family_data);
   }
 
   // Initialize new descriptor log file if necessary by creating
@@ -2893,7 +2893,7 @@ Status VersionSet::Recover(
               "does not match existing comparator " + edit.comparator_);
           break;
         }
-#ifdef INDIRECT_VALUE_SUPPORT
+#if 0 // scaf will be removed
         // If the edit has ring information for this column family, move it into the cfd.
         if(edit.ring_ends_.size()){
           cfd->SetRingEnds(edit.GetRingEnds());  // copy them in - they're small
@@ -2986,7 +2986,7 @@ Status VersionSet::Recover(
       }
 
       Version* v = new Version(cfd, this, current_version_number_++);
-      builder->SaveTo(v->storage_info());
+      builder->SaveTo(v->storage_info(),cfd);
 
       // Install recovered version
       v->PrepareApply(*cfd->GetLatestMutableCFOptions(),
@@ -3344,7 +3344,7 @@ Status VersionSet::DumpManifest(Options& options, std::string& dscname,
       auto builder = builders_iter->second->version_builder();
 
       Version* v = new Version(cfd, this, current_version_number_++);
-      builder->SaveTo(v->storage_info());
+      builder->SaveTo(v->storage_info(),nullptr /* no change to CF */);
       v->PrepareApply(*cfd->GetLatestMutableCFOptions(), false);
 
       printf("--------------- Column family \"%s\"  (ID %u) --------------\n",
@@ -3440,7 +3440,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
         }
       }
       edit.SetLogNumber(cfd->GetLogNumber());
-#ifdef INDIRECT_VALUE_SUPPORT
+#if 0 // scaf will be removed
       std::shared_ptr<VLog> vlog=cfd->vlog();  // get address of VLog for this cf, if any 
       if(vlog!=nullptr) {   // If there is a vlog
         // the vlog exists: visit each ring to accumulate the end pointers for each one

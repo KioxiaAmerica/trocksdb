@@ -17,6 +17,7 @@ class VersionStorageInfo;
 class VersionEdit;
 struct FileMetaData;
 class InternalStats;
+class ColumnFamilyData;
 
 // A helper class so we can efficiently apply a whole sequence
 // of edits to a particular state without creating intermediate
@@ -31,7 +32,7 @@ class VersionBuilder {
                                   int level);
   bool CheckConsistencyForNumLevels();
   void Apply(VersionEdit* edit);
-  void SaveTo(VersionStorageInfo* vstorage);
+  void SaveTo(VersionStorageInfo* vstorage, ColumnFamilyData *cfd = nullptr);
   void LoadTableHandlers(InternalStats* internal_stats, int max_threads,
                          bool prefetch_index_and_filter_in_cache);
   void MaybeAddFile(VersionStorageInfo* vstorage, int level, FileMetaData* f);

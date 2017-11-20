@@ -39,7 +39,9 @@ enum Tag {
   kColumnFamilyAdd = 201,
   kColumnFamilyDrop = 202,
   kMaxColumnFamily = 203,
+#if 0 // scaf will be removed
   kRingRefn = 210,  // ring/file# for the last file in the specified ring at this column#
+#endif
 };
 
 enum CustomTag {
@@ -78,7 +80,7 @@ void VersionEdit::Clear() {
   column_family_ = 0;
   is_column_family_add_ = 0;
   is_column_family_drop_ = 0;
-#ifdef INDIRECT_VALUE_SUPPORT
+#if 0 // scaf will be removed
   ring_ends_.clear();  // 0 means 'omitted'
 #endif
   column_family_name_.clear();
@@ -169,10 +171,12 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
       //   tag kPathId: 1 byte as path_id
       //   tag kNeedCompaction:
       //        now only can take one char value 1 indicating need-compaction
+#if 0 // scaf will be removed
       //   tag kRingRefn:
       //        varint32  length
       //        varint32 n - the number of rings for this cf
       //        varint64[n] last file referred to by each ring
+#endif
       //   tag kIndirectRef0:
       //        varint32  length
       //        varint32 n - the number of rings for this cf
@@ -195,8 +199,8 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
         uint32_t totallength = VarintLength(f.indirect_ref_0.size());  // init length to length of # refs
         for(auto ref : f.indirect_ref_0)totallength += VarintLength(ref);  // add in length of refs themselves
         PutVarint32(dst, totallength);  // write out total field length
-        PutVarint32(dst, (uint32_t)f.indirect_ref_0.size());  // write out total field length
-        for(auto ref : f.indirect_ref_0)PutVarint64(dst, ref);  // write two fields: ref0 and refn
+        PutVarint32(dst, (uint32_t)f.indirect_ref_0.size());  // write out number of refs
+        for(auto ref : f.indirect_ref_0)PutVarint64(dst, ref);  // write refs
       }
 #endif
       TEST_SYNC_POINT_CALLBACK("VersionEdit::EncodeTo:NewFile4:CustomizeFields",
@@ -223,7 +227,7 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
     PutVarint32(dst, kColumnFamilyDrop);
   }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#if 0 // scaf will be removed
   // If this edit contains end-of-ring markers, write them out
   if(ring_ends_.size()) {
    // record is code/total length/#refs/refs
@@ -501,7 +505,7 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
         is_column_family_drop_ = true;
         break;
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#if 0 // scaf will be removed
       case kRingRefn:
         // record is code/total length/#refs/refs
         {uint32_t nrings; int ok; uint64_t ref;
@@ -669,5 +673,18 @@ std::string VersionEdit::DebugJSON(int edit_num, bool hex_key) const {
 
   return jw.Get();
 }
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  // After the last kv has been written to the file, install the earliest refs that were found in
+  // the file, one for each ring (0 means no ref)
+  void FileMetaData::InstallRef0(const std::vector<uint64_t> &earliestref, ColumnFamilyData *cfd) {
+    indirect_ref_0 = earliestref;
+    ringfwdchain.resize(earliestref.size(),nullptr);  // keep the chain fields lockstep in size with indirect_ref
+    ringbwdchain.resize(earliestref.size(),nullptr);
+    vlog = cfd->vlog().get();
+//    cfd->vlog().get();  // Install vlog pointer into the SST
+  }
+
+#endif
 
 }  // namespace rocksdb

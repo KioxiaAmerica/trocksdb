@@ -100,6 +100,7 @@ class VersionBuilder::Rep {
   bool has_invalid_levels_;
   FileComparator level_zero_cmp_;
   FileComparator level_nonzero_cmp_;
+  friend void VersionBuilder::SaveTo(VersionStorageInfo*, ColumnFamilyData *);
 
  public:
   Rep(const EnvOptions& env_options, Logger* info_log, TableCache* table_cache,
@@ -136,6 +137,12 @@ class VersionBuilder::Rep {
         table_cache_->ReleaseHandle(f->table_reader_handle);
         f->table_reader_handle = nullptr;
       }
+#ifdef INDIRECT_VALUE_SUPPORT
+      // The SST is about to be deleted.  Remove it from any VLog queues it is attached to
+      if(f->vlog)f->vlog->VLogSstDelete(*f);
+      // it is possible that files on the added list were never actually added to the rings.  Those files will
+      // not have a vlog pointer so we won't try to take them off the rings.
+#endif
       delete f;
     }
   }
@@ -448,7 +455,21 @@ bool VersionBuilder::CheckConsistencyForNumLevels() {
 
 void VersionBuilder::Apply(VersionEdit* edit) { rep_->Apply(edit); }
 
-void VersionBuilder::SaveTo(VersionStorageInfo* vstorage) {
+void VersionBuilder::SaveTo(VersionStorageInfo* vstorage, ColumnFamilyData *cfd) {
+#ifdef INDIRECT_VALUE_SUPPORT
+  // We are about to commit the added_files in rep_ to the new version vstorage.  This is a safe time
+  // to enter their info into the Value Log.  We could come here either from initial recovery or from finishing a
+  // compaction.  SaveTo() is also called from DumpManifest to build a faux version for dumping, and in tests; in that case we
+  // make cfd null so we skip the value log work.  We also skip the Value Log work if there is no VLog for the cfd
+  if(cfd!=nullptr && cfd->vlog()){
+    // Go through each added file.  They have been split by levels, which makes work here
+      for (int level = 0; level < rep_->num_levels_; level++) {  // for each level...
+        for (auto& pair : rep_->levels_[level].added_files) {  // for each number/FileMetaData pair, representing 1 file...
+          cfd->vlog()->VLogSstInstall(*pair.second);  // register the new file with the VLogRings
+        }
+      }
+   }
+#endif
   rep_->SaveTo(vstorage);
 }
 

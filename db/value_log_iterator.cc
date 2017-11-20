@@ -39,6 +39,25 @@ namespace rocksdb {
     if(outputringno<0){use_indirects_ = false; return;}  // if no output ring, skip looking for indirects
     VLogRing *outputring = current_vlog->VLogRingFromNo(outputringno);  // the ring we will write values to
 
+    // Calculate the remapping threshold.  References earlier than this will be remapped.
+    //
+    // Keeping track of fragmentation and its position - whether it is towards the tail or head of the ring - is problematic,
+    // especially over a reboot or even a restart.  We will try to get by without needing it.  We will set the remapping
+    // threshold at a fixed fraction of the file-span between the head and the shadow tail.  We use the head, even though
+    // it has not been validated by the shadow head, because we know that erelong it will be valid.
+    // It is not necessary to lock the ring to calculate the remapping - any valid value is OK - but we do need to do an
+    // atomic read to make sure we get a recent one
+    //
+    // We have to calculate a threshold for each ring, since any ring may appear here
+    std::vector<VLogRingRefFileno> earliest_passthrough;  // for each ring, the lowest file# that will remain unmapped
+    for(int i = 0;i<current_vlog->rings_.size();++i) {
+      VLogRingRefFileno head = current_vlog->rings_[i]->atomics.fd_ring_head_fileno.load(std::memory_order_acquire);  // last file with data
+      VLogRingRefFileno shadow_tail = current_vlog->rings_[i]->atomics.fd_ring_tail_fileno_shadow.load(std::memory_order_acquire);  // first file with live refs
+      if(head>shadow_tail)head-=shadow_tail; else head=0;  // change 'head' to head-tail.  It would be possible for tail to pass head, on an
+           // empty ring.  What happens then doesn't matter, but to keep things polite we check for it rather than overflowing the unsigned subtraction.
+      earliest_passthrough.push_back((VLogRingRefFileno)(shadow_tail + 0.4 * head));  // scaf make fraction programmable
+    }
+
     // Read all the kvs from c_iter and save them.  We start at the first kv
     // We create:
     // diskdata - the compressed, CRCd, values to write to disk.  Stored in key order.
@@ -50,25 +69,26 @@ namespace rocksdb {
     // The Slices are references to pinned tables and we return them unchanged as the result of our iterator.
     // They are immediately passed to Builder which must make a copy of the data.
     std::string diskdata;  // where we accumulate the data to write
+    std::string indirectbuffer;   // temp area where we read indirect values that need to be remapped
     while(c_iter->Valid() && 
            !(end != nullptr && pcfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0)) {
       // process this kv.  It is valid and the key is not past the specified ending key
       char vclass;   // disposition of this value
 
       // If there is error status, save it.  We save only errors
-      if(c_iter->status().ok())vclass = 0;
+      if(c_iter->status().ok())vclass = vNone;
       else {
         vclass = vHasError;   // indicate error on this key
         inputerrorstatus.push_back(c_iter->status());  // save the full error
       }
 
-      // Classify the value, as (1) a value to be passed through, either too short to encode or an indirect
-      // reference that doesn't need changing; (2) a direct value that needs to be converted to indirect;
-      // (0) an indirect reference that needs to be remapped
+      // Classify the value, as (2) a value to be passed through, not indirect (3) a direct value that needs to be converted to indirect;
+      // (1) an indirect reference that needs to be remapped; (4) an indirect value that is passed through
       //
-      // For case 1, the value is copied to passthroughdata
-      // For case 2, the value is compressed and CRCd and written to diskdata
-      // For case 0, the (compressed & CRCd) value is read from disk into diskdata and not modified
+      // For case 2, the value is copied to passthroughdata
+      // For case 3, the value is compressed and CRCd and written to diskdata
+      // For case 1, the (compressed & CRCd) value is read from disk into diskdata and not modified
+      // For case 4, the value (16 bytes) is passed through
       const Slice &key = c_iter->key();  // read the key
       // Because the compaction_iterator builds all its return keys in the same buffer, we have to move the key
       // into an area that won't get overwritten.  To avoid lots of memory allocation we jam all the keys into one vector,
@@ -83,21 +103,59 @@ namespace rocksdb {
         // CRC the data  scaf
         diskdata.append(val.data(),val.size());  // scaf
         diskrecl.push_back(diskdata.size());   // write running sum of record lengths, i. e. current total size of diskdata
-      } else if(IsTypeIndirect(c_iter->ikey().type) && 0) {  // scaf
-        // indirect value being remapped
-        vclass += vIndirectRemapped;  // indicate remapping
-        // read the data, no decompression  scaf
-        diskdata.append(val.data(),val.size());   // copy the opaque compressed data being remapped
-        diskrecl.push_back(diskdata.size());   // write running sum of record lengths, i. e. current total size of diskdata
-      } else {
-        // otherwise must be passthrough
-        vclass += vPassthrough;  // indicate passthrough
+      } else if(IsTypeIndirect(c_iter->ikey().type)) {  // scaf
+        // value is indirect; does it need to be remapped?
+        assert(val.size()==16);  // should be a reference
+        // If the reference is ill-formed, create an error if there wasn't one already on the key
+        if(val.size()!=16){
+          if(vclass<vHasError){   // Don't create an error for this key if it carries one already
+            inputerrorstatus.push_back(Status::Corruption("indirect reference is ill-formed."));
+            vclass += vHasError;  // indicate that this key now carries error status...
+            val = Slice();   // expunge the errant reference.  This will be treated as a passthrough below
+// scaf log it?
+          }
+        } else {
+          // Valid indirect reference.  See if it needs to be remapped
+          VLogRingRef ref(val.data());   // analyze the reference
+          if(ref.Fileno()<earliest_passthrough[ref.Ringno()]) {  // file number is too low to pass through
+            // indirect value being remapped.  Replace val with the data from disk
+            vclass += vIndirectRemapped;  // indicate remapping
+            // read the data of the reference.  We don't decompress it or check CRC; we just pass it on.  We know that
+            // the compression/CRC do not depend on anything outside the actual value
+            if(indirectbuffer.capacity()<ref.Len())indirectbuffer.reserve(ref.Len());  // make sure buffer will hold the disk record
+// scaf should have a special class for diskdata to allow us to read directly into it
+            if(!(current_vlog->rings_[ref.Ringno()]->fd_ring[current_vlog->rings_[ref.Ringno()]->Ringx(ref.Fileno())].filepointer->
+              Read(ref.Offset(), ref.Len(), &val, (char *)indirectbuffer.data()).ok())){  // read the data
+              // Here there was an error reading from the file.  Report the error, and reset the data to empty
+              if(vclass<vHasError){   // Don't create an error for this key if it carries one already
+                inputerrorstatus.push_back(Status::IOError("error reading indirect reference."));
+                vclass += vHasError;  // indicate that this key now carries error status...
+              }
+              val.clear();  // error: return empty string
+            }
+
+            diskdata.append(val.data(),val.size());   // copy the opaque compressed data being remapped
+            diskrecl.push_back(diskdata.size());   // write running sum of record lengths, i. e. current total size of diskdata
+          } else {
+            // indirect value, passed through (normal case).  Mark it as a passthrough, and install the file number in the
+            // reference for the ring so it can contribute to the earliest-ref for this file
+            vclass += vPassthroughIndirect;  // indirect data passes through...
+            diskfileref.push_back(RingFno{ref.Ringno(),ref.Fileno()});   // ... and we save the ring/file of the reference
+            // As described below, we must copy the data that is going to be passed through
+            passthroughdata.append(val.data(),val.size());    // copy the data
+            passthroughrecl.push_back(val.size());
+          }
+        }
+      }
+      if(!(vclass&~vHasError)) {
+        // not classified above; must be passthrough, and not indirect
+        vclass += vPassthroughDirect;  // indicate passthrough
         // Regrettably we have to make a copy of the passthrough data.  Even though the original data is pinned in SSTs,
         // anything returned from a merge uses buffers in the compaction_iterator that are overwritten after each merge.
         // Since most passthrough data is short (otherwise why use indirects?), this is probably not a big problem; the
         // solution would be to keep all merge results valid for the life of the compaction_iterator.
-         passthroughdata.append(val.data(),val.size());    // copy the data
-         passthroughrecl.push_back(val.size());
+        passthroughdata.append(val.data(),val.size());    // copy the data
+        passthroughrecl.push_back(val.size());
       }
       // save the type of record for use in the replay
       valueclass.push_back(vclass);
@@ -120,6 +178,9 @@ namespace rocksdb {
     filex_ = 0;  // indicate that we are creating references to the first file in filelengths
     statusx_ = 0;  // reset input error pointer to first error
     ostatusx_ = 0;  // reset output error pointer to first error
+    passthroughrefx_ = 0;  // reset pointer to passthrough file/ring
+    ref0_ = std::vector<uint64_t>(cfd->vlog()->nrings(),high_value);  // initialize to no refs to each ring
+    prevringfno = RingFno{0,high_value};  // init to no previous key
 
     Next();   // first Next() gets the first key; subsequent ones return later keys
   }
@@ -157,11 +218,21 @@ namespace rocksdb {
 
       ParseInternalKey(Slice(keys.data()+keysx_,keylens[keyno_]),&ikey_);  // Fill in the parsed result area
       keysx_ += keylens[keyno_];  // advance keysx_ to point to start of next key, for next time
-      
+
+      // Include the previous key's file/ring in the current result (because the compaction job calls Next() before closing
+      // the current output file)
+      if(ref0_[prevringfno.ringno]>prevringfno.fileno)
+        ref0_[prevringfno.ringno]=prevringfno.fileno;  // if current > new, switch to new
+
+      prevringfno = RingFno{0,high_value};  // set to no indirect ref here
       // Create its info based on its class
       switch(vclass) {
-      case vPassthrough:
-        // passthrough.  Fill in the slice from the buffered data, and advance pointers to next record
+      case vPassthroughIndirect:
+        // Indirect passthrough.  We need to retrieve the reference file# and apply it
+        prevringfno = diskfileref[passthroughrefx_++];   // copy indirect ref, advance to next indirect ref
+        // fall through to...
+      case vPassthroughDirect:
+       // passthrough, either kind.  Fill in the slice from the buffered data, and advance pointers to next record
         value_.install(passthroughdata.data() + nextpassthroughref,passthroughrecl[passx_++]);  // nextpassthroughref is current data offset
         nextpassthroughref += value_.size_;  // advance data offset for next time
         break;
@@ -171,8 +242,11 @@ namespace rocksdb {
         // fall through to...
       case vIndirectRemapped:
         // Data taken from disk, either to be written the first time or to be rewritten for remapping
+        // nextdiskref contains the next record to return
         // Fill in the slice with the current disk reference; then advance the reference to the next record
         nextdiskref.IndirectSlice(value_);  // convert nextdiskref to string form in its workarea, and point value_ to the workarea
+        // Save the file/ring of the record we are returning
+        prevringfno = RingFno{nextdiskref.Ringno(),nextdiskref.Fileno()};
         // Advance to the next record - or the next file, getting the new file/offset/length ready in nextdiskref
         // If there is no next indirect value, don't set up for it
         currendlen = diskrecl[diskx_++];  // save end offset of current record, advance to next record

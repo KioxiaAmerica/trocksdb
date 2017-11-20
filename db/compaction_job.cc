@@ -921,6 +921,12 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       if (value_iter->Valid()) {
         next_key = &value_iter->key();
       }
+#ifdef INDIRECT_VALUE_SUPPORT
+      // Install the earliest-file-refs that were encountered for the file being closed, and reset that value for the next file
+      std::vector<uint64_t> ref0;  // vector of file-refs
+      value_iter->ref0(ref0,false /* include_last */);  // false because we have read 1 key ahead in the iterator
+      sub_compact->current_output()->meta.InstallRef0(ref0,cfd);
+#endif
       CompactionIterationStats range_del_out_stats;
       status = FinishCompactionOutputFile(input_status, sub_compact,
                                           range_del_agg.get(),
@@ -976,6 +982,12 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   // Call FinishCompactionOutputFile() even if status is not ok: it needs to
   // close the output file.
   if (sub_compact->builder != nullptr) {
+#ifdef INDIRECT_VALUE_SUPPORT
+    // Install the earliest-file-refs that were encountered for the file being closed, and reset that value for the next file
+    std::vector<uint64_t> ref0;  // vector of file-refs
+    value_iter->ref0(ref0, true /* include_last */);  // true to pick up the very last key
+    sub_compact->current_output()->meta.InstallRef0(ref0,cfd);
+#endif
     CompactionIterationStats range_del_out_stats;
     Status s = FinishCompactionOutputFile(
         status, sub_compact, range_del_agg.get(), &range_del_out_stats);

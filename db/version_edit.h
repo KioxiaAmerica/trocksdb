@@ -21,6 +21,8 @@
 namespace rocksdb {
 
 class VersionSet;
+class VLog;
+class ColumnFamilyData;
 
 const uint64_t kFileNumberMask = 0x3FFFFFFFFFFFFFFF;
 
@@ -113,6 +115,8 @@ struct FileMetaData {
   // as it is current, i. e. part of the current version
   std::vector<FileMetaData*> ringfwdchain;
   std::vector<FileMetaData*> ringbwdchain;
+  VLog *vlog;  // The value log for the CF this file is in.  It's a shame to waste 8 bytes, but it's just too hard to get a pointer
+                 // to the ColumnFamilyData down to all the routines that need it
 #endif
 
   FileMetaData()
@@ -132,6 +136,7 @@ struct FileMetaData {
         ,indirect_ref_0(std::vector<uint64_t>())  // 0 means 'omitted'
         ,ringfwdchain(std::vector<FileMetaData*>())
         ,ringbwdchain(std::vector<FileMetaData*>())
+        ,vlog(nullptr)   // vlog is filled in when we add the file to a CF
 #endif
         {}
 
@@ -145,7 +150,14 @@ struct FileMetaData {
     smallest_seqno = std::min(smallest_seqno, seqno);
     largest_seqno = std::max(largest_seqno, seqno);
   }
+#ifdef INDIRECT_VALUE_SUPPORT
+  // After the last kv has been written to the file, install the earliest refs that were found in
+  // the file, one for each ring (0 means no ref)
+  void InstallRef0(const std::vector<uint64_t> &earliestref, ColumnFamilyData *cfd);
+
+#endif
 };
+
 
 // A compressed copy of file meta data that just contain minimum data needed
 // to server read operations, while still keeping the pointer to full metadata
@@ -213,7 +225,7 @@ class VersionEdit {
     max_column_family_ = max_column_family;
   }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#if 0 // scaf will be removed
   // routines to access the vector of end-of-ring data
   void SetRingEnds(std::vector<uint64_t>& ring_ends) { ring_ends_ = ring_ends; }
   std::vector<uint64_t> GetRingEnds() { return ring_ends_; }
@@ -237,12 +249,12 @@ class VersionEdit {
     f.marked_for_compaction = marked_for_compaction;
 #ifdef INDIRECT_VALUE_SUPPORT
       // older code doesn't know about indirect_ref; use 'omitted' (0) then
-    f.indirect_ref_0=indirect_ref_0;
+    f.indirect_ref_0=indirect_ref_0;  // set the earliest refs, if any
 #endif
     new_files_.emplace_back(level, std::move(f));
   }
 
-  // The metadata here may contain the earliest_indirect_ref field
+  // The metadata here may contain the indirect_ref_0 field
   void AddFile(int level, const FileMetaData& f) {
     assert(f.smallest_seqno <= f.largest_seqno);
     new_files_.emplace_back(level, f);
@@ -316,7 +328,7 @@ class VersionEdit {
   bool has_next_file_number_;
   bool has_last_sequence_;
   bool has_max_column_family_;
-#ifdef INDIRECT_VALUE_SUPPORT
+#if 0 // scaf will be removed
   std::vector<uint64_t> ring_ends_;  // ring/file# of last file in ring containing value data.  column_family must be set before write
 #endif
   DeletedFileSet deleted_files_;

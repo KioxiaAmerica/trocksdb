@@ -193,31 +193,35 @@ TEST_P(DBCompactionTestWithParam, CompactionDeletionTrigger) {
       options.num_levels = 1;
     }
 
+printf("Before Destroy & Reopen, tid=%d\n",tid); // scaf debug
     DestroyAndReopen(options);
     Random rnd(301);
-
+printf("After Destroy & Reopen, tid=%d\n",tid); // scaf debug
     const int kTestSize = kCDTKeysPerBuffer * 1024;
     std::vector<std::string> values;
     for (int k = 0; k < kTestSize; ++k) {
       values.push_back(RandomString(&rnd, kCDTValueSize));
       ASSERT_OK(Put(Key(k), values[k]));
     }
+printf("Destroy & Reopen: Finished Put\n"); // scaf debug
     dbfull()->TEST_WaitForFlushMemTable();
     dbfull()->TEST_WaitForCompact();
     db_size[0] = Size(Key(0), Key(kTestSize - 1));
 
+printf("Destroy & Reopen: Starting Delete\n"); // scaf debug
     for (int k = 0; k < kTestSize; ++k) {
       ASSERT_OK(Delete(Key(k)));
     }
+printf("Destroy & Reopen: Finished Delete\n"); // scaf debug
     dbfull()->TEST_WaitForFlushMemTable();
     dbfull()->TEST_WaitForCompact();
     db_size[1] = Size(Key(0), Key(kTestSize - 1));
 
     // must have much smaller db size.
     ASSERT_GT(db_size[0] / 3, db_size[1]);
+printf("Destroy & Reopen: After Final Assert\n"); // scaf debug
   }
 }
-
 TEST_F(DBCompactionTest, SkipStatsUpdateTest) {
   // This test verify UpdateAccumulatedStats is not on
   // if options.skip_stats_update_on_db_open = true
@@ -1326,6 +1330,9 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
   options.num_levels = 4;
   options.level0_file_num_compaction_trigger = 3;
   options.max_background_compactions = 3;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.target_file_size_base = (200 * 20);  // musn't have all kvs fitting into one file: leave about 200 per file, as for direct values
+#endif
 
   DestroyAndReopen(options);
   int32_t value_size = 10 * 1024;  // 10 KB
@@ -2888,7 +2895,6 @@ TEST_P(CompactionPriTest, Test) {
     ASSERT_NE("NOT_FOUND", Get(Key(i)));
   }
 }
-
 INSTANTIATE_TEST_CASE_P(
     CompactionPriTest, CompactionPriTest,
     ::testing::Values(CompactionPri::kByCompensatedSize,

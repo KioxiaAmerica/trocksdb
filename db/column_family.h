@@ -342,6 +342,8 @@ class ColumnFamilyData {
 
 #ifdef INDIRECT_VALUE_SUPPORT
   std::shared_ptr<VLog> vlog() { return vlog_;}    // the VLog to be used for this column family.  May contain no rings
+#endif
+#if 0 // scaf will be removed
   // routines to access the vector of end-of-ring data
   void SetRingEnds(std::vector<uint64_t>&& ring_ends_) { ring_ends = ring_ends_; }
   void SetRingEnd(size_t index, uint64_t fileno) { ring_ends[index] = fileno; } 
@@ -435,7 +437,8 @@ class ColumnFamilyData {
   // because it leaves default_cfd_cache_ holding a pointer to a deleted object.  To avoid this problem, we put the VLog
   // under control of a shared_ptr, so that the default VLog will be deleted only when the final default_cfd_cache_ is freed.
   std::shared_ptr<VLog> vlog_;   // the VLog to be used for this column family.  May contain 0 rings
-
+#endif
+#if 0 // scaf will be removed
   // ring_ends is set by Recover() to tell us the state  of each ring at the time of the last sync.
   // During options processing we may add (empty) rings, so that ring_ends can be used for initialization.
   // After that, it is unused: writing to the manifest queries the rings directly.

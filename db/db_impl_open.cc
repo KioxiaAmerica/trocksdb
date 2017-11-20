@@ -1105,7 +1105,7 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
       FileType type;  // return value, giving type of file
 
       if(ParseFileName(fname, &number, &type) && type==kVLogFile){
-        // .vlg file exists.  We have to cover an OS kludge (at least on Windows): it is illegal to memory-map
+        // .vlg file exists, with good filename.  We have to cover an OS kludge (at least on Windows): it is illegal to memory-map
         // an empty file.  When we eventually open the .vlg file, that will crash if it is empty.  So, right here
         // we delete any empty .vlg file that we see from the filesystem, before it can cause trouble.
         uint64_t filesize;
