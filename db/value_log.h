@@ -367,7 +367,7 @@ public:
 ;
 
   // Given the level of an output file, return the ring number, if any, to write to (-1 if no ring)
-  int VLogRingNoForLevelOutput(int level) { int i; for(i=0; i<starting_level_for_ring_.size() && level<starting_level_for_ring_[i];++i); return i-1;}
+  int VLogRingNoForLevelOutput(int level) { int i; for(i=0; i<starting_level_for_ring_.size() && level>=starting_level_for_ring_[i];++i); return i-1;}
 
   // Return the VLogRing for the given level
   VLogRing *VLogRingFromNo(int ringno) { return rings_[ringno].get(); }
