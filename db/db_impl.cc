@@ -2044,7 +2044,7 @@ Status DBImpl::DeleteFile(std::string name) {
       return Status::InvalidArgument("File in level 0, but not oldest");
     }
     edit.SetColumnFamily(cfd->GetID());
-    edit.DeleteFile(level, number);
+    edit.DeleteFile(level, metadata);
     status = versions_->LogAndApply(cfd, *cfd->GetLatestMutableCFOptions(),
                                     &edit, &mutex_, directories_.GetDbDir());
     if (status.ok()) {
@@ -2112,7 +2112,7 @@ Status DBImpl::DeleteFilesInRange(ColumnFamilyHandle* column_family,
             continue;
           }
           edit.SetColumnFamily(cfd->GetID());
-          edit.DeleteFile(i, level_file->fd.GetNumber());
+          edit.DeleteFile(i, level_file);
           deleted_files.push_back(level_file);
           level_file->being_compacted = true;
         }

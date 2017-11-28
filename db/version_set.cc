@@ -50,6 +50,9 @@
 #include "util/stop_watch.h"
 #include "util/string_util.h"
 #include "util/sync_point.h"
+#ifdef INDIRECT_VALUE_SUPPORT
+#include "db/value_log.h"
+#endif
 
 namespace rocksdb {
 
@@ -314,6 +317,9 @@ class FilePicker {
 VersionStorageInfo::~VersionStorageInfo() { delete[] files_; }
 
 Version::~Version() {
+#if DEBLEVEL&32
+printf("~Version: %p\n",this);
+#endif
   assert(refs_ == 0);
 
   // Remove from linked list
@@ -328,6 +334,11 @@ Version::~Version() {
       f->refs--;
       if (f->refs <= 0) {
         vset_->obsolete_files_.push_back(f);
+#if DEBLEVEL&16
+printf("~Version: adding %p to obsolete_files_\n",f);
+if(f->ringbwdchain.size() && f->ringbwdchain[0]!=f)
+  printf("File is still active on ring!\n");
+#endif
       }
     }
   }
@@ -962,7 +973,11 @@ Version::Version(ColumnFamilyData* column_family_data, VersionSet* vset,
       next_(this),
       prev_(this),
       refs_(0),
-      version_number_(version_number) {}
+      version_number_(version_number) {
+#if DEBLEVEL&32
+printf("Version: %p\n",this);
+#endif
+}
 
 void Version::Get(const ReadOptions& read_options, const LookupKey& k,
                   PinnableSlice* value, Status* status,
@@ -2353,6 +2368,14 @@ VersionSet::~VersionSet() {
       table_cache->Release(file->table_reader_handle);
       TableCache::Evict(table_cache, file->fd.GetNumber());
     }
+#ifdef INDIRECT_VALUE_SUPPORT
+    // The SST is about to be deleted.  Remove it from any VLog queues it is attached to.
+    // We have to do this explicitly rather than in a destructor because FileMetaData blocks get copied & put on queues
+    // with no regard for ownership.  Rather than try to enforce no-copy semantics everywhere we root out all the delete calls and put this there
+    if(file->vlog)file->vlog->VLogSstDelete(*file);
+    // it is possible that files on the added list were never actually added to the rings.  Those files will
+    // not have a vlog pointer so we won't try to take them off the rings.
+#endif
     delete file;
   }
   obsolete_files_.clear();
@@ -3787,6 +3810,9 @@ void VersionSet::GetObsoleteFiles(std::vector<FileMetaData*>* files,
   for (auto f : obsolete_files_) {
     if (f->fd.GetNumber() < min_pending_output) {
       files->push_back(f);
+#if DEBLEVEL&16
+printf("GetObsoleteFiles: adding to sst_delete_files: %p\n",f);
+#endif
     } else {
       pending_files.push_back(f);
     }

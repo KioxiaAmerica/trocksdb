@@ -8,7 +8,6 @@
 //  (found in the LICENSE.Apache file in the root directory).
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-#define DEBLEVEL 0
 
 #include <atomic>
 #include <memory>
@@ -159,7 +158,7 @@ ringexpansion = 16384;  // scaf
 // We use release-acquire ordering for the VLogRing file and offset to avoid needing a Mutex in the reader
 // If the circular buffer gets full we have to relocate it, so we use release-acquire
 void VLogRing::VLogRingWrite(
-std::string& bytes,   // The bytes to be written, jammed together
+std::vector<NoInitChar>& bytes,   // The bytes to be written, jammed together
 std::vector<VLogRingRefFileOffset>& rcdend,  // The running length of all records up to and including this one
 VLogRingRef& firstdataref,   // result: reference to the first values written
 std::vector<VLogRingRefFileLen>& fileendoffsets,   // result: ending offset of the data written to each file.  The file numbers written are sequential
@@ -197,6 +196,9 @@ std::vector<Status>& resultstatus   // place to save error status.  For any file
   
   // Move the reservation pointer in the file.  Does not have to be atomic with the read, since we have acquired writelock
   atomics.fd_ring_head_fileno.store(fileno_for_writing,std::memory_order_release);
+#if DEBLEVEL&8
+printf("Head pointer set; pointers=%lld %lld %lld %lld\n",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_tail_fileno_shadow.load(),atomics.fd_ring_head_fileno_shadow.load(),atomics.fd_ring_head_fileno.load());
+#endif
 
   // Figure out which ring slot the new file(s) will go into
   size_t new_ring_slot = Ringx(fileno_for_writing);
@@ -212,9 +214,13 @@ std::vector<Status>& resultstatus   // place to save error status.  For any file
 
   // Create the file as sequential, and write it out
   {
+#if DEBLEVEL&2
+printf("Writing sequential file %s: %zd values, %zd bytes\n",fname.c_str(),rcdend.size(), bytes.size()); // scaf debug
+#endif
+
     unique_ptr<WritableFile> writable_file;
     iostatus = immdbopts_->env->NewWritableFile(fname,&writable_file,envopts_);  // open the file
-    if(iostatus.ok())iostatus = writable_file->Append(Slice(bytes));  // write out the data
+    if(iostatus.ok())iostatus = writable_file->Append(Slice((char *)bytes.data(),bytes.size()));  // write out the data
 
   // Sync the written data.  We must make sure it is synced before the SSTs referring to it are committed to the manifest.
   // We might as well sync it right now
@@ -234,10 +240,15 @@ std::vector<Status>& resultstatus   // place to save error status.  For any file
   // Advance the shadow file pointer to indicate that the file is ready for reading.  Since other threads may be
   // doing the same thing, make sure the file pointer never goes backwards
 // scaf could hop over unfinished writes... not a problem?  no, we should advance when we are writing <= the shadow pointer, but advance over all valid file pointers
+// scaf define shadow to mean 'all lower files are valid', and update it when we are writing to the shadow; update to include all valid following files;
+// interlock to make sure we retry after writing to ensure the pointer doesn't get stuck if another thread installs files while we are updating the pointer
   VLogRingRefFileno expected_fileno = atomics.fd_ring_head_fileno_shadow.load(std::memory_order_acquire);
   while(expected_fileno<fileno_for_writing) {
     if(atomics.fd_ring_head_fileno_shadow.compare_exchange_strong(expected_fileno,fileno_for_writing,std::memory_order_acq_rel))break;
   };
+#if DEBLEVEL&8
+printf("Shadow head pointer set; pointers=%lld %lld %lld %lld\n",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_tail_fileno_shadow.load(),atomics.fd_ring_head_fileno_shadow.load(),atomics.fd_ring_head_fileno.load());
+#endif
 
   // fill in the FileRef for the first value, with its length
   firstdataref.FillVLogRingRef(ringno_,fileno_for_writing,0,rcdend[0]);  // scaf offset goes away
@@ -255,19 +266,6 @@ std::vector<Status>& resultstatus   // place to save error status.  For any file
 
   return;
 
-// acquire spin lock
-//   allocate data to files, create filelengths return value
-//   if ring must be reallocated (check shadow head against shadow tail pointer, read atomically)
-//     exchange ring usecount with large negative value
-//     pause until ring usecount is (large neg)-(original usecount)
-//     reallocate, set new values for base & length
-//     copy old data, delete old ring
-//     atomic store of 0 to ring usecount
-//   atomic write of new shadow head/offset
-// release spin lock
-// open new files, write data, put fd pointer into ring
-// atomic write to head/offset
-// atomic incr ring usecount by 0 (to force update of new fds)
 }
 
 // Read the bytes referred to in the given VLogRingRef.  Uses release-acquire ordering to verify validity of ring
@@ -322,7 +320,7 @@ void VLogRing::VLogRingSstInstall(
     
   ReleaseLock();
 #if DEBLEVEL&1
-printf("VLogRingSstInstall newsst=%p ref0=%lld",&newsst,newsst.indirect_ref_0[ringno_]); // scaf debug
+printf("VLogRingSstInstall newsst=%p ref0=%lld refs=%d",&newsst,newsst.indirect_ref_0[ringno_],newsst.refs); // scaf debug
 printf("; queue=");for(int i = 1;i<6;++i){int ct=0; FileMetaData* qp=fd_ring[i].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
 printf("; refcount=");for(int i = 1;i<6;++i)printf("%d ",fd_ring[i].refcount);
 printf("\n");
@@ -360,6 +358,9 @@ void VLogRing::VLogRingSstUnCurrent(
           // Now tailfile is the lowest file# that has a nonempty queue, unless there are no files, in which case it is one past the shadow head
           // Save this value in the ring
           atomics.fd_ring_tail_fileno_shadow.store(shadowtailfile,std::memory_order_release); 
+#if DEBLEVEL&8
+printf("Shadow tail pointer set; pointers=%lld %lld %lld %lld\n",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_tail_fileno_shadow.load(),atomics.fd_ring_head_fileno_shadow.load(),atomics.fd_ring_head_fileno.load());
+#endif
         }
       }
     }
@@ -368,7 +369,7 @@ void VLogRing::VLogRingSstUnCurrent(
 
   ReleaseLock();
 #if DEBLEVEL&1
-printf("VLogRingSstUnCurrent retiringsst=%p ref0=%lld",&retiringsst,retiringsst.indirect_ref_0[ringno_]); // scaf debug
+printf("VLogRingSstUnCurrent retiringsst=%p ref0=%lld refs=%d",&retiringsst,retiringsst.indirect_ref_0[ringno_],retiringsst.refs); // scaf debug
 printf("; queue=");for(int i = 1;i<6;++i){int ct=0; FileMetaData* qp=fd_ring[i].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
 printf("; refcount=");for(int i = 1;i<6;++i)printf("%d ",fd_ring[i].refcount);
 printf("\n");
@@ -414,12 +415,15 @@ void VLogRing::VLogRingSstDelete(
         // Now tailfile is the lowest file# that has a nonempty queue, unless there are no files, in which case it is one past the shadow head
         // Save this value in the ring
         atomics.fd_ring_tail_fileno.store(tailfile,std::memory_order_release); 
+#if DEBLEVEL&8
+printf("Tail pointer set; pointers=%lld %lld %lld %lld\n",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_tail_fileno_shadow.load(),atomics.fd_ring_head_fileno_shadow.load(),atomics.fd_ring_head_fileno.load());
+#endif
       }
     }
 
   ReleaseLock();
 #if DEBLEVEL&1
-printf("VLogRingSstDelete expiringsst=%p ref0=%lld",&expiringsst,expiringsst.indirect_ref_0[ringno_]); // scaf debug
+printf("VLogRingSstDelete expiringsst=%p ref0=%lld refs=%d",&expiringsst,expiringsst.indirect_ref_0[ringno_],expiringsst.refs); // scaf debug
 printf("; queue=");for(int i = 1;i<6;++i){int ct=0; FileMetaData* qp=fd_ring[i].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
 printf("; refcount=");for(int i = 1;i<6;++i)printf("%d ",fd_ring[i].refcount);
 printf("\n");
@@ -474,7 +478,7 @@ Status VLog::VLogInit(
 printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data()); // scaf debug
 #endif
   // Save the ring starting levels
-    starting_level_for_ring_.push_back(1);  // scaf
+    starting_level_for_ring_.push_back(0);  // scaf
 
   // If there are VlogRings now, it means that somehow the database was reopened without being destroyed.  This is bad form but not necessarily fatal.
   // To cope, we will delete the old rings, which should go through and free up all their resources.  Then we will continue with new rings.
@@ -564,8 +568,8 @@ Status VLog::VLogGet(
   void VLog::VLogSstInstall(
     FileMetaData& newsst   // the SST that has just been created & filled in
   ) {
-#if DEBLEVEL&1
-printf("VLogSstInstall newsst=%p\n",&newsst); // scaf debug
+#if DEBLEVEL&64
+if(!rings_.size() || !newsst.indirect_ref_0.size())printf("VLogSstInstall newsst=%p\n",&newsst); // scaf debug
 #endif
     // Initialization of SSTs that have been installed on the ring:
     // put the address of this VLog into the SST, so we can get back to this VLog from a reference to the file
@@ -598,8 +602,8 @@ printf("VLogSstInstall newsst=%p\n",&newsst); // scaf debug
   void VLog::VLogSstUnCurrent(
     FileMetaData& retiringsst   // the SST that has just been obsoleted
   ) {
-#if DEBLEVEL&1
-printf("VLogSstUnCurrent retiringsst=%p rings_.size()=%zd\n",&retiringsst,rings_.size()); // scaf debug
+#if DEBLEVEL&64
+if(!rings_.size() || !retiringsst.indirect_ref_0.size())printf("VLogSstUnCurrent retiringsst=%p rings_.size()=%zd\n",&retiringsst,rings_.size()); // scaf debug
 #endif
     if(!rings_.size())return;  // no action if the rings have not, or never will be, created
     for (int i=0;i<retiringsst.indirect_ref_0.size();++i)if(retiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstUnCurrent(retiringsst);
@@ -609,8 +613,8 @@ printf("VLogSstUnCurrent retiringsst=%p rings_.size()=%zd\n",&retiringsst,rings_
   void VLog::VLogSstDelete(
     FileMetaData& expiringsst   // the SST that is about to be destroyed
   ) {
-#if DEBLEVEL&1
-printf("VLogSstDelete expiringsst=%p rings_.size()=%zd\n",&expiringsst,rings_.size()); // scaf debug
+#if DEBLEVEL&64
+if(!rings_.size() || !expiringsst.indirect_ref_0.size())printf("VLogSstDelete expiringsst=%p rings_.size()=%zd\n",&expiringsst,rings_.size()); // scaf debug
 #endif
     if(!rings_.size())return;  // no action if the rings have not, or never will be, created
     for (int i=0;i<expiringsst.indirect_ref_0.size();++i)if(expiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstDelete(expiringsst);

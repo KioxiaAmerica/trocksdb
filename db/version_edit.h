@@ -17,11 +17,13 @@
 #include "db/dbformat.h"
 #include "util/arena.h"
 #include "util/autovector.h"
+#ifdef INDIRECT_VALUE_SUPPORT
+#include "db/value_log.h"
+#endif
 
 namespace rocksdb {
 
 class VersionSet;
-class VLog;
 class ColumnFamilyData;
 
 const uint64_t kFileNumberMask = 0x3FFFFFFFFFFFFFFF;
@@ -139,6 +141,12 @@ struct FileMetaData {
         ,vlog(nullptr)   // vlog is filled in when we add the file to a CF
 #endif
         {}
+
+#if DEBLEVEL&64
+  ~FileMetaData () {
+    printf("Destructing %p, vlog=%p, indirect_ref_0.size()=%zd\n",this,vlog,indirect_ref_0.size());
+  }
+#endif
 
   // REQUIRED: Keys must be given to the function in sorted order (it expects
   // the last key to be the largest).
@@ -261,8 +269,31 @@ class VersionEdit {
   }
 
   // Delete the specified "file" from the specified "level".
+  // This entry point is used only by some old tests; prefer calling with metadata
   void DeleteFile(int level, uint64_t file) {
+#if DEBLEVEL&32
+printf("VersionEdit::DeleteFile: %zd\n",file);
+#endif
     deleted_files_.insert({level, file});
+  }
+  void DeleteFile(int level, FileMetaData *f) {
+#if DEBLEVEL&32
+printf("VersionEdit::DeleteFile: %p\n",f);
+#endif
+#ifdef INDIRECT_VALUE_SUPPORT
+    // At this point we are committed to deleting the input file f.  By good design we should
+    // do our VLog bookkeeping in SaveTo(), but unfortunately at that point all that's left of the file is the
+    // file number.  We notify the VLog that this file is no longer available for compaction; that way it won't be
+    // considered when we look for active recycling.  At this point we still hold the mutex, and we still have being_compacted
+    // set in the File: thus we can be sure that any file in the queue that is not marked as being compacted is safe
+    // to active-recycle.  'Deleting' has no immediate effect on the file, which is still active in the
+    // current version.  It will eventually be deleted when its usecount goes to 0; at that point we will destroy the
+    // FileMetaData and decrement the usecount for it in the queue.
+    // We have to UnCurrent the file so that we treat its eventual deletion as a signal to delete any VLog files that its
+    // removal makes unnecessary; without this mark the VLog files will hang around, as they must if the database is merely closed.
+    if(f->vlog)f->vlog->VLogSstUnCurrent(*f);  // mark the file as dormant
+#endif
+    DeleteFile(level, f->fd.GetNumber());
   }
 
   // Number of edits

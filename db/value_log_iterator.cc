@@ -10,11 +10,9 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/value_log_iterator.h"
-#include "db/value_log.h"
 #include "rocksdb/status.h"
 
 namespace rocksdb {
-
 
 // Code for building the indirect-value files.
 // This iterator lies between the compaction-iterator and the builder loop.
@@ -38,6 +36,9 @@ namespace rocksdb {
     int outputringno = current_vlog->VLogRingNoForLevelOutput(level);  // get the ring number we will write output to
     if(outputringno<0){use_indirects_ = false; return;}  // if no output ring, skip looking for indirects
     VLogRing *outputring = current_vlog->VLogRingFromNo(outputringno);  // the ring we will write values to
+#if DEBLEVEL&4
+printf("Creating iterator for level=%d, earliest_passthrough=",level); // scaf debug
+#endif
 
     // Calculate the remapping threshold.  References earlier than this will be remapped.
     //
@@ -57,6 +58,10 @@ namespace rocksdb {
            // empty ring.  What happens then doesn't matter, but to keep things polite we check for it rather than overflowing the unsigned subtraction.
       earliest_passthrough.push_back((VLogRingRefFileno)(shadow_tail + 0.4 * head));  // scaf make fraction programmable
     }
+#if DEBLEVEL&4
+    for(int i=0;i<earliest_passthrough.size();++i)printf("%lld ",earliest_passthrough[i]);
+printf("\n");
+#endif
 
     // Read all the kvs from c_iter and save them.  We start at the first kv
     // We create:
@@ -68,7 +73,7 @@ namespace rocksdb {
     //
     // The Slices are references to pinned tables and we return them unchanged as the result of our iterator.
     // They are immediately passed to Builder which must make a copy of the data.
-    std::string diskdata;  // where we accumulate the data to write
+    std::vector<NoInitChar> diskdata;  // where we accumulate the data to write
     std::string indirectbuffer;   // temp area where we read indirect values that need to be remapped
     while(c_iter->Valid() && 
            !(end != nullptr && pcfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0)) {
@@ -101,7 +106,11 @@ namespace rocksdb {
         vclass += vIndirectFirstMap;  // indicate the conversion
         // compress the data scaf
         // CRC the data  scaf
-        diskdata.append(val.data(),val.size());  // scaf
+
+        diskdata.reserve(diskdata.size()+val.size());  // make sure there is room for the new data
+        char *bufend = (char *)diskdata.data()+diskdata.size();   // address of place to put new data
+        diskdata.resize(diskdata.size()+val.size());  // advance end pointer past end of new data
+        memcpy(bufend,val.data(),val.size());  // move in the new data
         diskrecl.push_back(diskdata.size());   // write running sum of record lengths, i. e. current total size of diskdata
       } else if(IsTypeIndirect(c_iter->ikey().type)) {  // scaf
         // value is indirect; does it need to be remapped?
@@ -122,19 +131,22 @@ namespace rocksdb {
             vclass += vIndirectRemapped;  // indicate remapping
             // read the data of the reference.  We don't decompress it or check CRC; we just pass it on.  We know that
             // the compression/CRC do not depend on anything outside the actual value
-            if(indirectbuffer.capacity()<ref.Len())indirectbuffer.reserve(ref.Len());  // make sure buffer will hold the disk record
-// scaf should have a special class for diskdata to allow us to read directly into it
-            if(!(current_vlog->rings_[ref.Ringno()]->fd_ring[current_vlog->rings_[ref.Ringno()]->Ringx(ref.Fileno())].filepointer->
-              Read(ref.Offset(), ref.Len(), &val, (char *)indirectbuffer.data()).ok())){  // read the data
+            diskdata.reserve(diskdata.size()+ref.Len());  // make sure there is room for the new data
+            char *bufend = (char *)diskdata.data()+diskdata.size();   // address of place to put new data
+            diskdata.resize(diskdata.size()+ref.Len());  // advance end pointer past end of new data
+            if(current_vlog->rings_[ref.Ringno()]->fd_ring[current_vlog->rings_[ref.Ringno()]->Ringx(ref.Fileno())].filepointer->
+              Read(ref.Offset(), ref.Len(), &val, bufend).ok()){  // read the data
+              // Here the data was read with no error.  It was probably read straight into the buffer, but in case not, move it there
+              if(bufend!=val.data())memcpy(bufend,val.data(),val.size());
+            } else {
               // Here there was an error reading from the file.  Report the error, and reset the data to empty
               if(vclass<vHasError){   // Don't create an error for this key if it carries one already
                 inputerrorstatus.push_back(Status::IOError("error reading indirect reference."));
                 vclass += vHasError;  // indicate that this key now carries error status...
               }
-              val.clear();  // error: return empty string
+              diskdata.resize(diskdata.size()-ref.Len());  // error: just pretend the reference was to an empty string.  Unreserve the space for the disk record
             }
-
-            diskdata.append(val.data(),val.size());   // copy the opaque compressed data being remapped
+            // move in the record length of the new data
             diskrecl.push_back(diskdata.size());   // write running sum of record lengths, i. e. current total size of diskdata
           } else {
             // indirect value, passed through (normal case).  Mark it as a passthrough, and install the file number in the
@@ -168,6 +180,9 @@ namespace rocksdb {
 
     // Allocate space in the Value Log and write the values out, and save the information for assigning references
     outputring->VLogRingWrite(diskdata,diskrecl,nextdiskref,fileendoffsets,outputerrorstatus);
+#if DEBLEVEL&4
+printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.size());
+#endif
 
     // set up the variables for the first key
     keyno_ = 0;  // we start on the first key

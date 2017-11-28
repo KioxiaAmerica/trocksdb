@@ -682,7 +682,6 @@ std::string VersionEdit::DebugJSON(int edit_num, bool hex_key) const {
     ringfwdchain.resize(earliestref.size(),nullptr);  // keep the chain fields lockstep in size with indirect_ref
     ringbwdchain.resize(earliestref.size(),nullptr);
     vlog = cfd->vlog().get();
-//    cfd->vlog().get();  // Install vlog pointer into the SST
   }
 
 #endif

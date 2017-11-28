@@ -41,6 +41,14 @@ class VersionBuilderTest : public testing::Test {
     for (int i = 0; i < vstorage_.num_levels(); i++) {
       for (auto* f : vstorage_.LevelFiles(i)) {
         if (--f->refs == 0) {
+#ifdef INDIRECT_VALUE_SUPPORT
+          // The SST is about to be deleted.  Remove it from any VLog queues it is attached to.
+          // We have to do this explicitly rather than in a destructor because FileMetaData blocks get copied & put on queues
+          // with no regard for ownership.  Rather than try to enforce no-copy semantics everywhere we root out all the delete calls and put this there
+          if(f->vlog)f->vlog->VLogSstDelete(*f);
+          // it is possible that files on the added list were never actually added to the rings.  Those files will
+          // not have a vlog pointer so we won't try to take them off the rings.
+#endif
           delete f;
         }
       }
@@ -91,6 +99,14 @@ void UnrefFilesInVersion(VersionStorageInfo* new_vstorage) {
   for (int i = 0; i < new_vstorage->num_levels(); i++) {
     for (auto* f : new_vstorage->LevelFiles(i)) {
       if (--f->refs == 0) {
+#ifdef INDIRECT_VALUE_SUPPORT
+        // The SST is about to be deleted.  Remove it from any VLog queues it is attached to.
+        // We have to do this explicitly rather than in a destructor because FileMetaData blocks get copied & put on queues
+        // with no regard for ownership.  Rather than try to enforce no-copy semantics everywhere we root out all the delete calls and put this there
+        if(f->vlog)f->vlog->VLogSstDelete(*f);
+        // it is possible that files on the added list were never actually added to the rings.  Those files will
+        // not have a vlog pointer so we won't try to take them off the rings.
+#endif
         delete f;
       }
     }

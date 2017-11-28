@@ -33,6 +33,9 @@
 #include "table/block_based_table_factory.h"
 #include "util/autovector.h"
 #include "util/compression.h"
+#ifdef INDIRECT_VALUE_SUPPORT
+#include "db/value_log.h"
+#endif
 
 namespace rocksdb {
 
@@ -310,6 +313,9 @@ void SuperVersion::Cleanup() {
     *memory_usage -= m->ApproximateMemoryUsage();
     to_delete.push_back(m);
   }
+#if DEBLEVEL&16
+printf("SuperVersion::Cleanup()\n");
+#endif
   current->Unref();
 }
 

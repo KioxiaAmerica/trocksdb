@@ -18,6 +18,7 @@
 #include "table/internal_iterator.h"
 #include "db/column_family.h"
 #include "db/compaction_iterator.h"
+#include "db/value_log.h"
 
 
 
@@ -63,6 +64,11 @@ public:
       if(ref0_[prevringfno.ringno]>prevringfno.fileno)
         ref0_[prevringfno.ringno]=prevringfno.fileno;  // if current > new, switch to new
     result = ref0_; for(size_t i=0;i<ref0_.size();++i){if(result[i]==high_value)result[i]=0; ref0_[i]=high_value;}
+#if DEBLEVEL&4
+printf("Iterator file info (include_last=%d): ",include_last);
+    for(int i=0;i<result.size();++i)printf("%lld ",result[i]);
+printf("\n");
+#endif
     return;
   }
 
@@ -108,6 +114,40 @@ struct RingFno {
   VLogRingRefFileOffset nextpassthroughref;  // index of next passthrough byte to return
 
 enum valtype : int { vNone=0, vIndirectRemapped=1, vPassthroughDirect=2, vIndirectFirstMap=3, vPassthroughIndirect=4, vHasError=8 };
+
+
+#if 0  // scaf as long as NoInitChar works
+  // class to use for building the buffer to write to disk.  It is like a vector, except that it is not initialized
+  class DiskBuffer {
+    private:
+      char *data;  // where the buffer is built
+      size_t capacity;  // size of *data
+      size_t size;  // amount of valid data so far
+    public:
+      // contructor, given the initial allocation
+      DiskBuffer(size_t len) : capacity(len), size(0), data(new char[capacity]) {}
+      // destructor
+      ~DiskBuffer() {delete[] data;}
+      // append Slice to buffer; if slice data is null, skip the copy and just advance the size
+      void Append(Slice addslice) {
+        if(addslice.data()!=nullptr)memcpy(data+size,addslice.data(),addslice.size());
+        size += addslice.size();
+      }
+      // expand allocation if necessary to make sure newlen bytes fit
+      void Expand(size_t newlen) {
+        if((size+newlen)>capacity) {
+          size_t newallo = size + newlen; if(newallo<(2*capacity))newallo = 2 * capacity;  // get length of 'big enough'; make it grow fast to reduce reallo
+          char *newdata = new char[newallo];
+          memcpy(newdata,data,size);   // copy in the new data
+          delete[] data;  // delete the previous buffer
+          data = newdata;  // set new start-of-buffer...
+          capacity = newallo;   // ...and its capacity
+        }
+      }
+      // get slice representing the buffer
+      Slice GetSlice() {return Slice (data,size);}
+  };
+#endif
 
 };
 

@@ -195,6 +195,9 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
 }
 
 Compaction::~Compaction() {
+#if DEBLEVEL&16
+printf("~Compaction()\n");
+#endif
   if (input_version_ != nullptr) {
     input_version_->Unref();
   }
@@ -274,18 +277,10 @@ bool Compaction::IsTrivialMove() const {
 void Compaction::AddInputDeletions(VersionEdit* out_edit) {
   for (size_t which = 0; which < num_input_levels(); which++) {
     for (size_t i = 0; i < inputs_[which].size(); i++) {
-      out_edit->DeleteFile(level(which), inputs_[which][i]->fd.GetNumber());
-#ifdef INDIRECT_VALUE_SUPPORT
-      // At this point we are committed to deleting the input files to the compaction.  By good design we should
-      // do our VLog bookkeeping in SaveTo(), but unfortunately at that point all that's left of the file is the
-      // file number.  We notify the VLog that this file is no longer available for compaction; that way it won't be
-      // considered when we look for active recycling.  At this point we still hold the mutex, and we still have being_compacted
-      // set in the File: thus we can be sure that any file in the queue that is not marked as being compacted is safe
-      // to active-recycle.  'Deleting' has no immediate effect on the file, which is still active in the
-      // current version.  It will eventually be deleted when its usecount goes to 0; at that point we will destroy the
-      // FileMetaData and decrement the usecount for it in the queue
-      if((inputs_[which][i])->vlog)(inputs_[which][i])->vlog->VLogSstUnCurrent(*inputs_[which][i]);  // mark the file as dormant
+#if DEBLEVEL&16
+printf("AddInputDeletions: DeleteFile sst=%p\n",inputs_[which][i]);
 #endif
+      out_edit->DeleteFile(level(which), inputs_[which][i]);
     }
   }
 }

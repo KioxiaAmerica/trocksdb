@@ -13,6 +13,9 @@
 #include "rocksdb/experimental.h"
 #include "rocksdb/utilities/convenience.h"
 #include "util/sync_point.h"
+#include<chrono>
+#include<thread>
+
 namespace rocksdb {
 
 // SYNC_POINT is not supported in released Windows mode.
@@ -193,35 +196,170 @@ TEST_P(DBCompactionTestWithParam, CompactionDeletionTrigger) {
       options.num_levels = 1;
     }
 
-printf("Before Destroy & Reopen, tid=%d\n",tid); // scaf debug
     DestroyAndReopen(options);
     Random rnd(301);
-printf("After Destroy & Reopen, tid=%d\n",tid); // scaf debug
     const int kTestSize = kCDTKeysPerBuffer * 1024;
     std::vector<std::string> values;
     for (int k = 0; k < kTestSize; ++k) {
       values.push_back(RandomString(&rnd, kCDTValueSize));
       ASSERT_OK(Put(Key(k), values[k]));
     }
-printf("Destroy & Reopen: Finished Put\n"); // scaf debug
     dbfull()->TEST_WaitForFlushMemTable();
     dbfull()->TEST_WaitForCompact();
     db_size[0] = Size(Key(0), Key(kTestSize - 1));
 
-printf("Destroy & Reopen: Starting Delete\n"); // scaf debug
     for (int k = 0; k < kTestSize; ++k) {
       ASSERT_OK(Delete(Key(k)));
     }
-printf("Destroy & Reopen: Finished Delete\n"); // scaf debug
     dbfull()->TEST_WaitForFlushMemTable();
     dbfull()->TEST_WaitForCompact();
     db_size[1] = Size(Key(0), Key(kTestSize - 1));
 
     // must have much smaller db size.
     ASSERT_GT(db_size[0] / 3, db_size[1]);
-printf("Destroy & Reopen: After Final Assert\n"); // scaf debug
   }
 }
+#ifdef INDIRECT_VALUE_SUPPORT
+static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
+
+TEST_F(DBCompactionTest, IndirectTest) {
+  Options options = CurrentOptions();
+  options.write_buffer_size = 10 * 1024 * 1024;
+  options.max_bytes_for_level_multiplier = 2;
+  options.num_levels = 4;
+  options.level0_file_num_compaction_trigger = 3;
+  options.max_background_compactions = 3;
+
+  DestroyAndReopen(options);
+  int32_t value_size = 18;  // 10 KB
+  int32_t key_size = 10 * 1024 - value_size;
+  int32_t batch_size = 20000;
+
+  // Add 2 non-overlapping files
+  Random rnd(301);
+  std::map<int32_t, std::string> values;
+
+  // file 1 [0 => 100]
+  for (int32_t i = 0; i < 100; i++) {
+    values[i] = RandomString(&rnd, value_size);
+    ASSERT_OK(Put(LongKey(i,key_size), values[i]));
+  }
+  ASSERT_OK(Flush());
+
+  // file 2 [100 => 300]
+  for (int32_t i = 100; i < 300; i++) {
+    values[i] = RandomString(&rnd, value_size);
+    ASSERT_OK(Put(LongKey(i,key_size), values[i]));
+  }
+  ASSERT_OK(Flush());
+
+  // 2 files in L0
+  ASSERT_EQ("2", FilesPerLevel(0));
+  CompactRangeOptions compact_options;
+  compact_options.change_level = true;
+  compact_options.target_level = 2;
+  ASSERT_OK(db_->CompactRange(compact_options, nullptr, nullptr));
+  // 2 files in L2
+  ASSERT_EQ("0,0,2", FilesPerLevel(0));
+
+  // file 3 [ 0 => 200]
+  for (int32_t i = 0; i < 200; i++) {
+    values[i] = RandomString(&rnd, value_size);
+    ASSERT_OK(Put(LongKey(i,key_size), values[i]));
+  }
+  ASSERT_OK(Flush());
+  for (int32_t i = 300; i < 300+batch_size; i++) {
+    values[i] = RandomString(&rnd, value_size);
+  }
+
+
+for(int32_t k=0;k<10;++k) {
+  // Many files 4 [300 => 4300)
+  for (int32_t i = 0; i <= 5; i++) {
+    for (int32_t j = 300; j < batch_size+300; j++) {
+//      if (j == 2300) {
+//        ASSERT_OK(Flush());
+//        dbfull()->TEST_WaitForFlushMemTable();
+//      }
+      if((rnd.Next()&0x7f)==0)values[j] = RandomString(&rnd, value_size);  // replace one value in 100
+      ASSERT_OK(Put(LongKey(j,key_size), values[j]));
+    }
+    printf("batch ");
+    std::this_thread::sleep_for(std::chrono::seconds(2));  // give the compactor time to run
+  }
+//  ASSERT_OK(Flush());
+//  dbfull()->TEST_WaitForFlushMemTable();
+//  dbfull()->TEST_WaitForCompact();
+
+  for (int32_t j = 0; j < batch_size+300; j++) {
+    ASSERT_EQ(Get(LongKey(j,key_size)), values[j]);
+  }
+  printf("...verified.\n");
+}
+
+
+  // Verify level sizes
+  uint64_t target_size = 4 * options.max_bytes_for_level_base;
+  for (int32_t i = 1; i < options.num_levels; i++) {
+    ASSERT_LE(SizeAtLevel(i), target_size);
+    target_size = static_cast<uint64_t>(target_size *
+                                        options.max_bytes_for_level_multiplier);
+  }
+
+  size_t old_num_files = CountFiles();
+  std::string begin_string = LongKey(1000,key_size);
+  std::string end_string = LongKey(2000,key_size);
+  Slice begin(begin_string);
+  Slice end(end_string);
+  ASSERT_OK(DeleteFilesInRange(db_, db_->DefaultColumnFamily(), &begin, &end));
+
+  int32_t deleted_count = 0;
+  for (int32_t i = 0; i < 4300; i++) {
+    if (i < 1000 || i > 2000) {
+      ASSERT_EQ(Get(LongKey(i,key_size)), values[i]);
+    } else {
+      ReadOptions roptions;
+      std::string result;
+      Status s = db_->Get(roptions, LongKey(i,key_size), &result);
+      ASSERT_TRUE(s.IsNotFound() || s.ok());
+      if (s.IsNotFound()) {
+        deleted_count++;
+      }
+    }
+  }
+  ASSERT_GT(deleted_count, 0);
+  begin_string = LongKey(5000,key_size);
+  end_string = LongKey(6000,key_size);
+  Slice begin1(begin_string);
+  Slice end1(end_string);
+  // Try deleting files in range which contain no keys
+  ASSERT_OK(
+      DeleteFilesInRange(db_, db_->DefaultColumnFamily(), &begin1, &end1));
+
+  // Push data from level 0 to level 1 to force all data to be deleted
+  // Note that we don't delete level 0 files
+  compact_options.change_level = true;
+  compact_options.target_level = 1;
+  ASSERT_OK(dbfull()->TEST_CompactRange(0, nullptr, nullptr));
+
+  ASSERT_OK(
+      DeleteFilesInRange(db_, db_->DefaultColumnFamily(), nullptr, nullptr));
+
+  int32_t deleted_count2 = 0;
+  for (int32_t i = 0; i < 4300; i++) {
+    ReadOptions roptions;
+    std::string result;
+    Status s = db_->Get(roptions, LongKey(i,key_size), &result);
+    ASSERT_TRUE(s.IsNotFound());
+    deleted_count2++;
+  }
+  ASSERT_GT(deleted_count2, deleted_count);
+  size_t new_num_files = CountFiles();
+  ASSERT_GT(old_num_files, new_num_files);
+}
+
+#endif
+
 TEST_F(DBCompactionTest, SkipStatsUpdateTest) {
   // This test verify UpdateAccumulatedStats is not on
   // if options.skip_stats_update_on_db_open = true

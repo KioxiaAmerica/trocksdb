@@ -18,10 +18,20 @@
 #include "rocksdb/transaction_log.h"
 
 namespace rocksdb {
+
+#define DEBLEVEL 0x7f  // 1=SST ring ops 2=file ops 4=iterator ops 8=ring pointers 16=deleted_files 32=versions 64=top-level ring ops
+
 struct FileMetaData;
 class ColumnFamilyData;
 class Status;
 class Slice;
+
+// class that can be used to create a vector of chars that's doesn't initialize when you resize
+class NoInitChar {
+public:
+  char data;
+  NoInitChar(){};
+};
 
 // The Value Log is the place where values are stored separate from their keys.  Values are written to the Value Log
 // during compaction.
@@ -166,6 +176,9 @@ public:
     refcount(0),
     filename(pathfname) {
   // Open the file as random-access and install the pointer.  If error, pointer will be null
+#if DEBLEVEL&2
+printf("Opening file %s\n",filename.c_str()); // scaf debug
+#endif
   immdbopts->env->NewRandomAccessFile(filename, &filepointer, file_options);
 }
   VLogRingFile() :   // used to initialize empty slot
@@ -321,7 +334,7 @@ VLogRing(
 // number of bytes written to each file
 // We housekeep the end-of-VLogRing information
 void VLogRingWrite(
-std::string& bytes,   // The bytes to be written, jammed together
+std::vector<NoInitChar>& bytes,   // The bytes to be written, jammed together
 std::vector<VLogRingRefFileOffset>& rcdend,  // The running length of all records up to and including this one
 VLogRingRef& firstdataref,   // result: reference to the first value written
 std::vector<VLogRingRefFileLen>& fileendoffsets,   // result: ending offset of the data written to each file.  The file numbers written are sequential
@@ -330,19 +343,6 @@ std::vector<Status>& resultstatus   // place to save error status.  For any file
           // we add the error status to resultstatus and change the sign of the file's entry in fileendoffsets.  (no entry in fileendoffsets
           // can be 0)
 )
-// acquire spin lock
-//   allocate data to files, create filelengths return value
-//   if ring must be reallocated (check shadow head against shadow tail pointer, read atomically)
-//     exchange ring usecount with large negative value
-//     pause until ring usecount is (large neg)-(original usecount)
-//     reallocate, set new values for base & length
-//     copy old data, delete old ring
-//     atomic store of 0 to ring usecount
-//   atomic write of new shadow head/offset
-// release spin lock
-// open new files, write data, put fd pointer into ring
-// atomic write to head/offset
-// atomic incr ring usecount by 0 (to force update of new fds)
 ;
 
 // Read the bytes referred to in the given VLogRingRef.  Uses release-acquire ordering to verify validity of ring
@@ -351,11 +351,6 @@ Status VLogRingGet(
   VLogRingRef& request,  // the values to read
   std::string *response   // the data pointed to by the reference
 )
-// atomic incr of ring usecount -  if negative, atomic decr & wait for nonnegative
-// read ring base & length (protected by usecount)
-// (debug only) atomic read ring offset/head & tail, verify in range
-// read fd, verify non0, read data (protected by usecount)
-// atomic decr of ring usecount
 ;
 
 // Install a new SST into the ring, with the given earliest-VLog reference

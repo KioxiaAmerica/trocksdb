@@ -138,7 +138,9 @@ class VersionBuilder::Rep {
         f->table_reader_handle = nullptr;
       }
 #ifdef INDIRECT_VALUE_SUPPORT
-      // The SST is about to be deleted.  Remove it from any VLog queues it is attached to
+      // The SST is about to be deleted.  Remove it from any VLog queues it is attached to.
+      // We have to do this explicitly rather than in a destructor because FileMetaData blocks get copied & put on queues
+      // with no regard for ownership.  Rather than try to enforce no-copy semantics everywhere we root out all the delete calls and put this there
       if(f->vlog)f->vlog->VLogSstDelete(*f);
       // it is possible that files on the added list were never actually added to the rings.  Those files will
       // not have a vlog pointer so we won't try to take them off the rings.
@@ -268,6 +270,9 @@ class VersionBuilder::Rep {
   // Apply all of the edits in *edit to the current state.
   void Apply(VersionEdit* edit) {
     CheckConsistency(base_vstorage_);
+#if DEBLEVEL&32
+printf("Apply:");
+#endif
 
     // Delete files
     const VersionEdit::DeletedFileSet& del = edit->GetDeletedFiles();
@@ -275,6 +280,9 @@ class VersionBuilder::Rep {
       const auto level = del_file.first;
       const auto number = del_file.second;
       if (level < num_levels_) {
+#if DEBLEVEL&32
+printf(" %zd",number);
+#endif
         levels_[level].deleted_files.insert(number);
         CheckConsistencyForDeletes(edit, number, level);
 
@@ -292,6 +300,9 @@ class VersionBuilder::Rep {
         }
       }
     }
+#if DEBLEVEL&32
+printf("\n");
+#endif
 
     // Add new files
     for (const auto& new_file : edit->GetNewFiles()) {
@@ -318,6 +329,18 @@ class VersionBuilder::Rep {
 
   // Save the current state in *v.
   void SaveTo(VersionStorageInfo* vstorage) {
+#if DEBLEVEL&32
+printf("SaveTo: starting files:");
+    for (int level = 0; level < num_levels_; level++) {
+      const auto& base_files = base_vstorage_->LevelFiles(level);
+      auto base_iter = base_files.begin();
+      auto base_end = base_files.end();
+      for (; base_iter != base_end; ++base_iter) {
+        printf(" %p",*base_iter);
+      }
+    }
+printf("\nfiles after editing:");
+#endif
     CheckConsistency(base_vstorage_);
     CheckConsistency(vstorage);
 
@@ -369,6 +392,9 @@ class VersionBuilder::Rep {
     }
 
     CheckConsistency(vstorage);
+#if DEBLEVEL&32
+printf("\n");
+#endif
   }
 
   void LoadTableHandlers(InternalStats* internal_stats, int max_threads,
@@ -425,8 +451,14 @@ class VersionBuilder::Rep {
   void MaybeAddFile(VersionStorageInfo* vstorage, int level, FileMetaData* f) {
     if (levels_[level].deleted_files.count(f->fd.GetNumber()) > 0) {
       // f is to-be-delected table file
+#if DEBLEVEL&32
+printf(" ~%p(%zd)",f,f->fd.GetNumber());
+#endif
       vstorage->RemoveCurrentStats(f);
     } else {
+#if DEBLEVEL&32
+printf(" %p",f);
+#endif
       vstorage->AddFile(level, f, info_log_);
     }
   }
