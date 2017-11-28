@@ -423,9 +423,11 @@ ColumnFamilyData::ColumnFamilyData(
       ROCKS_LOG_INFO(ioptions_.info_log, "\t(skipping printing options)\n");
     }
   }
+#ifdef INDIRECT_VALUE_SUPPORT
   // If the selected table doesn't support indirect values, leave the vlog_ pointer at its initial (nullptr) value
   // If it supports indirect values, create a vlog
   if(cf_options.table_factory->supports_indirect_values)vlog_ = std::make_shared<VLog>(this);
+#endif
 
   RecalculateWriteStallConditions(mutable_cf_options_);
 }
