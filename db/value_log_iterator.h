@@ -91,7 +91,7 @@ private:
   std::vector<char> valueclass;   // one entry per key.  bit 0 means 'value is a passthrough'; bit 1 means 'value is being converted from direct to indirect'
   std::vector<VLogRingRefFileOffset> diskrecl;  // running total of record lengths in diskdata
   VLogRingRef nextdiskref;  // reference for the first or next first data written to VLog
-  std::vector<VLogRingRefFileLen>fileendoffsets;   // end+1 offsets of the data written to successive VLog files
+  std::vector<VLogRingRefFileOffset>fileendoffsets;   // end+1 offsets of the data written to successive VLog files
   std::vector<Status> inputerrorstatus;  // error status returned by the iterator
   std::vector<Status> outputerrorstatus;  // error status returned when writing the output files
   std::shared_ptr<VLog> current_vlog;

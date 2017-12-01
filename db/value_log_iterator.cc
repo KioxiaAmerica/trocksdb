@@ -53,7 +53,7 @@ printf("Creating iterator for level=%d, earliest_passthrough=",level); // scaf d
     std::vector<VLogRingRefFileno> earliest_passthrough;  // for each ring, the lowest file# that will remain unmapped
     for(int i = 0;i<current_vlog->rings_.size();++i) {
       VLogRingRefFileno head = current_vlog->rings_[i]->atomics.fd_ring_head_fileno.load(std::memory_order_acquire);  // last file with data
-      VLogRingRefFileno shadow_tail = current_vlog->rings_[i]->atomics.fd_ring_tail_fileno_shadow.load(std::memory_order_acquire);  // first file with live refs
+      VLogRingRefFileno shadow_tail = current_vlog->rings_[i]->atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // first file with live refs
       if(head>shadow_tail)head-=shadow_tail; else head=0;  // change 'head' to head-tail.  It would be possible for tail to pass head, on an
            // empty ring.  What happens then doesn't matter, but to keep things polite we check for it rather than overflowing the unsigned subtraction.
       earliest_passthrough.push_back((VLogRingRefFileno)(shadow_tail + 0.4 * head));  // scaf make fraction programmable

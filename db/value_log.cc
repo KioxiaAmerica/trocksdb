@@ -11,6 +11,8 @@
 
 #include <atomic>
 #include <memory>
+#include <algorithm>
+#include <math.h>
 #include "db/value_log.h"
 #include "db/column_family.h"
 #include "db/version_edit.h"
@@ -24,6 +26,12 @@ namespace rocksdb {
 static const VLogRingRefFileno high_value = ((VLogRingRefFileno)-1)>>1;  // biggest positive value
 static const float expansion_fraction = 0.25;  // fraction of valid files to leave for expansion
 static const int expansion_minimum = 1000;  // minimum number of expansion files
+// The deletion deadband is the number of files at the end of the VLog that are protected from deletion.  The problem is that files added to the
+// VLog are unreferenced (and unprotected by earlier references) until the Version has been installed.  If the tail pointer gets to such a file while
+// it is still unprotected, it will be deleted prematurely.  Keeping track of which files should be released at the end of each compaction is a pain,
+// so we simply don't delete files that are within a few compactions of the end.  The deadband is a worst-case estimate of the number of VLog files
+// that could be created (in all threads) between the time a compaction starts and the time its Version is ratified
+static const int deletion_deadband = 10;  // scaf should be 1000 for multi-VLog files
 
 // Convert a filename, which is known to be a valid vlg filename, to the ring and filenumber in this VLog
 static ParsedFnameRing VlogFnametoRingFname(std::string pathfname) {
@@ -110,12 +118,10 @@ ringexpansion = 16384;  // scaf
     if(fnring.ringno==ringno) {  // If this file is for our ring...
       if(earliest_ref<=fnring.fileno && fnring.fileno<=latest_ref) {
         // the file is in the range pointed to by the SSTs (not before the first reference, and not after the last).  Open it
-#if 0 // scaf delete
         std::unique_ptr<RandomAccessFile> fileptr;  // pointer to the opened file
-        if((immdbopts_->env->NewRandomAccessFile(pathfname, &fileptr,envopts_)).ok()){  // open the file if it exists
-#endif
+        immdbopts_->env->NewRandomAccessFile(pathfname, &fileptr,envopts_);  // open the file if it exists
           // move the file reference into the ring, and publish it to all threads
-        fd_ring[Ringx(fnring.fileno)]=std::move(VLogRingFile(pathfname,immdbopts_,envopts_));
+        fd_ring[Ringx(fnring.fileno)]=std::move(VLogRingFile(pathfname,fileptr));
         // if error opening file, we can't do anything useful, so leave file unopened, which will give an error if a value in it is referenced
 // scaf error?
       } else {
@@ -130,13 +136,13 @@ ringexpansion = 16384;  // scaf
   // The conversion from file# to slot is fixed given the size of the ring, so the first
   // file does not necessarily go into position 0
   // The tail pointers point to the oldest ref
-  atomics.fd_ring_tail_fileno_shadow.store(earliest_ref,std::memory_order_release);
+// scaf delete  atomics.fd_ring_tail_fileno_shadow.store(earliest_ref,std::memory_order_release);
   atomics.fd_ring_tail_fileno.store(earliest_ref,std::memory_order_release);  // init at 0
   // The head pointers point to the last entry.  But, we always start by
   // creating a new file.  The oldest file may have some junk at the end, which will hang around until
   // the ring recycles.
   atomics.fd_ring_head_fileno.store(latest_ref,std::memory_order_release);
-  atomics.fd_ring_head_fileno_shadow.store(latest_ref,std::memory_order_release);
+// scaf delete  atomics.fd_ring_head_fileno_shadow.store(latest_ref,std::memory_order_release);
 // obsolete  // The index into the last file is always 0, since we are starting on a new file
 // obsolete  atomics.fd_ring_head_fileoffset = 0;
   // Init ring usecount to 0, meaning 'not in use', and set write lock to 'available'
@@ -147,6 +153,33 @@ ringexpansion = 16384;  // scaf
 
 }
 
+
+// See how many files need to be deleted.  Result is a vector of them, and updated file pointers.
+// This whole routine must run under the lock for the ring
+void VLogRing::CollectDeletions(
+  VLogRingRefFileno tailfile,  // up-to-date tail file number.  There must be no files before it.
+  VLogRingRefFileno headfile,  // up-to-date head file number
+  size_t slotx,   // slot number corresponding to tailfile.  Must have been calculated during the lock period (least the ring have moved)
+  std::vector<VLogRingFile>& deleted_files  // result: the files that are ready to be deleted
+) {
+  if(fd_ring[slotx].refcount)return;  // return fast if the first file does not need to be deleted
+  while(1) {  // loop till tailfile is right
+    deleted_files.push_back(std::move(fd_ring[slotx]));  // mark file for deletion
+    if(++slotx==fd_ring.size())slotx=0;  // Step to next slot; don't use Ringx() lest it perform a slow divide
+    ++tailfile;  // Advance file number to match slot pointer
+    if(tailfile+deletion_deadband>headfile)break;   // Tail must stop at one past head, and that only if ring is empty; but we enforce the deadband
+    if(fd_ring[slotx].refcount)break;  // if the current slot has references, it will become the shadow tail
+  }
+  // Now tailfile is the lowest file# that has a nonempty queue, unless there are no files, in which case it is one past the shadow head
+  // Save this value in the ring
+  atomics.fd_ring_tail_fileno.store(tailfile,std::memory_order_release);
+  // If we delete past the queued pointer, move the queued pointer
+  if(tailfile>atomics.fd_ring_queued_fileno.load())atomics.fd_ring_queued_fileno.store(tailfile,std::memory_order_release);
+#if DEBLEVEL&8
+printf("Tail pointer set; pointers=%lld %lld\n",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
+#endif
+
+}
 
 
 // Write accumulated bytes to the VLogRing.  First allocate the bytes to files, being
@@ -160,16 +193,14 @@ ringexpansion = 16384;  // scaf
 void VLogRing::VLogRingWrite(
 std::vector<NoInitChar>& bytes,   // The bytes to be written, jammed together
 std::vector<VLogRingRefFileOffset>& rcdend,  // The running length of all records up to and including this one
-VLogRingRef& firstdataref,   // result: reference to the first values written
-std::vector<VLogRingRefFileLen>& fileendoffsets,   // result: ending offset of the data written to each file.  The file numbers written are sequential
+VLogRingRef& firstdataref,   // result: reference to the first value written
+std::vector<VLogRingRefFileOffset>& fileendoffsets,   // result: ending offset of the data written to each file.  The file numbers written are sequential
           // following the one in firstdataref.  The starting offset in the first file is in firstdataref; it is 0 for the others
-std::vector<Status>& resultstatus   // place to save error status.  For any file that got an error in writing or reopening,
+std::vector<Status>& resultstatus   // result: place to save error status.  For any file that got an error in writing or reopening,
           // we add the error status to resultstatus and change the sign of the file's entry in fileendoffsets.  (no entry in fileendoffsets
           // can be 0).  must be initialized to empty by the caller
 )
 {
-  Status iostatus;  // where we save status from the file I/O
-
   // In this implementation, we write only complete files, rather than adding on to the last one
   // written by the previous call.  That way we don't have to worry about who is going to open the last file, and
   // whether it gets opened in time for the next batch to be added on.
@@ -182,61 +213,146 @@ std::vector<Status>& resultstatus   // place to save error status.  For any file
   // This also avoids errors if there are no references
   if(!bytes.size())return;   // fast exit if no data
 
-  // scaf version for single file
+  std::vector<VLogRingFile> deleted_files;  // files put here will be deleted at the end of this routine
+
+  // split the input into file-sized pieces
+int maxfilesize = 20000;  // scaf
+  // Loop till we have processed all the inputs
+  int64_t prevbytes = 0;  // total bytes written to previous files
+  for(size_t rcdx = 0; rcdx<rcdend.size();++rcdx){   // rcdptr is the index of the next input record to process
+    // Calculate the output filesize, erring on the side of larger files.  In other words, we round down the number
+    // of files needed, and get the target filesize from that.  For each calculation we use the number of bytes remaining
+    // in the input, so that if owing to breakage a file gets too long, we will keep trying to prorate the remaining bytes
+    // into the proper number of files.  We may end up reducing the number of files created if there is enough breakage.
+    double bytesleft = (double)(bytes.size()-prevbytes);  // #unprocessed bytes, which is total - (total processed up to previous record).
+    // Because zero-length files are not allowed, we need to check to make sure there is data to put into a file
+    // (consider the case of lengths 5 5 5 5 1000000 0 0 0 0  which we would like to split into two files of size 500005).  If there
+    // is no data left, stop with the files we have - the zero-length records will add on to the end of the last file
+    if(bytesleft==0.0)break;   // stop to avoid 0-length file
+    double targetfilect = std::max(1.0,std::floor(bytesleft/(double)maxfilesize));  // number of files expected, rounded down
+    int64_t targetfileend = prevbytes + (int64_t)(bytesleft/targetfilect);  // min endpoint for this file (min number of bytes plus number of bytes previously output)
+    // Allocate records to this file until the minimum fileend is reached.  Use binary search in case there are a lot of small files (questionable decision, since
+    // the files would have been added one by one)
+    size_t left = rcdx-1;  // init brackets for search
+    // the loop variable rcdx will hold the result of the search, fulfilling its role as pointer to the end of the written block
+    rcdx=rcdend.size()-1;
+    while(rcdx!=(left+1)) {
+      // at top of loop rcdend[left]<targetfileend and rcdend[rcdx]>=targetfileend.  This remains invariant.  Note that left may be before the search region, or even -1
+      // Loop terminates when rcdx-left=1; at that point rcdx points to the ending record, i. e. the first record that contains enough data
+      // Calculate the middle record position, which is known not to equal an endpoint (since rcdx-left>1)
+      size_t mid = left + ((rcdx-left)>>1);   // index of middle value
+      // update one or the other input pointer
+      if(rcdend[mid]<targetfileend)left=mid; else rcdx=mid;
+    }
+    // rcdend[rcdx] has the file length.  Call for the output file.
+    fileendoffsets.push_back(rcdend[rcdx]-prevbytes);
+    prevbytes = rcdend[rcdx];  // update total # bytes written
+  }
 
   // Remove any empty files from the tail of file list so we don't allocate file space for them
+  AcquireLock();
 
-  do{
-    uint32_t expected_atomic_value = 0;
-    if(atomics.writelock.compare_exchange_strong(expected_atomic_value,1,std::memory_order_acq_rel))break;
-  }while(1);  // get lock on file
-
-  // Allocate a file# for this write.  Must get from the shared copy of the pointers
-  VLogRingRefFileno fileno_for_writing = atomics.fd_ring_head_fileno.load(std::memory_order_acquire)+1;
+    // Allocate file#s for this write.  Must get from the shared copy of the pointers
+    VLogRingRefFileno headfile = atomics.fd_ring_head_fileno.load(std::memory_order_acquire);
+    VLogRingRefFileno fileno_for_writing = headfile+1;
   
-  // Move the reservation pointer in the file.  Does not have to be atomic with the read, since we have acquired writelock
-  atomics.fd_ring_head_fileno.store(fileno_for_writing,std::memory_order_release);
-#if DEBLEVEL&8
-printf("Head pointer set; pointers=%lld %lld %lld %lld\n",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_tail_fileno_shadow.load(),atomics.fd_ring_head_fileno_shadow.load(),atomics.fd_ring_head_fileno.load());
-#endif
+    // Move the reservation pointer in the file.  Does not have to be atomic with the read, since we have acquired writelock
+    atomics.fd_ring_head_fileno.store(headfile+fileendoffsets.size(),std::memory_order_release);
 
-  // Figure out which ring slot the new file(s) will go into
-  size_t new_ring_slot = Ringx(fileno_for_writing);
+    // See if the tail pointer was being held up by the head pointer, preventing deletions
+    VLogRingRefFileno tailfile = atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // get up-to-date copy of tail file
+    if(tailfile+deletion_deadband==headfile){
+      // The tail pointer was being held by the head pointer.  See how many of the files starting at the tailfile are deletable
+      // Get the vector of deleted files, and update the tailpointer
+      // This is a very rare case but we have to handle it because otherwise the tail pointer could get stuck
+      CollectDeletions(tailfile,headfile+fileendoffsets.size(),Ringx(tailfile),deleted_files);  // see what, if anything, can be deleted now
+    }
 
   // Release the lock
-  atomics.writelock.store(0,std::memory_order_release);
+  ReleaseLock();
 
-  // Write to file
-  // Pass aligned buffer when use_direct_io() returns true.   scaf ??? what do we do for direct_io?
-  // Create filename for the file to write
-  std::string fname = VLogFileName(immdbopts_->db_paths,
-    VLogRingRef(ringno_,(int)fileno_for_writing).FileNumber(), (uint32_t)immdbopts_->db_paths.size()-1, cfd_->GetName());
+#if DEBLEVEL&8
+printf("Head pointer set; pointers=%lld %lld\n",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
+#endif
 
-  // Create the file as sequential, and write it out
-  {
+  // We had to release the lock before we actually deleted the files, if any.  The files to delete are in deleted_files.  Delete them now
+  for(size_t i = 0;i<deleted_files.size();++i) {
+#if DEBLEVEL&1
+  printf("Deleting: %s\n",deleted_files[i].filename.data());
+#endif
+    deleted_files[i].DeleteFile(immdbopts_,envopts_);
+  }
+
+  // Now create the output files.
+
+  // We do not hold a lock during file I/O, so we must save anything that we will need to install into the rings
+  std::vector<std::string> pathnames;   // the names of the files we create
+  std::vector<std::unique_ptr<RandomAccessFile>> filepointers;  // pointers to the files, as random-access
+
+  char *startofnextfile = (char *)bytes.data();  // starting position of the next file.  Starts at beginning, advances by file-length
+
+  // Loop for each file: create it, reopen as random-access
+  for(int i=0;i<fileendoffsets.size();++i) {
+    Status iostatus;  // where we save status from the file I/O
+
+    // Pass aligned buffer when use_direct_io() returns true.   scaf ??? what do we do for direct_io?
+    // Create filename for the file to write
+    pathnames.push_back(VLogFileName(immdbopts_->db_paths,
+      VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber(), (uint32_t)immdbopts_->db_paths.size()-1, cfd_->GetName()));
+
+    // Create the file as sequential, and write it out
+    {
 #if DEBLEVEL&2
 printf("Writing sequential file %s: %zd values, %zd bytes\n",fname.c_str(),rcdend.size(), bytes.size()); // scaf debug
 #endif
 
-    unique_ptr<WritableFile> writable_file;
-    iostatus = immdbopts_->env->NewWritableFile(fname,&writable_file,envopts_);  // open the file
-    if(iostatus.ok())iostatus = writable_file->Append(Slice((char *)bytes.data(),bytes.size()));  // write out the data
+      unique_ptr<WritableFile> writable_file;
+      iostatus = immdbopts_->env->NewWritableFile(pathnames.back(),&writable_file,envopts_);  // open the file
+      if(iostatus.ok())iostatus = writable_file->Append(Slice(startofnextfile,fileendoffsets[i]));  // write out the data
+      startofnextfile += fileendoffsets[i];  // advance write pointer to position for next file
 
-  // Sync the written data.  We must make sure it is synced before the SSTs referring to it are committed to the manifest.
-  // We might as well sync it right now
-    if(iostatus.ok())iostatus = writable_file->Fsync();
-  }  // this closes the file
+      // Sync the written data.  We must make sure it is synced before the SSTs referring to it are committed to the manifest.
+      // We might as well sync it right now
+      if(iostatus.ok())iostatus = writable_file->Fsync();
+    }  // this closes the writable_file
 
-  // Reopen the file as randomly readable; install the new file into the ring
-  if(iostatus.ok()){
-    fd_ring[new_ring_slot]=std::move(VLogRingFile(fname,immdbopts_,envopts_));
-    if(fd_ring[new_ring_slot].filepointer.get()==nullptr)iostatus = Status::IOError("unable to reopen file.");
+    // Reopen the file as randomly readable
+    std::unique_ptr<RandomAccessFile> fp;  // the open file
+    if(iostatus.ok()){
+      immdbopts_->env->NewRandomAccessFile(pathnames.back(), &fp, envopts_);
+      if(fp.get()==nullptr)iostatus = Status::IOError("unable to reopen file.");
+    }
+    filepointers.push_back(std::move(fp));  // push one fp, even if null, for every file slot
+
+    // if there was an I/O error on the file, return the error, localized to the file by a negative offset in the return area.
+    // (the offset can never be zero)
+    if(!iostatus.ok()) {
+      resultstatus.push_back(iostatus);  // save the error details
+      fileendoffsets[i] = -fileendoffsets[i];  // flag the offending file
+    }
+  }
+
+
+  // Files are written and reopened.  Transfer them to the fd_ring under lock
+
+  // Figure out which ring slot the new file(s) will go into
+  size_t new_ring_slot = Ringx(fileno_for_writing);
+
+  // We lock during the initialization of the block so that we can use release/acquire ordering in Get() to ensure that loading from the writelock will
+  // make the latest files visible.  But this is really paranoid, because there's can't possibly be any references to these files anywhere until the current compaction creates them
+  AcquireLock();
+    for(int i=0;i<pathnames.size();++i) {
+      fd_ring[new_ring_slot]=std::move(VLogRingFile(pathnames[i],filepointers[i]));
+      if(++new_ring_slot==fd_ring.size())new_ring_slot = 0;   // advance to next slot, and handle wraparound (avoiding divide)
+    }
+  ReleaseLock();
 #if 0  // scaf will delete
     iostatus = immdbopts_->env->NewRandomAccessFile(fname, &fd_ring[new_ring_slot], envopts_);  // open the file - it must exist
 #endif
-  }
+ 
   // move the file reference into the ring, and publish it to all threads
 
+#if 0  // scaf delete
   // Advance the shadow file pointer to indicate that the file is ready for reading.  Since other threads may be
   // doing the same thing, make sure the file pointer never goes backwards
 // scaf could hop over unfinished writes... not a problem?  no, we should advance when we are writing <= the shadow pointer, but advance over all valid file pointers
@@ -249,20 +365,10 @@ printf("Writing sequential file %s: %zd values, %zd bytes\n",fname.c_str(),rcden
 #if DEBLEVEL&8
 printf("Shadow head pointer set; pointers=%lld %lld %lld %lld\n",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_tail_fileno_shadow.load(),atomics.fd_ring_head_fileno_shadow.load(),atomics.fd_ring_head_fileno.load());
 #endif
+#endif
 
   // fill in the FileRef for the first value, with its length
   firstdataref.FillVLogRingRef(ringno_,fileno_for_writing,0,rcdend[0]);  // scaf offset goes away
-
-  // Return all as a single file
-  fileendoffsets.clear();
-
-  // if there was an I/O error on the file, return the error, localized to the file by a negative offset in the return area.
-  // (the offset can never be zero)
-  if(iostatus.ok())fileendoffsets.push_back(bytes.size());
-  else {
-    resultstatus.push_back(iostatus);  // save the error details
-    fileendoffsets.push_back(-(VLogRingRefFileOffset)bytes.size());  // flag the offending file
-  }
 
   return;
 
@@ -289,7 +395,7 @@ Status VLogRing::VLogRingGet(
     if((selectedfile = fd_ring[Ringx(request.Fileno())].filepointer.get()) != nullptr)break;  // read the file number.  This will usually succeed
     // Here the file pointer is not valid.  It is possible that we have an unupdated local copy.  To update it, do an acquire on the
     // shadow pointer, which is updated after the file pointer is modified
-    atomics.fd_ring_head_fileno_shadow.load(std::memory_order_acquire);
+    atomics.writelock.load(std::memory_order_acquire);
   }
 
   Status iostatus = selectedfile->Read(request.Offset(), request.Len(), &resultslice, (char *)response->data());  // read the data
@@ -321,8 +427,13 @@ void VLogRing::VLogRingSstInstall(
   ReleaseLock();
 #if DEBLEVEL&1
 printf("VLogRingSstInstall newsst=%p ref0=%lld refs=%d",&newsst,newsst.indirect_ref_0[ringno_],newsst.refs); // scaf debug
-printf("; queue=");for(int i = 1;i<6;++i){int ct=0; FileMetaData* qp=fd_ring[i].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
-printf("; refcount=");for(int i = 1;i<6;++i)printf("%d ",fd_ring[i].refcount);
+printf("\n");
+#endif
+#if DEBLEVEL&128
+printf("Ring pointers: tail=%zd head=%zd\n   queue=",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){int ct=0; FileMetaData* qp=fd_ring[i].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
+printf("\nrefcount=");
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",fd_ring[i].refcount);}
 printf("\n");
 #endif
 }
@@ -336,10 +447,12 @@ void VLogRing::VLogRingSstUnCurrent(
     // Find the slot that this reference maps to
     size_t slotx = Ringx(retiringsst.indirect_ref_0[ringno_]);  // the place this file's info is stored - better be valid
 
-    // Take the SST out of the ring.  We assume it's there.
+    // Take the SST out of the ring.  It must be there.
     assert(retiringsst.ringbwdchain[ringno_] != &retiringsst);
     if(retiringsst.ringfwdchain[ringno_]!=nullptr)retiringsst.ringfwdchain[ringno_]->ringbwdchain[ringno_] = retiringsst.ringbwdchain[ringno_];  // if there is a next, point it back to the elements before this
     if(retiringsst.ringbwdchain[ringno_]!=nullptr)retiringsst.ringbwdchain[ringno_]->ringfwdchain[ringno_] = retiringsst.ringfwdchain[ringno_];  // if there is a prev, point it to the elements after this
+    else fd_ring[slotx].queue = retiringsst.ringfwdchain[ringno_]; // but if deleting the head, just make the next ele the head
+#if 0 // scaf will be deleted
     else {
       // We are deleting the head
       if((fd_ring[slotx].queue = retiringsst.ringfwdchain[ringno_])==nullptr) {
@@ -364,14 +477,20 @@ printf("Shadow tail pointer set; pointers=%lld %lld %lld %lld\n",atomics.fd_ring
         }
       }
     }
+#endif
     // Mark the chain fields to show that this block is no longer on the ring.  We use chain-to-self to indicate this
     retiringsst.ringbwdchain[ringno_] = &retiringsst;  // indicate 'block not in ring'
 
   ReleaseLock();
 #if DEBLEVEL&1
-printf("VLogRingSstUnCurrent retiringsst=%p ref0=%lld refs=%d",&retiringsst,retiringsst.indirect_ref_0[ringno_],retiringsst.refs); // scaf debug
-printf("; queue=");for(int i = 1;i<6;++i){int ct=0; FileMetaData* qp=fd_ring[i].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
-printf("; refcount=");for(int i = 1;i<6;++i)printf("%d ",fd_ring[i].refcount);
+printf("VLogRingSstUnCurrent retiringsst=%p ref0=%lld refs=%d",&retiringsst,retiringsst.indirect_ref_0[ringno_],retiringsst.refs);
+printf("\n");
+#endif
+#if DEBLEVEL&128
+printf("Ring pointers: tail=%zd head=%zd\n   queue=",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){int ct=0; FileMetaData* qp=fd_ring[i].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
+printf("\nrefcount=");
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",fd_ring[i].refcount);}
 printf("\n");
 #endif
 }
@@ -403,29 +522,23 @@ void VLogRing::VLogRingSstDelete(
       VLogRingRefFileno tailfile = atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // get up-to-date copy of tail file
       if(expiringsst.indirect_ref_0[ringno_]==tailfile) {
         // the expiring sst was earliest in the tail.  See how many files in the tail have 0 usecount.  Stop looking
-        // when we get to the shadow tail.
-        VLogRingRefFileno shadowtailfile = atomics.fd_ring_tail_fileno_shadow.load(std::memory_order_acquire);  // get up-to-date copy of shadow head file
-        while(1) {  // loop till tailfile is right
-          deleted_files.push_back(std::move(fd_ring[slotx]));  // mark file for deletion
-          if(++slotx==fd_ring.size())slotx=0;  // Step to next slot; don't use Ringx() lest it perform a slow divide
-          ++tailfile;  // Advance file number to match slot pointer
-          if(tailfile>=shadowtailfile)break;   // Tail must stop at shadow tail
-          if(fd_ring[slotx].refcount)break;  // if the current slot has references, it will become the shadow tail
-        }
-        // Now tailfile is the lowest file# that has a nonempty queue, unless there are no files, in which case it is one past the shadow head
-        // Save this value in the ring
-        atomics.fd_ring_tail_fileno.store(tailfile,std::memory_order_release); 
-#if DEBLEVEL&8
-printf("Tail pointer set; pointers=%lld %lld %lld %lld\n",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_tail_fileno_shadow.load(),atomics.fd_ring_head_fileno_shadow.load(),atomics.fd_ring_head_fileno.load());
-#endif
+        // after we have checked the head.
+        VLogRingRefFileno headfile = atomics.fd_ring_head_fileno.load(std::memory_order_acquire);  // get up-to-date copy of shadow head file
+        // Get the vector of deleted files, and update the tailpointer
+        CollectDeletions(tailfile,headfile,slotx,deleted_files);
       }
     }
 
   ReleaseLock();
 #if DEBLEVEL&1
-printf("VLogRingSstDelete expiringsst=%p ref0=%lld refs=%d",&expiringsst,expiringsst.indirect_ref_0[ringno_],expiringsst.refs); // scaf debug
-printf("; queue=");for(int i = 1;i<6;++i){int ct=0; FileMetaData* qp=fd_ring[i].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
-printf("; refcount=");for(int i = 1;i<6;++i)printf("%d ",fd_ring[i].refcount);
+printf("VLogRingSstDelete expiringsst=%p ref0=%lld refs=%d",&expiringsst,expiringsst.indirect_ref_0[ringno_],expiringsst.refs);
+printf("\n");
+#endif
+#if DEBLEVEL&128
+printf("Ring pointers: tail=%zd head=%zd\n   queue=",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){int ct=0; FileMetaData* qp=fd_ring[i].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
+printf("\nrefcount=");
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",fd_ring[i].refcount);}
 printf("\n");
 #endif
   // We had to release the lock before we actually deleted the files.  The files to delete are in deleted_files.  Delete them now
