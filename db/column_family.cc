@@ -379,10 +379,6 @@ ColumnFamilyData::ColumnFamilyData(
       pending_compaction_(false),
       prev_compaction_needed_bytes_(0),
       allow_2pc_(db_options.allow_2pc)
-#if 0  // scaf will be deleted
-      ,ring_ends(std::vector<uint64_t>())
-// create empty VLog for the ring
-#endif
   {
   Ref();
   // Convert user defined table properties collector factories to internal ones.

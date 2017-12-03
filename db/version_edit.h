@@ -233,12 +233,6 @@ class VersionEdit {
     max_column_family_ = max_column_family;
   }
 
-#if 0 // scaf will be removed
-  // routines to access the vector of end-of-ring data
-  void SetRingEnds(std::vector<uint64_t>& ring_ends) { ring_ends_ = ring_ends; }
-  std::vector<uint64_t> GetRingEnds() { return ring_ends_; }
-#endif
-
   // Add the specified file at the specified number.
   // REQUIRES: This version has not been saved (see VersionSet::SaveTo)
   // REQUIRES: "smallest" and "largest" are smallest and largest keys in file
@@ -359,9 +353,6 @@ printf("VersionEdit::DeleteFile: %p\n",f);
   bool has_next_file_number_;
   bool has_last_sequence_;
   bool has_max_column_family_;
-#if 0 // scaf will be removed
-  std::vector<uint64_t> ring_ends_;  // ring/file# of last file in ring containing value data.  column_family must be set before write
-#endif
   DeletedFileSet deleted_files_;
   std::vector<std::pair<int, FileMetaData>> new_files_;
 

@@ -2916,12 +2916,6 @@ Status VersionSet::Recover(
               "does not match existing comparator " + edit.comparator_);
           break;
         }
-#if 0 // scaf will be removed
-        // If the edit has ring information for this column family, move it into the cfd.
-        if(edit.ring_ends_.size()){
-          cfd->SetRingEnds(edit.GetRingEnds());  // copy them in - they're small
-        }
-#endif
       }
 
       if (edit.has_prev_log_number_) {
@@ -3463,15 +3457,6 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
         }
       }
       edit.SetLogNumber(cfd->GetLogNumber());
-#if 0 // scaf will be removed
-      std::shared_ptr<VLog> vlog=cfd->vlog();  // get address of VLog for this cf, if any 
-      if(vlog!=nullptr) {   // If there is a vlog
-        // the vlog exists: visit each ring to accumulate the end pointers for each one
-        // there may be gaps in or before the end file; they will be filled when we recycle
-        std::vector<uint64_t> ringends; vlog->GetRingEnds(&ringends);
-        edit.SetRingEnds(ringends);
-      }
-#endif
       std::string record;
       if (!edit.EncodeTo(&record)) {
         return Status::Corruption(

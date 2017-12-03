@@ -37,15 +37,14 @@ namespace rocksdb {
     if(outputringno<0){use_indirects_ = false; return;}  // if no output ring, skip looking for indirects
     VLogRing *outputring = current_vlog->VLogRingFromNo(outputringno);  // the ring we will write values to
 #if DEBLEVEL&4
-printf("Creating iterator for level=%d, earliest_passthrough=",level); // scaf debug
+printf("Creating iterator for level=%d, earliest_passthrough=",level);
 #endif
 
     // Calculate the remapping threshold.  References earlier than this will be remapped.
     //
     // Keeping track of fragmentation and its position - whether it is towards the tail or head of the ring - is problematic,
     // especially over a reboot or even a restart.  We will try to get by without needing it.  We will set the remapping
-    // threshold at a fixed fraction of the file-span between the head and the shadow tail.  We use the head, even though
-    // it has not been validated by the shadow head, because we know that erelong it will be valid.
+    // threshold at a fixed fraction of the file-span between the head and the tail.
     // It is not necessary to lock the ring to calculate the remapping - any valid value is OK - but we do need to do an
     // atomic read to make sure we get a recent one
     //
@@ -53,10 +52,10 @@ printf("Creating iterator for level=%d, earliest_passthrough=",level); // scaf d
     std::vector<VLogRingRefFileno> earliest_passthrough;  // for each ring, the lowest file# that will remain unmapped
     for(int i = 0;i<current_vlog->rings_.size();++i) {
       VLogRingRefFileno head = current_vlog->rings_[i]->atomics.fd_ring_head_fileno.load(std::memory_order_acquire);  // last file with data
-      VLogRingRefFileno shadow_tail = current_vlog->rings_[i]->atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // first file with live refs
-      if(head>shadow_tail)head-=shadow_tail; else head=0;  // change 'head' to head-tail.  It would be possible for tail to pass head, on an
+      VLogRingRefFileno tail = current_vlog->rings_[i]->atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // first file with live refs
+      if(head>tail)head-=tail; else head=0;  // change 'head' to head-tail.  It would be possible for tail to pass head, on an
            // empty ring.  What happens then doesn't matter, but to keep things polite we check for it rather than overflowing the unsigned subtraction.
-      earliest_passthrough.push_back((VLogRingRefFileno)(shadow_tail + 0.4 * head));  // scaf make fraction programmable
+      earliest_passthrough.push_back((VLogRingRefFileno)(tail + vlog_remapping_fraction * head));  // calc file# before which we remap
     }
 #if DEBLEVEL&4
     for(int i=0;i<earliest_passthrough.size();++i)printf("%lld ",earliest_passthrough[i]);
@@ -71,7 +70,7 @@ printf("\n");
     // passthroughdata - values from c_iter that should be passed through (Slice)
     // valueclass - bit 0 means 'value is a passthrough'; bit 1 means 'value is being converted from direct to indirect'
     //
-    // The Slices are references to pinned tables and we return them unchanged as the result of our iterator.
+    // The Slices are references to pinned tables.  We copy them into our buffers.
     // They are immediately passed to Builder which must make a copy of the data.
     std::vector<NoInitChar> diskdata;  // where we accumulate the data to write
     std::string indirectbuffer;   // temp area where we read indirect values that need to be remapped
@@ -101,7 +100,7 @@ printf("\n");
       keys.append(key.data(),key.size());   // save the key...
       keylens.push_back(key.size());    // ... and its length
       Slice &val = (Slice &) c_iter->value();  // read the value
-      if(IsTypeDirect(c_iter->ikey().type) && val.size() > 0 ) {  // scaf include length
+      if(IsTypeDirect(c_iter->ikey().type) && val.size() > 0 ) {  // scaf compare against min length
         // direct value that should be indirected
         vclass += vIndirectFirstMap;  // indicate the conversion
         // compress the data scaf
@@ -134,8 +133,23 @@ printf("\n");
             diskdata.reserve(diskdata.size()+ref.Len());  // make sure there is room for the new data
             char *bufend = (char *)diskdata.data()+diskdata.size();   // address of place to put new data
             diskdata.resize(diskdata.size()+ref.Len());  // advance end pointer past end of new data
-            if(current_vlog->rings_[ref.Ringno()]->fd_ring[current_vlog->rings_[ref.Ringno()]->Ringx(ref.Fileno())].filepointer->
-              Read(ref.Offset(), ref.Len(), &val, bufend).ok()){  // read the data
+
+            // point to the fdring to use for reading indirect values.  Whatever value is current now will be sufficient to translate any indirect that we find
+            // in this compaction; however, the ring may be resized while we are using it, so we have to look out for that.  We could set this at the beginning
+            // and change only on a change of ring, but we don't take the trouble
+            std::vector<VLogRingFile> *fdring = current_vlog->rings_[ref.Ringno()]->fd_ring + current_vlog->rings_[ref.Ringno()]->atomics.currentarrayx.load(std::memory_order_acquire);
+            // Get the pointer to the file
+            RandomAccessFile *fileptr = (*fdring)[current_vlog->rings_[ref.Ringno()]->Ringx(*fdring,ref.Fileno())].filepointer.get();
+            // If the pointer is nonnull, it is correct.  If null, that means the ring must have been resized out from under us.  Try again under lock
+            if(fileptr==nullptr){
+              // Retry the above with the new ring.  It's ugly to repeat the code, but this is the price we pay for allowing references to the possibly-changing
+              // ring from outside a lock
+              current_vlog->rings_[ref.Ringno()]->AcquireLock();
+                fdring = current_vlog->rings_[ref.Ringno()]->fd_ring + current_vlog->rings_[ref.Ringno()]->atomics.currentarrayx.load(std::memory_order_acquire);
+                fileptr = (*fdring)[current_vlog->rings_[ref.Ringno()]->Ringx(*fdring,ref.Fileno())].filepointer.get();
+              current_vlog->rings_[ref.Ringno()]->ReleaseLock();
+            }
+            if(fileptr && fileptr->Read(ref.Offset(), ref.Len(), &val, bufend).ok()){  // read the data
               // Here the data was read with no error.  It was probably read straight into the buffer, but in case not, move it there
               if(bufend!=val.data())memcpy(bufend,val.data(),val.size());
             } else {

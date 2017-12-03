@@ -787,10 +787,6 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   // Use the name value_iter to access the input values.  If we are producing indirect values, the values will
   // come from the IndirectIterator; if not, they will come from the original c_iter.
 #ifdef INDIRECT_VALUE_SUPPORT
-// obsolete  // Extract the VLog for the current column family.  We will use it to create and resolve indirect values
-// obsolete  std::shared_ptr<VLog> current_vlog = compact_->compaction->column_family_data()->vlog();
-// obsolete  std::string get_result;  // create a string in this stackframe, which can point to the data allocated in VLogGet
-// obsolete   std::string modified_key;  // we build the key with the new Type here
   // The IndirectIterator will do all mapping/remapping and will return the new key/values one by one
   // The constructor called here immediately reads all the values from c_iter, buffers them, and writes values to the Value Log.
   // Then in the loop it returns the references to the values that were written.  Errors encountered during c_iter are preserved

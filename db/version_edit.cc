@@ -39,9 +39,6 @@ enum Tag {
   kColumnFamilyAdd = 201,
   kColumnFamilyDrop = 202,
   kMaxColumnFamily = 203,
-#if 0 // scaf will be removed
-  kRingRefn = 210,  // ring/file# for the last file in the specified ring at this column#
-#endif
 };
 
 enum CustomTag {
@@ -80,9 +77,6 @@ void VersionEdit::Clear() {
   column_family_ = 0;
   is_column_family_add_ = 0;
   is_column_family_drop_ = 0;
-#if 0 // scaf will be removed
-  ring_ends_.clear();  // 0 means 'omitted'
-#endif
   column_family_name_.clear();
 }
 
@@ -171,12 +165,6 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
       //   tag kPathId: 1 byte as path_id
       //   tag kNeedCompaction:
       //        now only can take one char value 1 indicating need-compaction
-#if 0 // scaf will be removed
-      //   tag kRingRefn:
-      //        varint32  length
-      //        varint32 n - the number of rings for this cf
-      //        varint64[n] last file referred to by each ring
-#endif
       //   tag kIndirectRef0:
       //        varint32  length
       //        varint32 n - the number of rings for this cf
@@ -227,18 +215,6 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
     PutVarint32(dst, kColumnFamilyDrop);
   }
 
-#if 0 // scaf will be removed
-  // If this edit contains end-of-ring markers, write them out
-  if(ring_ends_.size()) {
-   // record is code/total length/#refs/refs
-   int totallength = VarintLength(ring_ends_.size());  // init length to length of #refs
-   for(auto ref : ring_ends_){totallength += VarintLength(ref);}  // add in length of individual refs
-   PutVarint32(dst, kRingRefn);   // write out code
-   PutVarint32(dst, totallength); // write out length
-   PutVarint32(dst, (uint32_t) ring_ends_.size()); // write out # refs
-   for(auto ref : ring_ends_){PutVarint64(dst, ref);}  // write out refs
-  }
-#endif
   return true;
 }
 
@@ -504,23 +480,6 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
       case kColumnFamilyDrop:
         is_column_family_drop_ = true;
         break;
-
-#if 0 // scaf will be removed
-      case kRingRefn:
-        // record is code/total length/#refs/refs
-        {uint32_t nrings; int ok; uint64_t ref;
-        ring_ends_.clear();  // init to no refs
-        if(ok = GetLengthPrefixedSlice(&input, &str)) {   // get the entire #refs/refs field
-          if (ok = GetVarint32(&str, &nrings)) {   // get #refs
-            while(nrings--){if(!(ok = GetVarint64(&str, &ref)))break; ring_ends_.push_back(ref);} // add each ref to the vector
-          }
-        }
-        if (!ok && !msg) {
-          msg = "set ring ref";
-        }
-        }
-        break;
-#endif
 
       default:
         msg = "unknown tag";
