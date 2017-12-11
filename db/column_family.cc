@@ -286,6 +286,9 @@ void* const SuperVersion::kSVInUse = &SuperVersion::dummy;
 void* const SuperVersion::kSVObsolete = nullptr;
 
 SuperVersion::~SuperVersion() {
+#if DEBLEVEL&256
+printf("SuperVersion       ~ %p\n",this);
+#endif
   for (auto td : to_delete) {
     delete td;
   }
@@ -293,12 +296,18 @@ SuperVersion::~SuperVersion() {
 
 SuperVersion* SuperVersion::Ref() {
   refs.fetch_add(1, std::memory_order_relaxed);
+#if DEBLEVEL&256
+printf("SuperVersion     Ref %p new refs=%d\n",this,(int)refs);
+#endif
   return this;
 }
 
 bool SuperVersion::Unref() {
   // fetch_sub returns the previous value of ref
   uint32_t previous_refs = refs.fetch_sub(1);
+#if DEBLEVEL&256
+printf("SuperVersion   Unref %p new refs=%d\n",this,(int)refs);
+#endif
   assert(previous_refs > 0);
   return previous_refs == 1;
 }
@@ -313,8 +322,8 @@ void SuperVersion::Cleanup() {
     *memory_usage -= m->ApproximateMemoryUsage();
     to_delete.push_back(m);
   }
-#if DEBLEVEL&16
-printf("SuperVersion::Cleanup()\n");
+#if DEBLEVEL&256
+printf("SuperVersion Cleanup %p\n",this);
 #endif
   current->Unref();
 }

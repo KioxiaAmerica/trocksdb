@@ -310,7 +310,10 @@ printf("\n");
       if (level < num_levels_) {
         FileMetaData* f = new FileMetaData(new_file.second);
         f->refs = 1;
-
+#if DEBLEVEL&512
+if(level>1&&f->indirect_ref_0.size()==0)
+  printf("file with no ref0\n");
+#endif
         assert(levels_[level].added_files.find(f->fd.GetNumber()) ==
                levels_[level].added_files.end());
         levels_[level].deleted_files.erase(f->fd.GetNumber());

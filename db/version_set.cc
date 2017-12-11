@@ -317,8 +317,8 @@ class FilePicker {
 VersionStorageInfo::~VersionStorageInfo() { delete[] files_; }
 
 Version::~Version() {
-#if DEBLEVEL&32
-printf("~Version: %p\n",this);
+#if DEBLEVEL&256
+printf("Version:    ~ %p\n",this);
 #endif
   assert(refs_ == 0);
 
@@ -1718,11 +1718,18 @@ void VersionStorageInfo::GenerateLevel0NonOverlapping() {
 
 void Version::Ref() {
   ++refs_;
+#if DEBLEVEL&256
+printf("Version   Ref %p new refs=%d\n",this,refs_);
+#endif
 }
 
 bool Version::Unref() {
   assert(refs_ >= 1);
+
   --refs_;
+#if DEBLEVEL&256
+printf("Version Unref %p new refs=%d\n",this,refs_);
+#endif
   if (refs_ == 0) {
     delete this;
     return true;
@@ -3453,7 +3460,11 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
           edit.AddFile(level, f->fd.GetNumber(), f->fd.GetPathId(),
                        f->fd.GetFileSize(), f->smallest, f->largest,
                        f->smallest_seqno, f->largest_seqno,
-                       f->marked_for_compaction);
+                       f->marked_for_compaction
+#ifdef INDIRECT_VALUE_SUPPORT
+                       ,f->indirect_ref_0
+#endif
+                       );
         }
       }
       edit.SetLogNumber(cfd->GetLogNumber());

@@ -968,7 +968,7 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
 
   // Prepare to store a list of merge operations if merge occurs.
 #ifdef INDIRECT_VALUE_SUPPORT
-  // Get() processing needs access to the VLog for the colmn family.  We provide that through the merge context
+  // Get() processing needs access to the VLog for the column family.  We provide that through the merge context
   MergeContext merge_context(cfd);
 #else
   MergeContext merge_context;

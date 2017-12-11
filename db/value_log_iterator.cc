@@ -48,15 +48,13 @@ printf("Creating iterator for level=%d, earliest_passthrough=",level);
     // It is not necessary to lock the ring to calculate the remapping - any valid value is OK - but we do need to do an
     // atomic read to make sure we get a recent one
     //
-    // We have to calculate a threshold for each ring, since any ring may appear here
-    std::vector<VLogRingRefFileno> earliest_passthrough;  // for each ring, the lowest file# that will remain unmapped
-    for(int i = 0;i<current_vlog->rings_.size();++i) {
-      VLogRingRefFileno head = current_vlog->rings_[i]->atomics.fd_ring_head_fileno.load(std::memory_order_acquire);  // last file with data
-      VLogRingRefFileno tail = current_vlog->rings_[i]->atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // first file with live refs
-      if(head>tail)head-=tail; else head=0;  // change 'head' to head-tail.  It would be possible for tail to pass head, on an
+    // We have to calculate a threshold for our output ring.  A reference to any other ring will automatically be remapped
+    VLogRingRefFileno earliest_passthrough;  // for each ring, the lowest file# that will remain unmapped
+    VLogRingRefFileno head = current_vlog->rings_[outputringno]->atomics.fd_ring_head_fileno.load(std::memory_order_acquire);  // last file with data
+    VLogRingRefFileno tail = current_vlog->rings_[outputringno]->atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // first file with live refs
+    if(head>tail)head-=tail; else head=0;  // change 'head' to head-tail.  It would be possible for tail to pass head, on an
            // empty ring.  What happens then doesn't matter, but to keep things polite we check for it rather than overflowing the unsigned subtraction.
-      earliest_passthrough.push_back((VLogRingRefFileno)(tail + vlog_remapping_fraction * head));  // calc file# before which we remap
-    }
+    earliest_passthrough = (VLogRingRefFileno)(tail + vlog_remapping_fraction * head);  // calc file# before which we remap
 #if DEBLEVEL&4
     for(int i=0;i<earliest_passthrough.size();++i)printf("%lld ",earliest_passthrough[i]);
 printf("\n");
@@ -123,9 +121,9 @@ printf("\n");
 // scaf log it?
           }
         } else {
-          // Valid indirect reference.  See if it needs to be remapped
+          // Valid indirect reference.  See if it needs to be remapped: too old, or not in our output ring
           VLogRingRef ref(val.data());   // analyze the reference
-          if(ref.Fileno()<earliest_passthrough[ref.Ringno()]) {  // file number is too low to pass through
+          if(ref.Ringno()!=outputringno || ref.Fileno()<earliest_passthrough) {  // file number is too low to pass through
             // indirect value being remapped.  Replace val with the data from disk
             vclass += vIndirectRemapped;  // indicate remapping
             // read the data of the reference.  We don't decompress it or check CRC; we just pass it on.  We know that
@@ -137,13 +135,24 @@ printf("\n");
             // point to the fdring to use for reading indirect values.  Whatever value is current now will be sufficient to translate any indirect that we find
             // in this compaction; however, the ring may be resized while we are using it, so we have to look out for that.  We could set this at the beginning
             // and change only on a change of ring, but we don't take the trouble
+#if DELAYPROB
+ProbDelay();
+#endif 
             std::vector<VLogRingFile> *fdring = current_vlog->rings_[ref.Ringno()]->fd_ring + current_vlog->rings_[ref.Ringno()]->atomics.currentarrayx.load(std::memory_order_acquire);
+#if DELAYPROB
+ProbDelay();
+#endif 
             // Get the pointer to the file
             RandomAccessFile *fileptr = (*fdring)[current_vlog->rings_[ref.Ringno()]->Ringx(*fdring,ref.Fileno())].filepointer.get();
-            // If the pointer is nonnull, it is correct.  If null, that means the ring must have been resized out from under us.  Try again under lock
+#if DELAYPROB
+ProbDelay();
+#endif 
             if(fileptr==nullptr){
               // Retry the above with the new ring.  It's ugly to repeat the code, but this is the price we pay for allowing references to the possibly-changing
               // ring from outside a lock
+#if DELAYPROB
+ProbDelay();
+#endif 
               current_vlog->rings_[ref.Ringno()]->AcquireLock();
                 fdring = current_vlog->rings_[ref.Ringno()]->fd_ring + current_vlog->rings_[ref.Ringno()]->atomics.currentarrayx.load(std::memory_order_acquire);
                 fileptr = (*fdring)[current_vlog->rings_[ref.Ringno()]->Ringx(*fdring,ref.Fileno())].filepointer.get();

@@ -7,6 +7,10 @@
 
 #pragma once
 
+#define DEBLEVEL 0x400  // 1=SST ring ops 2=file ops 4=iterator ops 8=ring pointers 16=deleted_files 32=versions 64=top-level ring ops 128=ring status 256=Versions 512=Audit ref0 1024=Destructors
+#define DELAYPROB 15   // percentage of the time a call to ProbDelay will actually delay
+#define DELAYTIME std::chrono::milliseconds(10)
+
 #include <list>
 #include <forward_list>
 #include <string>
@@ -16,14 +20,21 @@
 #include "options/db_options.h"
 #include "rocksdb/env.h"
 #include "rocksdb/transaction_log.h"
+#if DELAYPROB
+#include<chrono>
+#include<thread>
+#include<stdlib.h>
+#endif
 
 #if ATOMIC_POINTER_LOCK_FREE!=2
 error: we store pointers without using atomic ops, but that is not thread-safe on this CPU
 #endif
 
-namespace rocksdb {
 
-#define DEBLEVEL 0xa  // 1=SST ring ops 2=file ops 4=iterator ops 8=ring pointers 16=deleted_files 32=versions 64=top-level ring ops 128=ring status
+namespace rocksdb {
+#if DELAYPROB
+extern void ProbDelay(void);
+#endif
 
 struct FileMetaData;
 class ColumnFamilyData;
@@ -69,6 +80,8 @@ typedef uint64_t VLogRingRefFileno;
 typedef int64_t VLogRingRefFileOffset;   // signed because negative values are used to indicate error
 typedef uint64_t VLogRingRefFileLen;
 
+// Constants (some will be replaced by options)
+
 static const std::string kRocksDbVLogFileExt = "vlg";   // extension for vlog files is vlgxxx when xxx is CF name
 static const VLogRingRefFileno high_value = ((VLogRingRefFileno)-1)>>1;  // biggest positive value
 static const float expansion_fraction = 0.25;  // fraction of valid files to leave for expansion
@@ -83,6 +96,8 @@ static const int max_simultaneous_deletions = 1000;  // maximum number of files 
    // space for them before we acquire the lock
 static const double vlog_remapping_fraction = 0.4;  // References to the oldest VLog files - this fraction of them - will be remapped if encountered during compaction
 
+// ParsedFnameRing contains filenumber and ringnumber for a file.  We use it to split the compositie filename/ring into its parts
+
 // Convert file number to file number and ring
 class ParsedFnameRing {
 public:
@@ -91,6 +106,14 @@ public:
   ParsedFnameRing(VLogRingRefFileno file_ring) :
     fileno(file_ring>>2), ringno((int)file_ring&3) {}
 };
+
+//
+//
+// ******************************************** VlogRingRef ***********************************************
+// The reference to a VLog file, comprising the ring number, file number, offset, and length.
+//
+//
+
 
 // The VLogRingRef is a reference to data in a VLogRing.  It can be converted to an opaque string
 // form, whose length is fixed so that references in an SST
@@ -171,6 +194,18 @@ void MakeWorkarea() {
 
 };
 
+//
+//
+// ******************************************** VlogRingFile ***********************************************
+// Each VLog file is represented by one VLogRingFile entry.  This entty contains the pointer to the opened file, which can
+// be used for random reads; a queue of SSTs in the current version whose oldest reference is to this file; and the total
+// number of SSTs (including those that are not current but still alive in an earlier version) whose oldest reference
+// is to this file.  When the oldest file has no SSTs pointing to it, it can be deleted.
+//
+//
+
+
+
 // A VLogRingFile is a random-access file along with a refcount, queue, and filename.
 // It is created to add the file to a VLogRing.  When the file is no longer referenced it is deleted; when
 // the VLogRingFile object is deleted, the file is simply closed.
@@ -227,28 +262,20 @@ public:
 
 };
 
-// A VLogRingFileDeletion holds just enough information to delete the file.  We transfer ownership of the open file to the Deletion, and
-// create the filename
+// A VLogRingFileDeletion holds just enough information to delete the file.  We transfer ownership of the open file to the Deletion
 class VLogRingFileDeletion {
 public:
-  std::string filename;
+  VLogRingRefFileno fileno;
   std::unique_ptr<RandomAccessFile> filepointer;  // the open file
 
-  // Constructor, while we have access to the ring
-  VLogRingFileDeletion(VLogRing& v, VLogRingRefFileno fileno, VLogRingFile& f);
+  // Constructor
+  VLogRingFileDeletion::VLogRingFileDeletion(VLogRingRefFileno fileno_, VLogRingFile& f) : fileno(fileno_), filepointer(std::move(f.filepointer)) {}
 
   // Delete the file.  Close it as random-access, then delete it
-  void DeleteFile(const ImmutableDBOptions *immdbopts,   // The current Env
+  void DeleteFile(VLogRing& v,   // the current ring
+    const ImmutableDBOptions *immdbopts,   // The current Env
     EnvOptions& file_options  // options to use for all VLog files
-  ) {
-    filepointer = nullptr;  // This closes the file if it was open
-#if DEBLEVEL&2
-printf("Deleting file: %s\n",filename.c_str());
-#endif
-    immdbopts->env->DeleteFile(filename);  // delete the file
-// scaf ignore error - what could we do?
-  }
-
+  );
 
 };
 
@@ -259,6 +286,18 @@ printf("Deleting file: %s\n",filename.c_str());
 // During compaction, bursts of values are written to the VLogRing, lumped into files of approximately equal size.
 //
 // Each column family has (possibly many) VLogRing.  VLogRingRef entries in an SST implicitly refer to the VLog of the column family.
+
+//
+//
+// ******************************************** VlogRing ***********************************************
+// VLogRing keeps track of VLogRingFiles for a specified set of levels in the database.  Files are entered into
+// the ring during compaction.  The file persists until there are no more SSTs that refer to it.  During compaction,
+// the oldest values are picked up & copied to new files, which removes references to the oldest files.
+//
+// We use the VLogRing to retrieve the value of an indirect reference, given the ring number/file number/offset/length
+// of the reference.  We also use the VLogRing to see which SSTs have references to the oldest files.
+//
+
 
 
 class VLogRing {
@@ -358,6 +397,10 @@ VLogRing(
   VLogRing(VLogRing const&) = delete;
   VLogRing& operator=(VLogRing const&) = delete;
 
+#if DEBLEVEL&0x400
+  ~VLogRing() { printf("Destroying VLogRing %p\n",this); }
+#endif
+
   // See how many files we need to hold the
   // valid files, plus some room for expansion (here, the larger of a fraction of the number of valid files
   // and a constant)
@@ -383,7 +426,7 @@ void ApplyDeletions(std::vector<VLogRingFileDeletion>& deleted_files) {
 #if DEBLEVEL&1
   printf("Deleting: %s\n",deleted_files[i].filename.data());
 #endif
-    deleted_files[i].DeleteFile(immdbopts_,envopts_);
+    deleted_files[i].DeleteFile(*this,immdbopts_,envopts_);
   }
 }
 
@@ -452,6 +495,13 @@ void VLogRingFindLaggingSsts(
 
 };
 
+//
+//
+// ******************************************** Vlog ***********************************************
+// One per CF, containing one or more VLogRings.  Vlog is created for any CF that uses a table type
+// that is compatible with indirect values.
+//
+//
 
 // A VLog is a set of VLogRings for a single column family.  The VLogRings are distinguished by an index.
 class VLog {
@@ -487,6 +537,10 @@ public:
   // No copying
   VLog(VLog const&) = delete;
   VLog& operator=(VLog const&) = delete;
+
+#if DEBLEVEL&0x400
+  ~VLog() { printf("Destroying VLog %p\n",this); }
+#endif
 
   // Initialize each ring to make it ready for reading and writing.
   // It would be better to do this when the ring is created, but with the existing interfaces there is

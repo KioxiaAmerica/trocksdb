@@ -23,6 +23,13 @@
 #include<thread>
 
 namespace rocksdb {
+#if DELAYPROB
+static Random rnd(301);
+// Throw in occasional long delays to help find timing problems
+extern void ProbDelay() {
+    if(DELAYPROB > (rnd.Next() % 100))std::this_thread::sleep_for(DELAYTIME);  // give the compactor time to run
+}
+#endif
 
 // Convert a filename, which is known to be a valid vlg filename, to the ring and filenumber in this VLog
 static ParsedFnameRing VlogFnametoRingFname(std::string pathfname) {
@@ -42,6 +49,17 @@ static ParsedFnameRing VlogFnametoRingFname(std::string pathfname) {
     // Parse the file number into file number/ring
     return ParsedFnameRing(number);
 }
+
+//
+//
+// ******************************************** VlogRing ***********************************************
+// VLogRing keeps track of VLogRingFiles for a specified set of levels in the database.  Files are entered into
+// the ring during compaction.  The file persists until there are no more SSTs that refer to it.  During compaction,
+// the oldest values are picked up & copied to new files, which removes references to the oldest files.
+//
+// We use the VLogRing to retrieve the value of an indirect reference, given the ring number/file number/offset/length
+// of the reference.  We also use the VLogRing to see which SSTs have references to the oldest files.
+//
 
 // A VLogRing is a set of sequentially-numbered files, with a common prefix and extension .vlg, that contain
 // values for a column family.  Each value is pointed to by an SST, which uses a VLogRingRef for the purpose.
@@ -138,13 +156,21 @@ printf("Opening file %s\n",pathfname.c_str());
   atomics.currentarrayx.store(0,std::memory_order_release);
 }
 
-// Constructor, while we have access to the ring.  Calculate the filename, and save it along with the filepointer.
-// We take ownership of the fiepointer.
-VLogRingFileDeletion::VLogRingFileDeletion(VLogRing& v, VLogRingRefFileno fileno, VLogRingFile& f) :
-  filename(VLogFileName(v.immdbopts_->db_paths,
-    VLogRingRef(v.ringno_,(int)fileno).FileNumber(), (uint32_t)v.immdbopts_->db_paths.size()-1, v.cfd_->GetName())),
-  filepointer(std::move(f.filepointer)) {}
+  // Delete the file.  Close it as random-access, then delete it
+  void VLogRingFileDeletion::DeleteFile(VLogRing& v,   // the current ring
+    const ImmutableDBOptions *immdbopts,   // The current Env
+    EnvOptions& file_options  // options to use for all VLog files
+  ) {
+    filepointer = nullptr;  // This closes the file if it was open
+    std::string filename = VLogFileName(v.immdbopts_->db_paths,
+      VLogRingRef(v.ringno_,(int)fileno).FileNumber(), (uint32_t)v.immdbopts_->db_paths.size()-1, v.cfd_->GetName());
+#if DEBLEVEL&2
+printf("Deleting file: %s\n",filename.c_str());
+#endif
 
+    immdbopts->env->DeleteFile(filename);  // delete the file
+// scaf ignore error - what could we do?
+  }
 
 // See how many files need to be deleted.  Result is a vector of them, with the ring entries for the old files cleared.
 // The tail pointer is moved over the deleted files.
@@ -158,14 +184,20 @@ void VLogRing::CollectDeletions(
   // If the tailpointer has moved since we decided to try to delete, that means that some other thread slipped in when we released the lock,
   // and has freed some files.  We don't need to free any, then
   if(tailfile!=atomics.fd_ring_tail_fileno.load(std::memory_order_acquire)) return;
+#if DELAYPROB
+ProbDelay();
+#endif 
   // Fetch the up-to-date value for the current ring
   uint64_t arrayx = atomics.currentarrayx.load(std::memory_order_acquire);
+#if DELAYPROB
+ProbDelay();
+#endif 
   // In case the ring was resized, recalculate the slot number to use. 
   size_t slotx = Ringx(fd_ring[arrayx],tailfile);   // point to first file to consider deleting
   if(fd_ring[arrayx][slotx].refcount)return;  // return fast if the first file does not need to be deleted
   while(1) {  // loop till tailfile is right
     if(deleted_files.size()==deleted_files.capacity())break;  // if we have no space for another deletion, stop
-    deleted_files.emplace_back(*this,tailfile,fd_ring[arrayx][slotx]);  // mark file for deletion.  This also resets the ring slot to empty
+    deleted_files.emplace_back(tailfile,fd_ring[arrayx][slotx]);  // mark file for deletion.  This also resets the ring slot to empty
     if(++slotx==fd_ring[arrayx].size())slotx=0;  // Step to next slot; don't use Ringx() lest it perform a slow divide
     ++tailfile;  // Advance file number to match slot pointer
     if(tailfile+deletion_deadband>headfile)break;   // Tail must stop at one past head, and that only if ring is empty; but we enforce the deadband
@@ -173,9 +205,15 @@ void VLogRing::CollectDeletions(
   }
   // If we delete past the queued pointer, move the queued pointer
   if(tailfile>atomics.fd_ring_queued_fileno.load())atomics.fd_ring_queued_fileno.store(tailfile,std::memory_order_release);
+#if DELAYPROB
+ProbDelay();
+#endif 
   // Now tailfile is the lowest file# that has a nonempty queue, unless there are no files, in which case it is one past the head
   // Save this value in the ring.  We do this AFTER we have made the changes to the ring, so that Get() will see them in that order
   atomics.fd_ring_tail_fileno.store(tailfile,std::memory_order_release);
+#if DELAYPROB
+ProbDelay();
+#endif 
 #if DEBLEVEL&8
 printf("Tail pointer set; pointers=%lld %lld\n",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
 #endif
@@ -202,6 +240,9 @@ uint64_t VLogRing::ResizeRingIfNecessary(VLogRingRefFileno tailfile, VLogRingRef
     std::vector<VLogRingFile> newring;  // allocate ring
     newring.reserve(allosize);   // reserve all the space we need, so it will never be resized
     for(size_t i=0;i<allosize;++i)newring.emplace_back();  // fill ring with harmless empty entries.  Do this outside of lock, to reduce lock time
+#if DELAYPROB
+ProbDelay();
+#endif 
   AcquireLock();
   // If the ring pointers changed while we relinquished the ring, return with a value that will cause us to retry
   if(tailfile!=atomics.fd_ring_tail_fileno.load(std::memory_order_acquire) || headfile!=atomics.fd_ring_head_fileno.load(std::memory_order_acquire)
@@ -221,8 +262,14 @@ uint64_t VLogRing::ResizeRingIfNecessary(VLogRingRefFileno tailfile, VLogRingRef
   // Set the point at which we deem we can reclaim the storage for the previous array.
   // We use a value of half a ring from where it is now; this will be rounded up since we sample only occasionally
   atomics.fd_ring_prevbuffer_clear_fileno.store(headfile+(allosize>>1),std::memory_order_release);
+#if DELAYPROB
+ProbDelay();
+#endif 
   // switch buffers: set the new value of currentarrayx, thereby publishing the new ring to the system
   atomics.currentarrayx.store(newcurrent,std::memory_order_release);
+#if DELAYPROB
+ProbDelay();
+#endif 
   // Go through the newly-previous ring, releasing all the pointers.  This restores the single ownership of the underlying resource in
   // the new ring
   for(size_t i=0;i<fd_ring[currentarray].size();++i)fd_ring[currentarray][i].filepointer.release();
@@ -305,8 +352,17 @@ int maxfilesize = 1000000;  // scaf
     // be up to date, and we will still have the lock (though it may have been given up for a while)
     do{
       tailfile = atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);
+#if DELAYPROB
+ProbDelay();
+#endif 
       headfile = atomics.fd_ring_head_fileno.load(std::memory_order_acquire);
+#if DELAYPROB
+ProbDelay();
+#endif 
       currentarray = atomics.currentarrayx.load(std::memory_order_acquire);
+#if DELAYPROB
+ProbDelay();
+#endif 
     }while(2==(currentarray = ResizeRingIfNecessary(tailfile,headfile,currentarray,fileendoffsets.size())));  // return of 2 means 'retry required', otherwise new currentarray
 
     // Allocate file#s for this write.
@@ -314,6 +370,9 @@ int maxfilesize = 1000000;  // scaf
   
     // Move the reservation pointer in the file.  Does not have to be atomic with the read, since we have acquired writelock
     atomics.fd_ring_head_fileno.store(headfile+fileendoffsets.size(),std::memory_order_release);
+#if DELAYPROB
+ProbDelay();
+#endif 
 
     // See if the tail pointer was being held up, for whatever reason
     if(tailfile<=headfile && fd_ring[currentarray][Ringx(fd_ring[currentarray],tailfile)].refcount==0) {  // if tail>head, the ring is empty & refcounts are invalid
@@ -348,6 +407,7 @@ printf("Head pointer set; pointers=%lld %lld\n",atomics.fd_ring_tail_fileno.load
 #if DEBLEVEL&2
 printf("Writing %zd sequential files, %zd values, %zd bytes\n",fileendoffsets.size(),rcdend.size(), bytes.size());
 #endif
+
   // Loop for each file: create it, reopen as random-access
   for(int i=0;i<fileendoffsets.size();++i) {
     Status iostatus;  // where we save status from the file I/O
@@ -389,18 +449,24 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), fileendoffsets[i]);
     }
   }
 
-
   // Files are written and reopened.  Transfer them to the fd_ring under lock.
   // ALSO: clear the unused ping-pong buffer, if the current one has been in place 'long enough'
 
   // We lock during the initialization of the added block because the ring may be resized at any time & thus all changes to it must be performed
   // under lock to make sure they get resized correctly.  The lock is not needed to make Get() work.
+#if DELAYPROB
+ProbDelay();
+#endif 
   AcquireLock();
     // Figure out which ring slot the new file(s) will go into
     currentarray = atomics.currentarrayx.load(std::memory_order_acquire);  // fetch current ping-pong side
+#if DELAYPROB
+ProbDelay();
+#endif 
     std::vector<VLogRingFile> *fdring = fd_ring + currentarray;  // the current ring array
     size_t new_ring_slot = Ringx(*fdring,fileno_for_writing);  // position therein
 
+    // Loop to add each file to the ring
     for(int i=0;i<pathnames.size();++i) {
       (*fdring)[new_ring_slot]=std::move(VLogRingFile(filepointers[i]));
       if(++new_ring_slot==(*fdring).size()){
@@ -418,6 +484,9 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), fileendoffsets[i]);
         if(atomics.fd_ring_head_fileno.load(std::memory_order_acquire)>atomics.fd_ring_prevbuffer_clear_fileno.load(std::memory_order_acquire)){
           fd_ring[1-currentarray].clear();  // clear the previous buffer, to save space
         }
+#if DELAYPROB
+ProbDelay();
+#endif 
       }
     }
   ReleaseLock();
@@ -479,12 +548,21 @@ Status VLogRing::VLogRingGet(
   while(1) {
     // acquire the head pointer
     VLogRingRefFileno headfile = atomics.fd_ring_head_fileno.load(std::memory_order_acquire);
+#if DELAYPROB
+ProbDelay();
+#endif 
     // acquire the tail pointer.  This may be ahead of the status matching the head pointer, but that's OK as any valid reference should be
     // ahead of any valid tailpointer
     VLogRingRefFileno tailfile = atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);
+#if DELAYPROB
+ProbDelay();
+#endif 
     // acquire the current ring.  It is guaranteed to be able to hold the head and tail pointers that we have read, even if we are in the
     // process of switching rings, because we know that the head/tail pointers are valid from a time earlier than the ring
     std::vector<VLogRingFile> *fdring = fd_ring + atomics.currentarrayx.load(std::memory_order_acquire);  // the current ring array
+#if DELAYPROB
+ProbDelay();
+#endif 
     // get the filepointer at the slot indicated for this file.  The pointer fetched may be bogus, if the file number is out of range, but
     // it will fetch without error.  The filepointer fetched here will be valid as of the time the head/tail pointers were set, meaning that
     // if the filenumber is valid, the pointer will be, UNLESS the ring was switched, in which case it will be either valid or null.  If null, we
@@ -522,7 +600,7 @@ Status VLogRing::VLogRingGet(
   // If the result is not in the user's buffer, copy it to there
   if(iostatus.ok()){
     if(response->data()!=resultslice.data())response->assign(resultslice.data(),resultslice.size());  // no error: copy data only if not already in user's buffer
-  }else{resultslice.clear();}  // error: return empty string
+  }else{response->clear();}  // error: return empty string
 // scaf decompress and check CRC
   return iostatus;
 }
@@ -531,9 +609,15 @@ Status VLogRing::VLogRingGet(
 void VLogRing::VLogRingSstInstall(
   FileMetaData& newsst   // the SST that has just been created & filled in
 ){
+#if DELAYPROB
+ProbDelay();
+#endif 
   AcquireLock();  // lock at the Ring level to allow multiple compactions on the same CF
 
     std::vector<VLogRingFile> *fdring = fd_ring + atomics.currentarrayx.load(std::memory_order_acquire);  // the current ring array
+#if DELAYPROB
+ProbDelay();
+#endif 
     // Find the slot that this reference maps to
     size_t slotx = Ringx(*fdring,newsst.indirect_ref_0[ringno_]);  // the place this file's info is stored - better be valid
 // scaf out of bounds?
@@ -565,9 +649,18 @@ printf("\n");
 void VLogRing::VLogRingSstUnCurrent(
   FileMetaData& retiringsst   // the SST that has just been obsoleted
 ){
+#if DELAYPROB
+ProbDelay();
+#endif 
   AcquireLock();  // lock at the Ring level to allow multiple compactions on the same CF
+#if DELAYPROB
+ProbDelay();
+#endif 
 
     std::vector<VLogRingFile> *fdring = fd_ring + atomics.currentarrayx.load(std::memory_order_acquire);  // the current ring array
+#if DELAYPROB
+ProbDelay();
+#endif 
     // Find the slot that this reference maps to
     size_t slotx = Ringx(*fdring,retiringsst.indirect_ref_0[ringno_]);  // the place this file's info is stored - better be valid
 
@@ -608,24 +701,38 @@ void VLogRing::VLogRingSstDelete(
     VLogRingSstUnCurrent(expiringsst);  // If backchain is valid (not looped to self), this block is still on the queue.  Remove from queue but leave (permanently) referenced
     return;
   }
-
+#if DELAYPROB
+ProbDelay();
+#endif 
   AcquireLock();  // lock at the Ring level
+#if DELAYPROB
+ProbDelay();
+#endif 
 
     std::vector<VLogRingFile> *fdring = fd_ring + atomics.currentarrayx.load(std::memory_order_acquire);  // the current ring array
+#if DELAYPROB
+ProbDelay();
+#endif 
     // Find the slot that this reference maps to
     size_t slotx = Ringx(*fdring,expiringsst.indirect_ref_0[ringno_]);  // the place this file's info is stored - better be valid
 
     // Decrement the usecount
     if(!--(*fdring)[slotx].refcount) {
       // The usecount went to 0.  We can free the file, if it is the oldest in the tail.
-      // NOTE that the tailfile might have a 0 refcount, if the previous deletion was interrupted.  We will never catch that case here, because
-      // we are looking only for deletions at the tail.  Interrupted deletions will be resumed the next time we CREATE a file.  That's not really a problem,
+      // NOTE that the tailfile coming in might have a 0 refcount, if the previous deletion was interrupted.  We will never catch that case here, because
+      // we are looking only for NEW deletions at the tail.  Interrupted deletions will be resumed the next time we CREATE a file.  That's not really a problem,
       // because whenever we delete SSTs for compaction we are also creating new ones; & if we aren't, there's no hurry to delete anything.
       VLogRingRefFileno tailfile = atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // get up-to-date copy of tail file
+#if DELAYPROB
+ProbDelay();
+#endif 
       if(expiringsst.indirect_ref_0[ringno_]==tailfile) {
         // the expiring sst was earliest in the tail.  See how many files in the tail have 0 usecount.  Stop looking
         // after we have checked the head.
         VLogRingRefFileno headfile = atomics.fd_ring_head_fileno.load(std::memory_order_acquire);  // get up-to-date copy of head file
+#if DELAYPROB
+ProbDelay();
+#endif 
         // We need to make sure we don't perform any large memory allocations that might block while we are holding a lock on the ring, so we reserve space for the
         // deletions - while NOT holding the lock - and then count the number of deletions
         ReleaseLock(); deleted_files.reserve(max_simultaneous_deletions); AcquireLock(); // reserve space to save deletions, outside of lock
@@ -662,7 +769,13 @@ void VLogRing::VLogRingFindLaggingSsts(
 // Do this operation under spin lock.  Reheap to close up deleted SSTs whenever we encounter them
 
 
-
+//
+//
+// ******************************************** Vlog ***********************************************
+// One per CF, containing one or more VLogRings.  Vlog is created for any CF that uses a table type
+// that is compatible with indirect values.
+//
+//
 
 // A VLog is a set of VLogRings for a single column family.  The VLogRings are distinguished by an index.
 VLog::VLog(

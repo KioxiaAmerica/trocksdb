@@ -793,6 +793,10 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   // and associated with the failing keys.
   // If there is no VLog it means this table type doesn't support indirects, and the iterator will be a passthrough
   auto value_iter = std::make_unique<IndirectIterator>(c_iter,cfd,sub_compact->compaction->output_level(),end,cfd->vlog()!=nullptr);  // keep iterator around till end of function
+#if DEBLEVEL&512
+std::vector<uint64_t> our_ref0;  // vector of file-refs
+our_ref0.push_back(~0);
+#endif
 #else
   CompactionIterator *value_iter(c_iter);
 #endif
@@ -828,6 +832,11 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     assert(sub_compact->current_output() != nullptr);
 
     sub_compact->builder->Add(key, value);
+#if DEBLEVEL&512
+VLogRingRef ref(value.data());   // analyze the reference
+if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
+#endif
+
     sub_compact->current_output_file_size = sub_compact->builder->FileSize();
     sub_compact->current_output()->meta.UpdateBoundaries(
         key, value_iter->ikey().sequence);
@@ -921,6 +930,11 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       // Install the earliest-file-refs that were encountered for the file being closed, and reset that value for the next file
       std::vector<uint64_t> ref0;  // vector of file-refs
       value_iter->ref0(ref0,false /* include_last */);  // false because we have read 1 key ahead in the iterator
+#if DEBLEVEL&512
+  if(our_ref0[0]!=ref0[0])
+    printf("Mismatched ref0\n");
+  our_ref0[0]=~0;  // reset for next time
+#endif
       sub_compact->current_output()->meta.InstallRef0(ref0,cfd);
 #endif
       CompactionIterationStats range_del_out_stats;
@@ -982,6 +996,11 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     // Install the earliest-file-refs that were encountered for the file being closed, and reset that value for the next file
     std::vector<uint64_t> ref0;  // vector of file-refs
     value_iter->ref0(ref0, true /* include_last */);  // true to pick up the very last key
+#if DEBLEVEL&512
+  if(our_ref0[0]!=ref0[0])
+    printf("Mismatched ref0\n");
+  our_ref0[0]=~0;  // reset for next time
+#endif
     sub_compact->current_output()->meta.InstallRef0(ref0,cfd);
 #endif
     CompactionIterationStats range_del_out_stats;
