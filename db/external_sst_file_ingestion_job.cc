@@ -193,7 +193,7 @@ Status ExternalSstFileIngestionJob::Run() {
       return status;
     }
 #ifdef INDIRECT_VALUE_SUPPORT   // assign earliest_ref to ingested file
-// Assign High-Value to VLog file # in SST.  We will pick up the values when this file is compacted.
+// Leave ref0 field empty, indicating no references
 #endif
     edit_.AddFile(f.picked_level, f.fd.GetNumber(), f.fd.GetPathId(),
                   f.fd.GetFileSize(), f.smallest_internal_key(),

@@ -240,7 +240,7 @@ class VersionEdit {
                uint64_t file_size, const InternalKey& smallest,
                const InternalKey& largest, const SequenceNumber& smallest_seqno,
                const SequenceNumber& largest_seqno,
-               bool marked_for_compaction, std::vector<uint64_t> indirect_ref_0 = std::vector<uint64_t>()) {
+               bool marked_for_compaction, const std::vector<uint64_t>& indirect_ref_0 = std::vector<uint64_t>()) {
     assert(smallest_seqno <= largest_seqno);
     FileMetaData f;
     f.fd = FileDescriptor(file, file_path_id, file_size);

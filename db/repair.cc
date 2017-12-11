@@ -562,7 +562,11 @@ class Repairer {
         edit.AddFile(0, table->meta.fd.GetNumber(), table->meta.fd.GetPathId(),
                      table->meta.fd.GetFileSize(), table->meta.smallest,
                      table->meta.largest, table->min_sequence,
-                     table->max_sequence, table->meta.marked_for_compaction);
+                     table->max_sequence, table->meta.marked_for_compaction
+#ifdef INDIRECT_VALUE_SUPPORT
+                     ,table->meta.indirect_ref_0
+#endif
+                     );
       }
       mutex_.Lock();
       Status status = vset_.LogAndApply(
