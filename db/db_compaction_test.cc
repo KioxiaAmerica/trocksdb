@@ -233,6 +233,8 @@ TEST_F(DBCompactionTest, IndirectTest) {
   DestroyAndReopen(options);
   int32_t value_size = 18;  // 10 KB
   int32_t key_size = 10 * 1024 - value_size;
+  int32_t value_size_var = 20;
+  int32_t key_size_var = 1000;
   int32_t batch_size = 20000;
 
   // Add 2 non-overlapping files
@@ -241,14 +243,14 @@ TEST_F(DBCompactionTest, IndirectTest) {
 
   // file 1 [0 => 100]
   for (int32_t i = 0; i < 100; i++) {
-    values[i] = RandomString(&rnd, value_size);
+    values[i] = RandomString(&rnd, value_size + rnd.Next()%value_size_var);
     ASSERT_OK(Put(LongKey(i,key_size), values[i]));
   }
   ASSERT_OK(Flush());
 
   // file 2 [100 => 300]
   for (int32_t i = 100; i < 300; i++) {
-    values[i] = RandomString(&rnd, value_size);
+    values[i] = RandomString(&rnd, value_size + rnd.Next()%value_size_var);
     ASSERT_OK(Put(LongKey(i,key_size), values[i]));
   }
   ASSERT_OK(Flush());
@@ -264,12 +266,12 @@ TEST_F(DBCompactionTest, IndirectTest) {
 
   // file 3 [ 0 => 200]
   for (int32_t i = 0; i < 200; i++) {
-    values[i] = RandomString(&rnd, value_size);
+    values[i] = RandomString(&rnd, value_size + rnd.Next()%value_size_var);
     ASSERT_OK(Put(LongKey(i,key_size), values[i]));
   }
   ASSERT_OK(Flush());
   for (int32_t i = 300; i < 300+batch_size; i++) {
-    values[i] = RandomString(&rnd, value_size);
+    values[i] = RandomString(&rnd, value_size + rnd.Next()%value_size_var);
   }
 
 
@@ -281,8 +283,23 @@ for(int32_t k=0;k<10;++k) {
 //        ASSERT_OK(Flush());
 //        dbfull()->TEST_WaitForFlushMemTable();
 //      }
-      if((rnd.Next()&0x7f)==0)values[j] = RandomString(&rnd, value_size);  // replace one value in 100
+      if((rnd.Next()&0x7f)==0)values[j] = RandomString(&rnd, value_size + rnd.Next()%value_size_var);  // replace one value in 100
       ASSERT_OK(Put(LongKey(j,key_size), values[j]));
+      if(i|k) {   // if we have filled up all the slots...
+        for(int32_t m=0;m<2;++m){
+          int32_t randkey = (rnd.Next()) % batch_size;  // make 2 random gets per put
+          std::string getresult = Get(LongKey(randkey,key_size));
+          if(getresult.compare(values[randkey])!=0) {
+            printf("mismatch: Get result=%s len=%zd\n",getresult.c_str(),getresult.size());
+            printf("mismatch: Expected=%s len=%zd\n",values[randkey].c_str(),values[randkey].size());
+            std::string getresult2 = Get(LongKey(randkey,key_size));
+            if(getresult.compare(getresult2)==0)printf("unchanged on reGet\n");
+            else if(getresult.compare(values[randkey])==0)printf("correct on reGet\n");
+            else printf("after ReGet: Get result=%s len=%zd\n",getresult2.c_str(),getresult2.size());
+          }
+        }
+      }
+      
     }
     printf("batch ");
     std::this_thread::sleep_for(std::chrono::seconds(2));  // give the compactor time to run
@@ -295,6 +312,7 @@ for(int32_t k=0;k<10;++k) {
     ASSERT_EQ(Get(LongKey(j,key_size)), values[j]);
   }
   printf("...verified.\n");
+  TryReopen(options);
 }
 
 
