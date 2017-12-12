@@ -359,7 +359,7 @@ public:
   // Read the bytes referred to in the given VLogRingRef.  Uses release-acquire ordering to verify validity of ring
   // Returns the bytes.  ?? Should this return to user area to avoid copying?
   Status VLogGet(
-    Slice& reference,  // the reference
+    const Slice *reference,  // the reference
     std::string *result   // where the result is built
   )
   // extract the ring# from the reference

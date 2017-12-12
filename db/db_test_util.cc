@@ -781,7 +781,7 @@ std::string DBTestBase::AllEntriesFor(const Slice& user_key, int cf) {
           case kTypeIndirectValue:
           case kTypeIndirectMerge:
             {std::string resolution_buffer;  // place to resolve indirect value
-            iter->GetVlogForIteratorCF()->VLogGet(iter->value(),&resolution_buffer);   // turn the reference into a value, in the string
+            iter->GetVlogForIteratorCF()->VLogGet(&iter->value(),&resolution_buffer);   // turn the reference into a value, in the string
             result += resolution_buffer;  // append to result
             }break;
 #endif
