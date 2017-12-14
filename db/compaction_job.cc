@@ -935,7 +935,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
     printf("Mismatched ref0\n");
   our_ref0[0]=~0;  // reset for next time
 #endif
-      sub_compact->current_output()->meta.InstallRef0(ref0,cfd);
+      sub_compact->current_output()->meta.InstallRef0(sub_compact->compaction->output_level(),ref0,cfd);
 #endif
       CompactionIterationStats range_del_out_stats;
       status = FinishCompactionOutputFile(input_status, sub_compact,
@@ -1001,7 +1001,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
     printf("Mismatched ref0\n");
   our_ref0[0]=~0;  // reset for next time
 #endif
-    sub_compact->current_output()->meta.InstallRef0(ref0,cfd);
+    sub_compact->current_output()->meta.InstallRef0(sub_compact->compaction->output_level(),ref0,cfd);
 #endif
     CompactionIterationStats range_del_out_stats;
     Status s = FinishCompactionOutputFile(

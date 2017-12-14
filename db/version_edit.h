@@ -119,6 +119,7 @@ struct FileMetaData {
   std::vector<FileMetaData*> ringbwdchain;
   VLog *vlog;  // The value log for the CF this file is in.  It's a shame to waste 8 bytes, but it's just too hard to get a pointer
                  // to the ColumnFamilyData down to all the routines that need it
+  int level;   // The level of this file, needed so that Active Recycling can collect files on the same level
 #endif
 
   FileMetaData()
@@ -139,6 +140,7 @@ struct FileMetaData {
         ,ringfwdchain(std::vector<FileMetaData*>())
         ,ringbwdchain(std::vector<FileMetaData*>())
         ,vlog(nullptr)   // vlog is filled in when we add the file to a CF
+        ,level(-1)
 #endif
         {}
 
@@ -161,7 +163,7 @@ struct FileMetaData {
 #ifdef INDIRECT_VALUE_SUPPORT
   // After the last kv has been written to the file, install the earliest refs that were found in
   // the file, one for each ring (0 means no ref)
-  void InstallRef0(const std::vector<uint64_t> &earliestref, ColumnFamilyData *cfd);
+  void InstallRef0(int outputlevel, const std::vector<uint64_t> &earliestref, ColumnFamilyData *cfd);
 
 #endif
 };
@@ -252,6 +254,7 @@ class VersionEdit {
 #ifdef INDIRECT_VALUE_SUPPORT
       // older code doesn't know about indirect_ref; use 'omitted' (0) then
     f.indirect_ref_0=indirect_ref_0;  // set the earliest refs, if any
+    f.level = level;  // save level # in the metadata so VLogRing can get to it
 #endif
     new_files_.emplace_back(level, std::move(f));
   }

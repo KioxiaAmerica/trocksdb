@@ -70,11 +70,11 @@ struct SstFileMetaData {
         largestkey(_largestkey),
         num_reads_sampled(_num_reads_sampled),
         being_compacted(_being_compacted)
-#ifdef INDIRECT_VALUE_SUPPORT   // add earliest_ref to SstFileMetaData
+#ifdef INDIRECT_VALUE_SUPPORT_OBSOLETE   // add earliest_ref to SstFileMetaData
         ,indirect_ref_0(std::vector<uint64_t>()) // default to 'omitted' 
 #endif
         {}
-#ifdef INDIRECT_VALUE_SUPPORT   // define constructor that includes earliest_ref (optional since not all table types use it)
+#ifdef INDIRECT_VALUE_SUPPORT_OBSOLETE   // define constructor that includes earliest_ref (optional since not all table types use it)
   SstFileMetaData(const std::string& _file_name, const std::string& _path,
                   uint64_t _size, SequenceNumber _smallest_seqno,
                   SequenceNumber _largest_seqno,
@@ -107,7 +107,7 @@ struct SstFileMetaData {
   std::string largestkey;      // Largest user defined key in the file.
   uint64_t num_reads_sampled;  // How many times the file is read.
   bool being_compacted;  // true if the file is currently being compacted.
-#ifdef INDIRECT_VALUE_SUPPORT   // declare the fields added to SstFileMetaData
+#ifdef INDIRECT_VALUE_SUPPORT_OBSOLETE   // declare the fields added to SstFileMetaData
   std::vector<uint64_t> indirect_ref_0;  // for each ring, file# of the oldest value referred to in this SST.  Set to HIGH-VALUE (~0>>1) if there are no indirect references
      // set to 0 to mean 'indirect value omitted'
 #endif

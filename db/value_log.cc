@@ -847,7 +847,7 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
 // Read the bytes referred to in the given VLogRingRef.  Uses release-acquire ordering to verify validity of ring
 // Returns the bytes.  ?? Should this return to user area to avoid copying?
 Status VLog::VLogGet(
-  Slice& reference,  // the reference
+  const Slice& reference,  // the reference
   std::string *result   // where the result is built
 )
 {
@@ -893,6 +893,11 @@ if(!rings_.size() || !newsst.indirect_ref_0.size())printf("VLogSstInstall newsst
       ReleaseLock();
     } else {
       // Normal case after initial recovery.  Put the SST into each ring for which it has a reference
+if(newsst.indirect_ref_0.size()){
+  printf("VLogSstInstall newsst=%p level=%d\n",&newsst,newsst.level);  // scaf
+}
+  if(newsst.level<0)
+    printf("installing SST with no level\n");
       for (int i=0;i<newsst.indirect_ref_0.size();++i)if(newsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstInstall(newsst);
     }
   }

@@ -635,12 +635,13 @@ std::string VersionEdit::DebugJSON(int edit_num, bool hex_key) const {
 
 #ifdef INDIRECT_VALUE_SUPPORT
   // After the last kv has been written to the file, install the earliest refs that were found in
-  // the file, one for each ring (0 means no ref)
-  void FileMetaData::InstallRef0(const std::vector<uint64_t> &earliestref, ColumnFamilyData *cfd) {
+  // the file, one for each ring (0 means no ref).  Also install other stuff neded in a new file: vlog pointer and level.  Files created during compaction go through AddFile, but not detailed creation therein
+  void FileMetaData::InstallRef0(int outputlevel, const std::vector<uint64_t> &earliestref, ColumnFamilyData *cfd) {
     indirect_ref_0 = earliestref;
     ringfwdchain.resize(earliestref.size(),nullptr);  // keep the chain fields lockstep in size with indirect_ref
     ringbwdchain.resize(earliestref.size(),nullptr);
     vlog = cfd->vlog().get();
+    level = outputlevel;
   }
 
 #endif

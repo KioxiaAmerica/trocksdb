@@ -761,7 +761,7 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
           file->largest.user_key().ToString(),
           file->stats.num_reads_sampled.load(std::memory_order_relaxed),
           file->being_compacted
-#ifdef INDIRECT_VALUE_SUPPORT   // add the earliest_ref to the column metadata transferred from LevelFiles
+#ifdef INDIRECT_VALUE_SUPPORT_OBSOLETE   // add the earliest_ref to the column metadata transferred from LevelFiles
           ,file->indirect_ref_0
 #endif
           );
@@ -3788,7 +3788,7 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
         filemetadata.largestkey = file->largest.user_key().ToString();
         filemetadata.smallest_seqno = file->smallest_seqno;
         filemetadata.largest_seqno = file->largest_seqno;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT_OBSOLETE
         filemetadata.indirect_ref_0 = file->indirect_ref_0;
 #endif
         metadata->push_back(filemetadata);
