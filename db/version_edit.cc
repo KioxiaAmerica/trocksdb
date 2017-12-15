@@ -506,8 +506,8 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
         // record is code/total length/#refs/refs
         {uint32_t nrings; int ok; uint64_t ref;
         ring_ends_.clear();  // init to no refs
-        if(ok = GetLengthPrefixedSlice(&input, &str)) {   // get the entire #refs/refs field
-          if (ok = GetVarint32(&str, &nrings)) {   // get #refs
+        if((ok = GetLengthPrefixedSlice(&input, &str))) {   // get the entire #refs/refs field
+          if ((ok = GetVarint32(&str, &nrings))) {   // get #refs
             while(nrings--){if(!(ok = GetVarint64(&str, &ref)))break; ring_ends_.push_back(ref);} // add each ref to the vector
           }
         }
