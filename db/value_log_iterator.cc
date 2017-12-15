@@ -13,13 +13,41 @@
 #include "rocksdb/status.h"
 
 namespace rocksdb {
+#if 0
+    return table_cache_->NewIterator(
+        read_options_, env_options_, icomparator_, *fd, range_del_agg_,
+        nullptr /* don't need reference to table */, file_read_hist_,
+        for_compaction_, nullptr /* arena */, skip_filters_, level_);
+#endif  // scaf
+// Iterator class to go through the file for Active Recycling, in order
+//
+// This does essentially the same thing as the TwoLevelIterator, but without a LevelFilesBrief, and with the facility for
+// determining when an input file is exhausted.  Rather than put switches
+// into all the other iterator types, we just do everything here, in a single level.
+  RecyclingIterator::RecyclingIterator(ColumnFamilyData* cfd_,  // the column we are working on
+                            std::vector<FileMetaData*> files_  // the files
+  ) :
+    cfd(cfd_),
+    file_index(-1),  // init pointing before first file
+    file_iterator(nullptr),  // init no iterator for file
+    files(files_)   // the file we will go through, in order
+  {}
+
+  // Go to the next key.  The current key must be valid, or else we must be at the beginning
+  void RecyclingIterator::Next() {
+    // If the current iterator is finished or nonexistent, go to the next file
+    while(file_iterator!=nullptr && file_iterator->Valid())
+  }
+
+
+
 
 // Code for building the indirect-value files.
 // This iterator lies between the compaction-iterator and the builder loop.
 // We read all the values, save the key/values, write indirects, and then
 // return the indirect kvs one by one to the builder.
   IndirectIterator::IndirectIterator(
-   CompactionIterator* c_iter,   // the input iterator that feeds us kvs
+   CompactionIterator* c_iter,   // the input iterator that feeds us kvs.  If 0, we will build a sequential iterator out of the input files
    ColumnFamilyData* cfd,  // the column family we are working on
    int level,   // output level for this iterator - where the files will be written to
    Slice *end,  // end+1 key in range, if given

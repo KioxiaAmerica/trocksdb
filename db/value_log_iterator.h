@@ -24,6 +24,36 @@
 
 namespace rocksdb {
 
+// Iterator class to go through the file for Active Recycling, in order
+//
+// This does essentially the same thing as the TwoLevelIterator, but without a LevelFilesBrief, and with the facility for
+// determining when an input file is exhausted.  Rather than put switches
+// into all the other iterator types, we just do everything here, in a single level.
+class RecyclingIterator : public InternalIterator {
+ public:
+  explicit RecyclingIterator(ColumnFamilyData* cfd_,  // the column we are working on
+                            std::vector<FileMetaData*> files_);
+
+  virtual void SeekToFirst() override { Next(); }
+  virtual void Next() override;
+  virtual Slice key() const override { return file_iterator->key(); }
+  virtual Slice value() const override { return file_iterator->value(); }
+  virtual Status status() const override { return file_index<files.size() ? file_iterator->status() : Status::Corruption("error after last key."); }
+  virtual bool Valid() const override { return file_index<files.size(); }
+  size_t fileindex() { return file_index; }
+
+private:
+  ColumnFamilyData* cfd;  // the CF we are working on
+  size_t file_index;  // index of the file we are working on
+  std::unique_ptr<InternalIterator> file_iterator;  // pointer to iterator for the current file
+  std::vector<FileMetaData*> files;   // the files we will go through, in order
+
+
+};
+
+
+
+
 // Iterator class to layer between the compaction_job loop and the compaction_iterator
 // We read all the key/values for the compaction and buffer them, write indirect values to disk, and then
 // return the possibly modified kvs one by one as the iterator result
