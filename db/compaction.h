@@ -30,6 +30,7 @@ class Version;
 class ColumnFamilyData;
 class VersionStorageInfo;
 class CompactionFilter;
+class VLogRing;
 
 // A Compaction encapsulates information about a compaction.
 class Compaction {
@@ -43,7 +44,8 @@ class Compaction {
              std::vector<FileMetaData*> grandparents,
              bool manual_compaction = false, double score = -1,
              bool deletion_compaction = false,
-             CompactionReason compaction_reason = CompactionReason::kUnknown);
+             CompactionReason compaction_reason = CompactionReason::kUnknown
+    );
 
   // No copying allowed
   Compaction(const Compaction&) = delete;
@@ -264,7 +266,12 @@ class Compaction {
   VersionStorageInfo* input_vstorage_;
 
   const int start_level_;    // the lowest level to be compacted
-  const int output_level_;  // levels to which output files are stored
+  const int output_level_;  // levels to which output files are stored  BUT -1 to indicate that output files are to be stored back into the level of the corresponding input file.
+    // this is set only for Active Recycling passes in support of indirect values.
+#ifdef INDIRECT_VALUE_SUPPORT
+  VLogRing *vlogring_;   // for Active Recycling, points to the VLogRing that is being recycled.  This is nonnull ONLY for Active Recycling and is used as the flag
+    // for that state.
+#endif
   uint64_t max_output_file_size_;
   uint64_t max_compaction_bytes_;
   const ImmutableCFOptions immutable_cf_options_;
@@ -281,6 +288,7 @@ class Compaction {
   const bool deletion_compaction_;
 
   // Compaction input files organized by level. Constant after construction
+  // During Active Recycling, each input 'level' contains exactly one file, and the files are in ascending key order.  Levels may be repeated.
   const std::vector<CompactionInputFiles> inputs_;
 
   // A copy of inputs_, organized more closely in memory
@@ -315,7 +323,7 @@ class Compaction {
   // largest user keys in compaction
   Slice largest_user_key_;
 
-  // Reason for compaction
+  // Reason for compaction.  Active Recycling is signified by an appropriate reason here
   CompactionReason compaction_reason_;
 };
 

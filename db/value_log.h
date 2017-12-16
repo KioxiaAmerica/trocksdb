@@ -304,6 +304,7 @@ class VLogRing {
 friend class VLog;
 friend class VLogRingFileDeletion;
 friend class IndirectIterator;
+friend class RecyclingIterator;
 private:
 
 // We have to cross-index the VLog files and the SSTs for two purposes: (1) to see which VLog files can be deleted when they

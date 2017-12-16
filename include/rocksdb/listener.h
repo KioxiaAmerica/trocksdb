@@ -77,6 +77,10 @@ enum class CompactionReason {
   kManualCompaction,
   // DB::SuggestCompactRange() marked files for compaction
   kFilesMarkedForCompaction,
+#ifdef INDIRECT_VALUE_SUPPORT
+  // Old VLog files need removal to allow deletions
+  kActiveRecycling,
+#endif
 };
 
 enum class BackgroundErrorReason {

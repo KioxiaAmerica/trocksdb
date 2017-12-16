@@ -31,24 +31,23 @@ namespace rocksdb {
 // into all the other iterator types, we just do everything here, in a single level.
 class RecyclingIterator : public InternalIterator {
  public:
-  explicit RecyclingIterator(ColumnFamilyData* cfd_,  // the column we are working on
-                            std::vector<FileMetaData*> files_);
+  explicit RecyclingIterator(Compaction *compaction_, VersionSet* versions_);
 
-  virtual void SeekToFirst() override { Next(); }
+  virtual void SeekToFirst() override { file_index = -1; file_iterator.reset(); Next(); }  // set up to get the first record
   virtual void Next() override;
   virtual Slice key() const override { return file_iterator->key(); }
   virtual Slice value() const override { return file_iterator->value(); }
-  virtual Status status() const override { return file_index<files.size() ? file_iterator->status() : Status::Corruption("error after last key."); }
-  virtual bool Valid() const override { return file_index<files.size(); }
+  virtual Status status() const override { return file_index<compaction->inputs()->size() ? file_iterator->status() : Status::Corruption("error after last key."); }
+  virtual bool Valid() const override { return file_index<compaction->inputs()->size(); }
   size_t fileindex() { return file_index; }
 
 private:
-  ColumnFamilyData* cfd;  // the CF we are working on
+  Compaction *compaction;  // the compaction we are working on.  Points to everything we need
   size_t file_index;  // index of the file we are working on
   std::unique_ptr<InternalIterator> file_iterator;  // pointer to iterator for the current file
-  std::vector<FileMetaData*> files;   // the files we will go through, in order
-
-
+  std::vector<size_t> file_kvct;  // for each input file, the number of kvs found in the file.  Used to know when to switch output files
+  ReadOptions read_options;  // options we will use for reading tables
+  const EnvOptions *env_options;  // env options for reading the database
 };
 
 

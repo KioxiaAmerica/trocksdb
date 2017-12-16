@@ -690,6 +690,10 @@ class VersionSet {
     return pending_manifest_file_number_;
   }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+  const EnvOptions *env_options_compactions() const { return &env_options_compactions_; }
+#endif
+
   uint64_t current_next_file_number() const { return next_file_number_.load(); }
 
   // Allocate and return a new file number

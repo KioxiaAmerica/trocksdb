@@ -13,30 +13,45 @@
 #include "rocksdb/status.h"
 
 namespace rocksdb {
-#if 0
-    return table_cache_->NewIterator(
-        read_options_, env_options_, icomparator_, *fd, range_del_agg_,
-        nullptr /* don't need reference to table */, file_read_hist_,
-        for_compaction_, nullptr /* arena */, skip_filters_, level_);
-#endif  // scaf
-// Iterator class to go through the file for Active Recycling, in order
+// Iterator class to go through the files for Active Recycling, in order
 //
-// This does essentially the same thing as the TwoLevelIterator, but without a LevelFilesBrief, and with the facility for
+// This does essentially the same thing as the TwoLevelIterator, but without a LevelFilesBrief, going forward only, and with the facility for
 // determining when an input file is exhausted.  Rather than put switches
 // into all the other iterator types, we just do everything here, in a single level.
-  RecyclingIterator::RecyclingIterator(ColumnFamilyData* cfd_,  // the column we are working on
-                            std::vector<FileMetaData*> files_  // the files
+  RecyclingIterator::RecyclingIterator(Compaction *compaction_,  // pointer to all compation data including files
+    VersionSet *versions_  //  pointer to environmant data
   ) :
-    cfd(cfd_),
+    compaction(compaction_),
     file_index(-1),  // init pointing before first file
     file_iterator(nullptr),  // init no iterator for file
-    files(files_)   // the file we will go through, in order
-  {}
+    file_kvct(std::vector<size_t>(compaction->inputs()->size(),0)),  // number of kvs in each file
+    env_options(versions_->env_options_compactions())
+  {
+    // These read options are copied from MakeInputIterator in version_set.cc
+    read_options.verify_checksums = true;
+    read_options.fill_cache = false;
+    read_options.total_order_seek = true;
+  }
 
   // Go to the next key.  The current key must be valid, or else we must be at the beginning
   void RecyclingIterator::Next() {
-    // If the current iterator is finished or nonexistent, go to the next file
-    while(file_iterator!=nullptr && file_iterator->Valid())
+    // If there is a current iterator, see if it has another kv
+    if(file_iterator==nullptr || (file_iterator->Next(),!file_iterator->Valid())) {
+      // the current iterator, if any, has expired.  Advance to the next one
+      do {   // loop in case there is a file with no kvs
+        // If there is no next file, we are through
+        if(++file_index >= compaction->inputs()->size())break;  // exit is no more files
+        // Create the iterator for the next (or first) file
+        file_iterator.reset(compaction->column_family_data()->table_cache()->NewIterator(
+          read_options, *env_options, compaction->column_family_data()->internal_comparator() /* not used */, (*compaction->inputs())[file_index][0]->fd, nullptr /* range_del_agg */ ,
+          nullptr /* don't need reference to table */, nullptr /* no file_read_hist */,
+          true /* for_compaction */, nullptr /* arena */, false /* skip_filters */, (*compaction->inputs())[file_index][0]->level));
+        // start at the beginning of the next file
+        file_iterator->SeekToFirst();             
+      } while(!file_iterator->Valid());
+    }
+    // If the kv is valid, add it to the total # valid in its SST
+    if(file_index < compaction->inputs()->size())++file_kvct[file_index];
   }
 
 
