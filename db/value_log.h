@@ -1,3 +1,6 @@
+// TODO: if ref added to ring lower than the queued_fileno, update queued_fileno
+// consider sorting all keys in an active recycle to reduce number of files referred to after the next compaction
+
 //  Copyright (c) 2017-present, Toshiba Memory America, Inc.  All rights reserved.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
@@ -20,6 +23,7 @@
 #include "options/db_options.h"
 #include "rocksdb/env.h"
 #include "rocksdb/transaction_log.h"
+
 #if DELAYPROB
 #include<chrono>
 #include<thread>
@@ -37,6 +41,7 @@ extern void ProbDelay(void);
 #endif
 
 struct FileMetaData;
+struct CompactionInputFiles;
 class ColumnFamilyData;
 class Status;
 class Slice;
@@ -484,14 +489,14 @@ void VLogRingSstDelete(
   FileMetaData& expiringsst   // the SST that is about to be destroyed
 );
 
-// Return a vector of up to n SSTs that have the smallest oldest-reference-filenumbers.  If extend is true, return all SSTs
-// whose filenumber does not exceed that of the nth-smallest SST's (in other words, return every SST that is tied with n).
+// Return a vector of SSTs that have the smallest oldest-reference-filenumbers.  The maximum number is the capacity of laggingssts; the
+// actual number returned will be a number that avoids getting only part of the references to a VLog file, but never less than n unless
+// there are fewer SSTs than that.
+// We don't return SSTs that are being compacted or are not current.
 void VLogRingFindLaggingSsts(
-  int n,  // number of lagging ssts to return
-  std::vector<FileMetaData*>& laggingssts,  // result: vector of SSTs that should be recycled
-  int extend=0   // if 1, report all 
+  size_t n,  // minimum number of lagging ssts to return
+  std::vector<CompactionInputFiles>& laggingssts  // result: vector of SSTs that should be recycled.  The size on entry is the maximum size allowed
 )
-// Do this operation under spin lock.  Reheap to close up deleted SSTs whenever we encounter them
 ;
 
 };

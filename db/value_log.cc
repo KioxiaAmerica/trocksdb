@@ -1,7 +1,3 @@
-// changes needed in main Rocks code:
-// FileMetaData needs a unique ID number for each SST in the system.  Could be unique per column family if that's easier
-// Manifest needs smallest file# referenced by the SST
-
 //  Copyright (c) 2017-present, Toshiba Memory America, Inc.  All rights reserved.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
@@ -619,7 +615,8 @@ ProbDelay();
 ProbDelay();
 #endif 
     // Find the slot that this reference maps to
-    size_t slotx = Ringx(*fdring,newsst.indirect_ref_0[ringno_]);  // the place this file's info is stored - better be valid
+    VLogRingRefFileno reffile = newsst.indirect_ref_0[ringno_];
+    size_t slotx = Ringx(*fdring,reffile);  // the place this file's info is stored - better be valid
 // scaf out of bounds?
 
     // Increment the usecount for the slot
@@ -630,7 +627,9 @@ ProbDelay();
     newsst.ringbwdchain[ringno_] = nullptr;   // there is nothing before the new head
     if((*fdring)[slotx].queue!=nullptr)(*fdring)[slotx].queue->ringbwdchain[ringno_] = &newsst;  // if there is an old chain, point old head back to new head
     (*fdring)[slotx].queue = &newsst;  // point anchor to the new head
-    
+
+    // If this reference is lower than the queued pointer for the ring (rare), back up the ququed pointer
+    if(reffile<atomics.fd_ring_queued_fileno.load(std::memory_order_acquire))atomics.fd_ring_queued_fileno.store(reffile,std::memory_order_release);
   ReleaseLock();
 #if DEBLEVEL&1
 printf("VLogRingSstInstall newsst=%p ref0=%lld refs=%d",&newsst,newsst.indirect_ref_0[ringno_],newsst.refs);
@@ -759,14 +758,82 @@ printf("\n");
 
 }
 
-// Return a vector of up to n SSTs that have the smallest oldest-reference-filenumbers.  If extend is true, return all SSTs
-// whose filenumber does not exceed that of the nth-smallest SST's (in other words, return every SST that is tied with n).
+// Return a vector of SSTs that have the smallest oldest-reference-filenumbers.  The maximum number is the capacity of laggingssts; the
+// actual number returned will be a number that avoids getting only part of the references to a VLog file, but never less than n unless
+// there are fewer SSTs than that.
+// We don't return SSTs that are being compacted or are not current.
+// The results are in ascending order of starting key
+// This routine runs under the compaction mutex (so that it doesn't choose a file twice).  We also acquire the ring lock, because
+// otherwise we would have to use memory-acquire ordering on reads from the sst chain fields, lest there be a problem with store
+// ordering when another thread is writing to the chains
 void VLogRing::VLogRingFindLaggingSsts(
-  int n,  // number of lagging ssts to return
-  std::vector<FileMetaData*>& laggingssts,  // result: vector of SSTs that should be recycled
-  int extend   // if 1, report all (default 0)
-) {}
-// Do this operation under spin lock.  Reheap to close up deleted SSTs whenever we encounter them
+  size_t n,  // minimum number of lagging ssts to return
+  std::vector<CompactionInputFiles>& laggingssts  // result: vector of SSTs that should be recycled.  The capacity on entry is the maximum size allowed
+) {
+  laggingssts.resize(0);   // int size to 0, but leave the capacity.  clear() may change the capacity
+
+  // Process the oldest files, starting at queued_fileno and going until we have collected enough files, or at most
+  // to the head.  In case there is ring resizing, we update the ring pointer every time we acquire a lock.  In case the queued_pointer
+  // moves backwards, we fetch it once and never back up (and never move the queued_fileno backwards).  Backward movements of the
+  // queued_fileno would be possible if a new write does not remap a write that falls into the Active Recycling region: not normal,
+  // but depending on user settings it is possible, especially if the Active Recycling region turns out to be very large because of a number of
+  // undeleted files.  We lock/unlock the ring over each file, to ensure that the chains are not messed up while we are chasing them AND
+  // to ensure that the queued_fileno is not written back (or to the same spot) before we advance it.
+
+  VLogRingRefFileno currentfile = 0;  // the file we are working on (at top of loop, the file we worked on in the previous iteration).
+   // init to a low_value
+  size_t evenfilesize = 0;  // the size of the result area after the last file whose SSTs all fit into the output region
+
+  // Get the head pointer, beyond which we will not read.  This may become obsolete, but that's no big deal.  It will surely be big enough.
+  VLogRingRefFileno headfile = atomics.fd_ring_head_fileno.load(std::memory_order_acquire);
+
+  // Loop until we have collected enough references.  Stop if we have run out of files to look at
+  while(laggingssts.size()<laggingssts.capacity()) {
+    // Acquire lock on the current ring.  A single file will not usually have many SSTs chained to it - approximately the number in a compaction, say
+    AcquireLock();
+
+      // Reacquire ring base, in case it was resized
+      std::vector<VLogRingFile> *vlogringbase = fd_ring+atomics.currentarrayx.load(std::memory_order_acquire);
+      // Reacquire the queued-file pointer: necessary in case a bunch of files were deleted and the old tail, including the
+      //  old queued area, were overwritten by new files.  We know the queued-file pointer is never below the tail pointer
+      VLogRingRefFileno queuefile = atomics.fd_ring_queued_fileno.load(std::memory_order_acquire);
+      // slot to process is larger of (previous slot processed+1) and queued_fileno
+      ++currentfile; if(queuefile>currentfile)currentfile = queuefile;
+      // if we have processed all the files, exit
+      if(currentfile>headfile)break;
+
+      // Chase the chain.  If the chain is empty, and we are processing queued_fileno, increment queued_fileno
+      size_t slotx = Ringx(*vlogringbase,currentfile);    // get slot number for the file we are working on
+      FileMetaData *chainptr = (*vlogringbase)[slotx].queue;  // first SST in chain
+      if(chainptr==nullptr && currentfile==queuefile)atomics.fd_ring_queued_fileno.store(queuefile+1,std::memory_order_acquire);  // if this chain empty, don't look here again
+
+      for(;chainptr!=nullptr;chainptr=chainptr->ringfwdchain[ringno_]) {
+        // If the file is not marked as being compacted, copy it to the result area
+        if(!chainptr->being_compacted)laggingssts.emplace_back(*chainptr);
+        // If the result area is full, stop chasing
+        if(laggingssts.size()==laggingssts.capacity())break;
+      }
+
+    // release lock
+    ReleaseLock();
+
+    // If we read the whole chain, save current result size as ending size
+    if(chainptr==nullptr)evenfilesize = laggingssts.size();
+
+    // continue looking if there is more room for results
+  }
+
+  // if the whole-chain endpoint is greater than the minimum size, use that size for the return size; otherwise use all we collected
+  if(evenfilesize>=n)laggingssts.resize(evenfilesize);
+
+  // Sort the files on starting key
+  std::sort(laggingssts.begin(), laggingssts.end(),
+            [&](const CompactionInputFiles& f1, const CompactionInputFiles& f2) -> bool {
+              return ((cfd_->user_comparator)()->Compare)(Slice(*f1.files[0]->smallest.rep()),Slice(*f2.files[0]->smallest.rep())) < 0;
+            });
+
+  return;
+}
 
 
 //

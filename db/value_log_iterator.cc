@@ -1,7 +1,3 @@
-// changes needed in main Rocks code:
-// FileMetaData needs a unique ID number for each SST in the system.  Could be unique per column family if that's easier
-// Manifest needs smallest file# referenced by the SST
-
 //  Copyright (c) 2017-present, Toshiba Memory America, Inc.  All rights reserved.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
@@ -243,6 +239,8 @@ ProbDelay();
     }
 
     // All values have been read from c_iter
+    // TODO: It might be worthwhile to sort the kvs by key.  This would be needed only during Active Recycling, since they are
+    // automatically sorted during compaction.  Perhaps we could merge by level.
 
     // Allocate space in the Value Log and write the values out, and save the information for assigning references
     outputring->VLogRingWrite(diskdata,diskrecl,nextdiskref,fileendoffsets,outputerrorstatus);

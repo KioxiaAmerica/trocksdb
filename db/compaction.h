@@ -20,6 +20,11 @@ namespace rocksdb {
 struct CompactionInputFiles {
   int level;
   std::vector<FileMetaData*> files;
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  CompactionInputFiles(FileMetaData& meta) { level = meta.level; files = std::vector<FileMetaData*>(1,&meta); }  // create a one-file 'level' for a single FileMetaData, for Active Recycling
+  CompactionInputFiles() { level = 0; files = std::vector<FileMetaData*>(); }   // needed for resize(), even though we never use it because we resize down
+#endif
   inline bool empty() const { return files.empty(); }
   inline size_t size() const { return files.size(); }
   inline void clear() { files.clear(); }
