@@ -62,7 +62,7 @@ public:
   int ringno;
   uint64_t fileno;
   ParsedFnameRing(VLogRingRefFileno file_ring) :
-    fileno(file_ring>>2), ringno((int)file_ring&3) {}
+    ringno((int)file_ring&3), fileno(file_ring>>2) {}
 };
 
 // The VLogRingRef is a reference to data in a VLogRing.  It can be converted to an opaque string
@@ -125,10 +125,10 @@ void SetLen(VLogRingRefFileLen l) { len = l; }
 uint64_t FileNumber() {return (fileno<<2)+ringno;}
 
 private:
+int ringno;
 VLogRingRefFileno fileno;
 VLogRingRefFileOffset offset;
 VLogRingRefFileLen len;
-int ringno;
 union {
   uint64_t intform[2];   // internal form
   char extform[16];   // external form
