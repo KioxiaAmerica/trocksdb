@@ -352,7 +352,7 @@ public:
   // NOTE that there is no guarantee that data is written to files in sequential order, and thus on a restart the
   // end-file-number may cause some space to be lost.  It will be recovered when the ring recycles.
    void GetRingEnds(std::vector<uint64_t> *result) {
-    for(int i = 0;i<rings_.size();++i){result->push_back(rings_[i]->atomics.fd_ring_head_fileno_shadow);}
+    for(uint32_t i = 0;i<rings_.size();++i){result->push_back(rings_[i]->atomics.fd_ring_head_fileno_shadow);}
     return;
   }
 
@@ -367,7 +367,7 @@ public:
 ;
 
   // Given the level of an output file, return the ring number, if any, to write to (-1 if no ring)
-  int VLogRingNoForLevelOutput(int level) { int i; for(i=0; i<starting_level_for_ring_.size() && level>=starting_level_for_ring_[i];++i); return i-1;}
+  int VLogRingNoForLevelOutput(int level) { uint32_t i; for(i=0; i<starting_level_for_ring_.size() && level>=starting_level_for_ring_[i];++i); return i-1;}
 
   // Return the VLogRing for the given level
   VLogRing *VLogRingFromNo(int ringno) { return rings_[ringno].get(); }
@@ -376,12 +376,12 @@ public:
   // Arguments can be replaced by the metadata for the SST, or the Manifest entry?
   void VLogSstInstall(
     FileMetaData& newsst   // the SST that has just been created & filled in
-  ) {for (int i=0;i<newsst.indirect_ref_0.size();++i)if(newsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstInstall(newsst);}
+  ) {for (uint32_t i=0;i<newsst.indirect_ref_0.size();++i)if(newsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstInstall(newsst);}
 
   // Remove an SST from the ring when it is no longer current
   void VLogSstUnCurrent(
     FileMetaData& retiringsst   // the SST that has just been obsoleted
-  ) {for (int i=0;i<retiringsst.indirect_ref_0.size();++i)if(retiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstUnCurrent(retiringsst);}
+  ) {for (uint32_t i=0;i<retiringsst.indirect_ref_0.size();++i)if(retiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstUnCurrent(retiringsst);}
   // acquire spin lock
   // delete SST from the hashtable
   // release spin lock
@@ -390,7 +390,7 @@ public:
   // Remove the VLog file's dependency on an SST, and delete the VLog file if it is now unused
   void VLogSstDelete(
     FileMetaData& expiringsst   // the SST that is about to be destroyed
-  ) {for (int i=0;i<expiringsst.indirect_ref_0.size();++i)if(expiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstDelete(expiringsst);}
+  ) {for (uint32_t i=0;i<expiringsst.indirect_ref_0.size();++i)if(expiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstDelete(expiringsst);}
 
 };
 
