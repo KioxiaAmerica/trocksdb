@@ -374,13 +374,13 @@ Status VLog::VLogInit(
 // Read the bytes referred to in the given VLogRingRef.  Uses release-acquire ordering to verify validity of ring
 // Returns the bytes.  ?? Should this return to user area to avoid copying?
 Status VLog::VLogGet(
-  const Slice *reference,  // the reference
+  const Slice& reference,  // the reference
   std::string *result   // where the result is built
 )
 {
-  assert(reference->size()==16);  // should be a reference
-  if(reference->size()!=16){return Status::Corruption("indirect reference is ill-formed.");}
-  VLogRingRef ref = VLogRingRef(reference->data());   // analyze the reference
+  assert(reference.size()==16);  // should be a reference
+  if(reference.size()!=16){return Status::Corruption("indirect reference is ill-formed.");}
+  VLogRingRef ref = VLogRingRef(reference.data());   // analyze the reference
 
   // Because of the OS kludge that doesn't allow zero-length files to be memory-mapped, we have to check to make
   // sure that the reference doesn't have 0 length: because the 0-length reference might be contained in a

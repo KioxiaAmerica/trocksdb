@@ -105,7 +105,7 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
 #ifdef INDIRECT_VALUE_SUPPORT   // resolve the Get() value before putting it through the merge maze
     value_was_indirect = IsTypeIndirect(parsed_key.type);
     if(value_was_indirect){
-      merge_context_->GetVlog()->VLogGet(&value,&resolved_value); // scaf should check status
+      merge_context_->GetVlog()->VLogGet(value,&resolved_value); // scaf should check status
       (Slice&)value = Slice(resolved_value);  // violates const correctness, but that's better than interface changes
     }
 #endif

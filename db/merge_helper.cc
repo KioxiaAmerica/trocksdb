@@ -187,7 +187,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       // is defined at the compaction-iterator level
       iter->resolved_indirect_values.emplace_back();  // add a new empty string for upcoming read
       // resolve the value in the new string.
-      vlog->VLogGet(&val,&iter->resolved_indirect_values.back());   // turn the reference into a value, in the string
+      vlog->VLogGet(val,&iter->resolved_indirect_values.back());   // turn the reference into a value, in the string
       // In any case, the key is now the last string in the read buffers.
       val = Slice(iter->resolved_indirect_values.back());  // create a slice for the resolved value
     }

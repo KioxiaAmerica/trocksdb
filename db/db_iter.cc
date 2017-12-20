@@ -238,7 +238,7 @@ class DBIter final: public Iterator {
         // the object, so this function should not be defined as const; but that would affect user code, so we don't change it
         ((std::vector<std::string>*)&resolved_indirect_values)->emplace_back();  // add a new empty string for upcoming read
         // resolve the value in the new string.
-        iter_->GetVlogForIteratorCF()->VLogGet(&val,&((std::vector<std::string>*)&resolved_indirect_values)->back());   // turn the reference into a value, in the string
+        iter_->GetVlogForIteratorCF()->VLogGet(val,&((std::vector<std::string>*)&resolved_indirect_values)->back());   // turn the reference into a value, in the string
         *(IndirectState*)&indirect_state = kISResolved;  // change state so we don't resolve again
       }
       // In any case, the key is now the last string in the read buffers.
