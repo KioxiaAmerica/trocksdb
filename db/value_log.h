@@ -226,18 +226,15 @@ public:
   FileMetaData* queue;  // base of forward chain
   int refcount;   // Number of SSTs that hold a reference to this file
   std::unique_ptr<RandomAccessFile> filepointer;  // the open file
+  VLogRingRefFileLen length;  // length of the file, needed for fragmentation bookkeeping
 
-  VLogRingFile(std::unique_ptr<RandomAccessFile>& fptr  // the file 
-  ) :
-    queue(nullptr),
-    refcount(0),
-    filepointer(std::move(fptr)) {
-}
+  VLogRingFile(std::unique_ptr<RandomAccessFile>& fptr,  // the file 
+    VLogRingRefFileLen len   // its length
+  ) : queue(nullptr), refcount(0), filepointer(std::move(fptr)), length(len) {}
   VLogRingFile() :   // used to initialize empty slot
-    queue(nullptr), refcount(0), filepointer(nullptr) {}
-
+    queue(nullptr), refcount(0), filepointer(nullptr), length(0) {}
   VLogRingFile(VLogRingFile& v, int dummy) :  // used to create faux copy constructor to evade no-copy rules
-    queue(v.queue), refcount(v.refcount), filepointer(v.filepointer.get()) {}
+    queue(v.queue), refcount(v.refcount), filepointer(v.filepointer.get()), length(v.length) {}
 
   // Ensure the file is not copyable
   VLogRingFile(VLogRingFile const&) = delete;
@@ -246,7 +243,7 @@ public:
   // But make it movable, needed for emplace_back
     // Move constructor
   VLogRingFile(VLogRingFile&& other) noexcept
-  : queue(other.queue), refcount(other.refcount)
+  : queue(other.queue), refcount(other.refcount), length(other.length)
   {
     filepointer = std::move(other.filepointer);
     // Now that we have moved, reset the other to empty queue
@@ -259,6 +256,7 @@ public:
     queue = rhs.queue;
     refcount = rhs.refcount;
     filepointer = std::move(rhs.filepointer);
+    length = rhs.length;
     // Now that we have moved, reset the other to empty queue
     rhs.queue = nullptr;
     rhs.refcount = 0;
@@ -267,7 +265,12 @@ public:
 
 };
 
+//
+//
+// ******************************************** VlogRingFileDeletion ***********************************************
 // A VLogRingFileDeletion holds just enough information to delete the file.  We transfer ownership of the open file to the Deletion
+//
+//
 class VLogRingFileDeletion {
 public:
   VLogRingRefFileno fileno;
@@ -284,6 +287,30 @@ public:
 
 };
 
+//
+//
+// ******************************************** VLogRingRestartInfo **************************************
+//
+// This is the ring information we need on a restart
+  struct VLogRingRestartInfo {
+    // For stats purposes, and to allow us to schedule Active Recycling effectively, we need to know how much fragmentation there is in the ring.
+    // In turn this requires us to keep track of which files have been included in the fragmentation count.  That is, it isn't enough just to
+    // look at the files that exist: files may be written while the system is crashing, before references to them have been created, and they will
+    // float along until they are deleted, at which time they MUST NOT be treated as removing compaction.  For the oldest files, we need a freed-to mark
+    // to indicate which zombie files have been included in the fragmentation count, to ensure we don't count one twice.
+    //
+    // Normally, the list of files will be a single interval (a,b).  If files get added out-of-order at the end, there may briefly be more intervals.
+    // If there is a restart at a moment where there are multiple intervals, those intervals will persist until they are recycled.  The current
+    // set of intervals is written to the manifest after each compaction.
+    //
+    // The intervals are written back-to-back, as start0,end0,start1,end1... each containing a file number for this ring
+    std::vector<VLogRingRefFileno> valid_files;  // a sequence of intervals start0,end0,start1,end1... indicating the valid filenumbers
+  // statistics are kept for the total size of the ring and the number of bytes of fragmentation.  Fragmentation is the number of bytes in the
+  // valid files that are not referred to by any SST.  Fragmentation is added by compaction, which leave gaps in the files.  Fragmentation is removed by
+  // deletion of empty files.
+    VLogRingRefFileLen size;   // total # bytes in ring
+    VLogRingRefFileLen frag;   // total # bytes of fragmentation in ring
+  };
 
 
 // A VLogRing is a set of sequentially-numbered files, with a common prefix and extension .vlg, that contain
@@ -364,6 +391,9 @@ private:
   std::atomic<uint32_t> writelock;  // 0 normally, 1 when the ring is in use for writing
   } atomics;
 
+  // All the info we need to preserve over a restart/compaction
+  VLogRingRestartInfo restartinfo;
+
   // Convert a file number to a ring slot in the current ring.  To avoid the divide we require the ring have power-of-2 size
   size_t Ringx(std::vector<VLogRingFile>& fdring, VLogRingRefFileno f) { return (size_t) f & (fdring.size()-1); }
 
@@ -394,7 +424,7 @@ VLogRing(
   int ringno,   // ring number of this ring within the CF
   ColumnFamilyData *cfd,  // info for the CF for this ring
   std::vector<std::string> filenames,  // the filenames that might be vlog files for this ring
-  VLogRingRefFileno earliest_ref,   // earliest file number referred to in manifest
+  std::vector<VLogRingRefFileLen> filesizes,   // corresponding file sizes
   const ImmutableDBOptions *immdbopts,   // The current Env
   EnvOptions& file_options  // options to use for all VLog files
 );
@@ -553,6 +583,7 @@ public:
   // no way to get the required information to the constructor
   Status VLogInit(
     std::vector<std::string> vlg_filenames,    // all the filenames that exist for this database - at least, all the vlg files
+    std::vector<VLogRingRefFileLen> vlg_filesizes,   // corresponding file sizes
     const ImmutableDBOptions *immdbopts,  // the currect Env
     EnvOptions& file_options   // options to use for VLog files
   )

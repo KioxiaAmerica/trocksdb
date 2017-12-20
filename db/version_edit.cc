@@ -78,6 +78,11 @@ void VersionEdit::Clear() {
   is_column_family_add_ = 0;
   is_column_family_drop_ = 0;
   column_family_name_.clear();
+#ifdef INDIRECT_VALUE_SUPPORT
+  ring_edit_info.clear();  // no ring status
+  comp_vlogfiles.valid_files.clear();  // no comp files written
+  comp_vlogfiles.size = comp_vlogfiles.frag = 0;  // no data written either
+#endif
 }
 
 // create a string form of the edits accumulated in this, suitable for writing to manifest
@@ -204,6 +209,9 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
   if (column_family_ != 0) {
     PutVarint32Varint32(dst, kColumnFamily, column_family_);
   }
+#ifdef INDIRECT_VALUE_SUPPORT
+  // write the CF information for indirect values: the active file numbers for each ring, and the amount of fragmentation in those files   scaftodo
+#endif
 
   // write records for other non-SST fields
   if (is_column_family_add_) {

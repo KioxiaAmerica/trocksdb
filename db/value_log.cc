@@ -71,7 +71,7 @@ VLogRing::VLogRing(
   int ringno,   // ring number of this ring within the CF
   ColumnFamilyData *cfd,  // info for the CF for this ring
   std::vector<std::string> filenames,  // the filenames that might be vlog files for this ring
-  VLogRingRefFileno earliest_ref,   // earliest file number referred to in manifest
+  std::vector<VLogRingRefFileLen> filesizes,   // corresponding file sizes
   const ImmutableDBOptions *immdbopts,   // The current Env
   EnvOptions& file_options  // options to use for all VLog files
 )   : 
@@ -865,6 +865,7 @@ printf("VLog cfd=%p name=%s\n",cfd,cfd->GetName().data());
 // no way to get the required information to the constructor
 Status VLog::VLogInit(
     std::vector<std::string> vlg_filenames,    // all the filenames that exist for this database - at least, all the vlg files
+    std::vector<VLogRingRefFileLen> vlg_filesizes,   // corresponding file sizes
     const ImmutableDBOptions *immdbopts,   // The current Env
     EnvOptions& file_options  // options to use for all VLog files
 ) {

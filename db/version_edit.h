@@ -164,7 +164,6 @@ struct FileMetaData {
   // After the last kv has been written to the file, install the earliest refs that were found in
   // the file, one for each ring (0 means no ref)
   void InstallRef0(int outputlevel, const std::vector<uint64_t> &earliestref, ColumnFamilyData *cfd);
-
 #endif
 };
 
@@ -368,6 +367,24 @@ printf("VersionEdit::DeleteFile: %p\n",f);
   bool is_column_family_drop_;
   bool is_column_family_add_;
   std::string column_family_name_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  VLog *vlog;  // we need a pointer to the VLog for this CF so that we can move the stats info there when we are finished
+
+  // If there are VLogs, we write an inventory of the VLogFiles that will be valid on a restart, and the total size and fragmentation associated with them.
+  // To allow us to decide when to Active Recycle, we remove a file from the fragmentation count when we are about to remove the file from the current version
+  // (it might not be deletable until references to it have been removed, but we want to take credit for the fragmentation reduction immediately so we don't
+  // try to recycle the same files again).  Once we have removed a file from the frag count we need to remove it from the valid-files list at the same time
+  // to make sure that we don't count the deletion twice (if we restart before the file is deleted).  So the frag/size refers only to files in the valid-file list;
+  // other files will be quietly deleted at startup.
+
+  // There is one stats structure for each ring.
+  std::vector<VLogRingRestartInfo> ring_edit_info;   // What we need to know to restart
+
+  // The following fields are set by compactions to indicate what VLog files they have written
+  int comp_ringno;  // the ring files were written to
+  VLogRingRestartInfo comp_vlogfiles;  // the changes the compaction made
+
+#endif
 };
 
 }  // namespace rocksdb
