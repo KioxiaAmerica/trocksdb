@@ -244,6 +244,9 @@ ProbDelay();
 
     // Allocate space in the Value Log and write the values out, and save the information for assigning references
     outputring->VLogRingWrite(diskdata,diskrecl,nextdiskref,fileendoffsets,outputerrorstatus);
+
+    // save what we need to return to stats
+    diskdatalen = diskdata.size();  // save # bytes written for stats report
 #if DEBLEVEL&4
 printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.size());
 #endif

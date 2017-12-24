@@ -2468,6 +2468,9 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
   autovector<VersionEdit*> batch_edits;
   Version* v = nullptr;
   std::unique_ptr<BaseReferencedVersionBuilder> builder_guard(nullptr);
+#ifdef INDIRECT_VALUE_SUPPORT
+  std::vector<VLogRingRestartInfo> accum_vlog_edits;
+#endif
 
   // process all requests in the queue
   ManifestWriter* last_writer = &w;
@@ -2495,6 +2498,9 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
       }
     }
     builder->SaveTo(v->storage_info(),column_family_data);
+#ifdef INDIRECT_VALUE_SUPPORT
+    accum_vlog_edits = builder->VLogAdditions();  // save the VLog edits to be applied later
+#endif
   }
 
   // Initialize new descriptor log file if necessary by creating
@@ -2565,6 +2571,25 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
       // This is cpu-heavy operations, which should be called outside mutex.
       v->PrepareApply(mutable_cf_options, true);
     }
+
+#ifdef INDIRECT_VALUE_SUPPORT
+    // Update the VLog information: the list of files and size/frag thereof.  We wait till here because
+    // this information is kept for the database as a whole, not part of any Version.  We have (possibly) just
+    // completed writing out the entire old Version, before the current edit, and as part of that write we
+    // needed to include the VLog status before the current edit.  Presently we will write out the current
+    // edits.  So, to make sure we don't apply an edit twice, we must NOT include the VLog edits in
+    // the Snapshot we just created.
+    //
+    // The VLog changes include deleting files that have passed out of the new Version.  These files are
+    // detected here.  These changes must be put into both the current database and the manifest.  We do this
+    // by folding them into the last edit_batch entry and also the current CF.
+    std::vector<VLogRingRestartInfo> vlog_deletions;
+    DetectVLogDeletions(column_family_data,&vlog_deletions);    // compute the deletions
+    Coalesce(batch_edits.back()->vlog_additions,vlog_deletions,true);  // apply them to the current edits
+    Coalesce(accum_vlog_edits,vlog_deletions,true);  // add deletions into accumulated edits
+    Coalesce(column_family_data->vloginfo(),accum_vlog_edits,false);   // apply accum edits, including deletions, to database.  false means 'don't include the delete', used for the CF version
+    // Now the database matches the new Version, and the edits are right to create it on restart
+#endif
 
     // Write new record to MANIFEST log
     if (s.ok()) {
@@ -3438,6 +3463,10 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
       }
       edit.SetComparatorName(
           cfd->internal_comparator().user_comparator()->Name());
+#ifdef INDIRECT_VALUE_SUPPORT
+      // install the current version VLog status as the starting point for this snapshot
+      edit.SetVLogStats(cfd->vloginfo());
+#endif
       std::string record;
       if (!edit.EncodeTo(&record)) {
         return Status::Corruption(

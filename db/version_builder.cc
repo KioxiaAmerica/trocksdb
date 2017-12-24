@@ -58,6 +58,7 @@ bool BySmallestKey(FileMetaData* a, FileMetaData* b,
 }  // namespace
 
 class VersionBuilder::Rep {
+  friend class VersionBuilder;
  private:
   // Helper to sort files_ in v
   // kLevel0 -- NewestFirstBySeqNo
@@ -90,6 +91,12 @@ class VersionBuilder::Rep {
   VersionStorageInfo* base_vstorage_;
   int num_levels_;
   LevelState* levels_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  // We accumulate all the deletions owing to compaction/copy (which deleted using FileMetaData rather than a file number)
+  // here, to be applied in SaveTo
+  std::vector<FileMetaData*> retiredfiles;
+  std::vector<VLogRingRestartInfo> vlog_additions;   // files and bytes added/deleted
+#endif
   // Store states of levels larger than num_levels_. We do this instead of
   // storing them in levels_ to avoid regression in case there are no files
   // on invalid levels. The version is not consistent if in the end the files
@@ -100,7 +107,9 @@ class VersionBuilder::Rep {
   bool has_invalid_levels_;
   FileComparator level_zero_cmp_;
   FileComparator level_nonzero_cmp_;
+#ifdef INDIRECT_VALUE_SUPPORT
   friend void VersionBuilder::SaveTo(VersionStorageInfo*, ColumnFamilyData *);
+#endif
 
  public:
   Rep(const EnvOptions& env_options, Logger* info_log, TableCache* table_cache,
@@ -300,6 +309,17 @@ printf(" %zd",number);
         }
       }
     }
+#ifdef INDIRECT_VALUE_SUPPORT
+    // Move the files marked for deletion by compaction/copy (which were deleted with a pointer to the FileMetaData) to the deletion
+    // list for this rep.  We will delete them during SaveTo, where we have access to the CF
+    const std::vector<FileMetaData*>& retiring = edit->GetRetiringFiles();
+    for (const auto& retiringsst : retiring) {
+      retiredfiles.push_back(retiringsst);
+    }
+
+    // Accumulate the VLog changes from the edits.  These are all added files and stats changes
+    Coalesce(vlog_additions,edit->VLogAdditions(),true);
+#endif
 #if DEBLEVEL&32
 printf("\n");
 #endif
@@ -490,6 +510,10 @@ bool VersionBuilder::CheckConsistencyForNumLevels() {
 
 void VersionBuilder::Apply(VersionEdit* edit) { rep_->Apply(edit); }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+std::vector<VLogRingRestartInfo> VersionBuilder::VLogAdditions() { return rep_->vlog_additions; }
+#endif
+
 void VersionBuilder::SaveTo(VersionStorageInfo* vstorage, ColumnFamilyData *cfd) {
 #ifdef INDIRECT_VALUE_SUPPORT
   // We are about to commit the added_files in rep_ to the new version vstorage.  This is a safe time
@@ -497,16 +521,30 @@ void VersionBuilder::SaveTo(VersionStorageInfo* vstorage, ColumnFamilyData *cfd)
   // compaction.  SaveTo() is also called from DumpManifest to build a faux version for dumping, and in tests; in that case we
   // make cfd null so we skip the value log work.  We also skip the Value Log work if there is no VLog for the cfd
   if(cfd!=nullptr && cfd->vlog()){
+    VLog *vlog = cfd->vlog().get();
     // Go through each added file.  They have been split by levels, which makes work here
-      for (int level = 0; level < rep_->num_levels_; level++) {  // for each level...
-        for (auto& pair : rep_->levels_[level].added_files) {  // for each number/FileMetaData pair, representing 1 file...
-          cfd->vlog()->VLogSstInstall(*pair.second);  // register the new file with the VLogRings
-        }
+    for (int level = 0; level < rep_->num_levels_; level++) {  // for each level...
+      for (auto& pair : rep_->levels_[level].added_files) {  // for each number/FileMetaData pair, representing 1 file...
+        vlog->VLogSstInstall(*pair.second);  // register the new file with the VLogRings
       }
-   }
+    }
+    // Likewise, we need to ratify the files that are about to be removed from the current version.  We don't need or want to do anything here during
+    // recovery.  By good fortune, recovery, which plays back the manifest, refers to deletions by file namber, while all deletions during the running
+    // system use a pointer to the FileMetaData.  So, we can easily distinguish deletes from the manifest (ignored) from deletes from compaction/copy (processed)
+    // 'Deleting' has no immediate effect on the file, which is still active in the
+    // current version.  It will eventually be deleted when its usecount goes to 0; at that point we will destroy the
+    // FileMetaData and decrement the usecount for it in the queue.
+    // We have to UnCurrent the file so that we treat its eventual deletion as a signal to delete any VLog files that its
+    // removal makes unnecessary; without this mark the VLog files will hang around, as they must if the database is merely closed.
+    for(auto retiringsst : rep_->retiredfiles) { 
+      vlog->VLogSstUnCurrent(*retiringsst);  // mark the file as dormant
+    }
+
+  }
 #endif
   rep_->SaveTo(vstorage);
 }
+
 
 void VersionBuilder::LoadTableHandlers(
     InternalStats* internal_stats, int max_threads,

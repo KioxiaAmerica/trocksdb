@@ -277,17 +277,12 @@ printf("VersionEdit::DeleteFile: %zd\n",file);
 printf("VersionEdit::DeleteFile: %p\n",f);
 #endif
 #ifdef INDIRECT_VALUE_SUPPORT
-    // At this point we are committed to deleting the input file f.  By good design we should
-    // do our VLog bookkeeping in SaveTo(), but unfortunately at that point all that's left of the file is the
-    // file number.  We notify the VLog that this file is no longer available for compaction; that way it won't be
-    // considered when we look for active recycling.  At this point we still hold the mutex, and we still have being_compacted
-    // set in the File: thus we can be sure that any file in the queue that is not marked as being compacted is safe
-    // to active-recycle.  'Deleting' has no immediate effect on the file, which is still active in the
-    // current version.  It will eventually be deleted when its usecount goes to 0; at that point we will destroy the
-    // FileMetaData and decrement the usecount for it in the queue.
-    // We have to UnCurrent the file so that we treat its eventual deletion as a signal to delete any VLog files that its
-    // removal makes unnecessary; without this mark the VLog files will hang around, as they must if the database is merely closed.
-    if(f->vlog)f->vlog->VLogSstUnCurrent(*f);  // mark the file as dormant
+    // At this point we are committed to deleting the input file f, but that's a ways in the future.  We are holding the mutex
+    // for ocmpaction/copy, but we are still before the lock point on &w (in LogAndApply) at which writers get queued.  We mustn't
+    // UnCurrent f right now, until we know that we have processed, for manifest purposes, the SST actions that justify this deletion.
+    // So, we enqueue f on retiring_files_ (analogous to new_files_ for added files).  As the edits are applied we will move
+    // these files to retiredfiles in the rep, and will UnCurrent them in SaveTo
+    retiring_files_.push_back(f);
 #endif
     DeleteFile(level, f->fd.GetNumber());
   }
@@ -302,6 +297,10 @@ printf("VersionEdit::DeleteFile: %p\n",f);
   void SetColumnFamily(uint32_t column_family_id) {
     column_family_ = column_family_id;
   }
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  void SetVLogStats(std::vector<VLogRingRestartInfo>& vstats) { vlog_additions = vstats; } 
+#endif
 
   // set column family ID by calling SetColumnFamily()
   void AddColumnFamily(const std::string& name) {
@@ -329,9 +328,11 @@ printf("VersionEdit::DeleteFile: %p\n",f);
   typedef std::set<std::pair<int, uint64_t>> DeletedFileSet;
 
   const DeletedFileSet& GetDeletedFiles() { return deleted_files_; }
+  const std::vector<FileMetaData*>& GetRetiringFiles() { return retiring_files_; }
   const std::vector<std::pair<int, FileMetaData>>& GetNewFiles() {
     return new_files_;
   }
+  std::vector<VLogRingRestartInfo>& VLogAdditions() { return vlog_additions; }
 
   std::string DebugString(bool hex_key = false) const;
   std::string DebugJSON(int edit_num, bool hex_key = false) const;
@@ -357,6 +358,10 @@ printf("VersionEdit::DeleteFile: %p\n",f);
   bool has_max_column_family_;
   DeletedFileSet deleted_files_;
   std::vector<std::pair<int, FileMetaData>> new_files_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  std::vector<FileMetaData*> retiring_files_;  // Files (from compaction/copy) that we will need to mark UnCurrent in SaveTo.  Files deleted during recovery don't go here.
+  std::vector<VLogRingRestartInfo> vlog_additions;   // files and bytes added/removed, one set per ring.
+#endif
 
   // Each version edit record should have column_family_id set
   // If it's not set, it is default (0)
@@ -367,24 +372,6 @@ printf("VersionEdit::DeleteFile: %p\n",f);
   bool is_column_family_drop_;
   bool is_column_family_add_;
   std::string column_family_name_;
-#ifdef INDIRECT_VALUE_SUPPORT
-  VLog *vlog;  // we need a pointer to the VLog for this CF so that we can move the stats info there when we are finished
-
-  // If there are VLogs, we write an inventory of the VLogFiles that will be valid on a restart, and the total size and fragmentation associated with them.
-  // To allow us to decide when to Active Recycle, we remove a file from the fragmentation count when we are about to remove the file from the current version
-  // (it might not be deletable until references to it have been removed, but we want to take credit for the fragmentation reduction immediately so we don't
-  // try to recycle the same files again).  Once we have removed a file from the frag count we need to remove it from the valid-files list at the same time
-  // to make sure that we don't count the deletion twice (if we restart before the file is deleted).  So the frag/size refers only to files in the valid-file list;
-  // other files will be quietly deleted at startup.
-
-  // There is one stats structure for each ring.
-  std::vector<VLogRingRestartInfo> ring_edit_info;   // What we need to know to restart
-
-  // The following fields are set by compactions to indicate what VLog files they have written
-  int comp_ringno;  // the ring files were written to
-  VLogRingRestartInfo comp_vlogfiles;  // the changes the compaction made
-
-#endif
 };
 
 }  // namespace rocksdb

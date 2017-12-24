@@ -342,6 +342,7 @@ class ColumnFamilyData {
 
 #ifdef INDIRECT_VALUE_SUPPORT
   std::shared_ptr<VLog> vlog() { return vlog_;}    // the VLog to be used for this column family.  May contain no rings
+  std::vector<VLogRingRestartInfo>& vloginfo() { return vlog_info; }
 #endif
 
  private:
@@ -430,6 +431,16 @@ class ColumnFamilyData {
   // because it leaves default_cfd_cache_ holding a pointer to a deleted object.  To avoid this problem, we put the VLog
   // under control of a shared_ptr, so that the default VLog will be deleted only when the final default_cfd_cache_ is freed.
   std::shared_ptr<VLog> vlog_;   // the VLog to be used for this column family.  May contain 0 rings
+
+  // If there are VLogs, we keep an inventory of the VLogFiles that will be valid on a restart, and the total size and fragmentation associated with them.
+  // To allow us to decide when to Active Recycle, we remove a file from the fragmentation count when we are about to remove the file from the current version
+  // (it might not be deletable until references to it have been removed, but we want to take credit for the fragmentation reduction immediately so we don't
+  // try to recycle the same files again).  Once we have removed a file from the frag count we need to remove it from the valid-files list at the same time
+  // to make sure that we don't count the deletion twice (if we restart before the file is deleted).  So the frag/size refers only to files in the valid-file list;
+  // other files will be quietly deleted at startup.
+
+  // There is one stats structure for each ring.
+  std::vector<VLogRingRestartInfo> vlog_info;   // files and bytes added
 #endif
 };
 

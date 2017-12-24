@@ -1097,13 +1097,14 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
   }
 #ifdef INDIRECT_VALUE_SUPPORT   // fill in the rings for each column family
   {
-    // Initialize the rings for each column family.
-    // First, get the list of all the files in the last path of the database (that's where all the .vlg file go)
+    // Initialize the rings for each column family, now that we know that the VLog stats have been filled in from the manifest
+    // First, get the list of all the files in the last path of the database (that's where all the .vlg files go)
     std::vector<std::string> existing_files;  // all the files in the last level
     impl->immutable_db_options_.env->GetChildren(impl->immutable_db_options_.db_paths.back().path, &existing_files);
 
     // Now cull the file-list down to .vlg files only
     std::vector<std::string> existing_vlog_files;  // will hold .vlg* files in the last level
+    std::vector<VLogRingRefFileLen> existing_vlog_sizes;  // will hold .vlg* files in the last level
     for(auto fname : existing_files){
       uint64_t number;  // return value, not used
       FileType type;  // return value, giving type of file
@@ -1118,17 +1119,19 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
 
         if((impl->immutable_db_options_.env->GetFileSize(pathfname,&filesize)).ok()) {  // check size of file
           // If we get an error looking for filesize, there's not much we can do, so we ignore it.  If no error, we keep or delete the file
-          if(filesize)existing_vlog_files.emplace_back(pathfname);  // if file has length, keep it
-          else impl->immutable_db_options_.env->DeleteFile(pathfname);  // if not, delete it
+          if(filesize){  // if file has length, keep it
+            existing_vlog_files.emplace_back(pathfname);
+            existing_vlog_sizes.push_back(filesize);
+          } else impl->immutable_db_options_.env->DeleteFile(pathfname);  // if not, delete it
         }
       }
-    }  // if name not recognized a VLog name, ignore the file - maybe the user created it
+    }  // if name not recognized as a VLog name, ignore the file - maybe the user created it
 
     // Get the options to use for the VLog files   scaf perhaps we need to modify these based on column options
     EnvOptions vlog_options(db_options);
     // for each column family, init the VLogs
     for (auto cfd : *impl->versions_->GetColumnFamilySet()){
-      if(cfd->vlog()!=nullptr)cfd->vlog()->VLogInit(existing_vlog_files,&impl->immutable_db_options_,vlog_options);
+      if(cfd->vlog()!=nullptr)cfd->vlog()->VLogInit(existing_vlog_files,existing_vlog_sizes,&impl->immutable_db_options_,vlog_options);
     }
 // if no error, create the VLog rings for those CFs that support indirect values, and initialize the early-reference values in the priority queue
   }

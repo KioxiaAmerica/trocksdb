@@ -46,6 +46,65 @@ static ParsedFnameRing VlogFnametoRingFname(std::string pathfname) {
     return ParsedFnameRing(number);
 }
 
+// merge edits in sec into *this
+void VLogRingRestartInfo::Coalesce(VLogRingRestartInfo& sec,  // the stats to merge in
+  bool outputdeletion  // true if a deletion in the input should be passed through to the result.  For final status we elide the deletion
+)
+{
+  // merge the byte counts
+  size += sec.size;  frag += sec.frag;
+  // set up indexes to use to scan through inputs
+  size_t thisx = 0, secx = 0;  // scan pointer within inputs
+  // create output area
+  std::vector<VLogRingRefFileno> outarea;  // we will build result here
+  // set the delete-up-to point, taken from the merged inputs
+  VLogRingRefFileno delto = 0;   // valid file numbers start at 1.  We delete every file up to and including delto
+  if(valid_files.size()!=0 && valid_files[0]==0){thisx = 2; delto = valid_files[1];}
+  if(sec.valid_files.size()!=0 && sec.valid_files[0]==0){ secx = 2; if(sec.valid_files[1]>delto)delto = sec.valid_files[1]; }
+  // if there is a delete-to point, and our output can accept it, put it out
+  if(outputdeletion && delto!=0){outarea.push_back(0); outarea.push_back(delto);}   // leading (0,maxdel) means delete all <= maxdel
+  // loop till we have output all the intervals
+  while(1) {
+    // initialize the interval we will build: start with the smaller input.  If there are no inputs, we are through
+    VLogRingRefFileno intlo = 0, inthi;
+    if(thisx<valid_files.size())intlo = valid_files[thisx];
+    else if(secx<sec.valid_files.size()){if(sec.valid_files[secx]<intlo)sec.valid_files[secx] = intlo;}
+    else break;
+    inthi = intlo;   // the interval starts small, but it will be extended
+    // keep processing inputs until we can't add on to the current interval
+    while(1) {
+      // We can consume an input interval if its front overlaps or extends the end of the current interval, i. e. if it is <= inthi+1.
+      // If we accept an input interval, we adjust the end of the current interval up.  The beginning of the current interval is fixed
+      if(thisx<valid_files.size() && valid_files[thisx]<=(inthi+1)){if(valid_files[thisx+1]>inthi)inthi = valid_files[thisx+1]; thisx += 2; continue;}
+      if(secx<sec.valid_files.size() && sec.valid_files[secx]<=(inthi+1)){if(sec.valid_files[secx+1]>inthi)inthi = sec.valid_files[secx+1]; secx += 2; continue;}
+      break;  // if nothing extended the interval, quit
+    };
+    // we have an interval.  Write it out, after removing any parts that are to be deleted
+    if(inthi>delto) {   // if the upper end doesn't make it past the deletion point, write nothing
+      if(intlo<delto)intlo = delto+1;   // clamp the low end to above the deletion point
+      outarea.push_back(intlo); outarea.push_back(inthi);  // write out the interval
+    }
+  }
+  // we have written out all the intervals.  Replace the input intervals and we're done
+  valid_files.swap(outarea);
+}
+
+// fold the VLog edits in sec into pri.  Each is vector with one set of stats per ring
+void Coalesce(std::vector<VLogRingRestartInfo>& pri,  // the left input and result
+  std::vector<VLogRingRestartInfo>& sec,  // right input
+  bool outputdeletion  // true if a deletion in the input should be passed through to the result.  For final status we elide the deletion
+)
+{
+  // if the right argument has no rings, leave the left unchanged
+  if(sec.size()==0)return;
+  // if the left argument has no rings, resize it to the size of the right
+  if(pri.size()==0)pri.resize(sec.size());
+  assert(pri.size()==sec.size());  // rings should have same size
+  // process each ring
+  for(int i = 0; i<pri.size(); ++i)pri[i].Coalesce(sec[i],outputdeletion);
+}
+
+
 //
 //
 // ******************************************** VlogRing ***********************************************
@@ -83,43 +142,34 @@ VLogRing::VLogRing(
 #if DEBLEVEL&1
 printf("VLogRing cfd_=%p\n",cfd_);
 #endif
-
-  VLogRingRefFileno latest_ref = 0;   // highest file number found
-  // Find the largest filenumber for this ring
-  for(auto pathfname : filenames) {
-    ParsedFnameRing fnring = VlogFnametoRingFname(pathfname);
-
-    if(fnring.ringno==ringno) {  // If this file is for our ring...
-      if(latest_ref<fnring.fileno)latest_ref = fnring.fileno;
-    }
+  // The CF has the ring stats, including the current earliest and latest files.  Extract them.
+  // The CF is guaranteed to have stats for the ring, but the file info may be empty
+  VLogRingRefFileno earliest_ref, latest_ref;  // first and last valid file numbers
+  if(cfd_->vloginfo()[ringno_].valid_files.size()==0){
+    // No files in the manifest.  set file numbers back to beginning.
+    earliest_ref = 1; latest_ref = 0;
+  } else {
+    // There are files.  Get first and last
+    earliest_ref = cfd_->vloginfo()[ringno_].valid_files[0];
+    latest_ref = cfd_->vloginfo()[ringno_].valid_files.back();
+    assert(earliest_ref!=0);  // the CF data should never start with a deletion
   }
-
-  // If there are no references to the ring, set the limits to empty.  We override the number of
-  // the existing files, to handle the case where the database gets deleted down to no files while the
-  // filenumbers have existing values; then some files get written with high numbers, and the system crashes
-  // before the SSTs are validated.  Then on restart there will be no references but a large existing filenumber.
-  // It would be bad to allocate the ring from 0 to this filenumber, because that might be MUCH larger than
-  // the ring needs to be.  There are several ways to handle this; we choose the easiest, which is to delete
-  // the dangling files
-  //
-  // Note that file 0 is not allocated.  It is reserved to mean 'file number not given'
-  if(earliest_ref==high_value){earliest_ref = 1; latest_ref = 0;}
 
   // Allocate the rings for files and references.
   VLogRingRefFileno power2 = RingSizeNeeded(earliest_ref,latest_ref);
   while(power2-->0)fd_ring[0].emplace_back();  // mustn't use resize() - if requires copy semantics, incompatible with unique_ptr
 
-  // For each file in this ring, open it (if its number is valid) or delete it (if not)
-  for(auto pathfname : filenames) {
-    ParsedFnameRing fnring = VlogFnametoRingFname(pathfname);
+  // For each file in this ring, open it (if its number is in the manifest) or delete it (if not)
+  for(int i=0;i<filenames.size();++i) {
+    ParsedFnameRing fnring = VlogFnametoRingFname(filenames[i]);
 
     if(fnring.ringno==ringno) {  // If this file is for our ring...
-      if(earliest_ref<=fnring.fileno && fnring.fileno<=latest_ref) {
-        // the file is in the range pointed to by the SSTs (not before the first reference, and not after the last).  Open it
+      if(cfd_->vloginfo()[ringno_].ContainsFileno(fnring.fileno)) {
+        // the file is valid according to the manifest.  Open it
         std::unique_ptr<RandomAccessFile> fileptr;  // pointer to the opened file
-        immdbopts_->env->NewRandomAccessFile(pathfname, &fileptr,envopts_);  // open the file if it exists
+        immdbopts_->env->NewRandomAccessFile(filenames[i], &fileptr,envopts_);  // open the file if it exists
           // move the file reference into the ring, and publish it to all threads
-        fd_ring[0][Ringx(fd_ring[0],fnring.fileno)]=std::move(VLogRingFile(fileptr));
+        fd_ring[0][Ringx(fd_ring[0],fnring.fileno)]=std::move(VLogRingFile(fileptr,filesizes[i]));
 #if DEBLEVEL&2
 printf("Opening file %s\n",pathfname.c_str());
 #endif
@@ -127,7 +177,7 @@ printf("Opening file %s\n",pathfname.c_str());
 // scaf error?
       } else {
         // The file is not referenced.  We must have crashed while deleting it, or before it was referenced.  Delete it now
-        immdbopts_->env->DeleteFile(pathfname);   // ignore error - what could we do?
+        immdbopts_->env->DeleteFile(filenames[i]);   // ignore error - what could we do?
   // should log? scaf
       }
     }
@@ -190,14 +240,14 @@ ProbDelay();
 #endif 
   // In case the ring was resized, recalculate the slot number to use. 
   size_t slotx = Ringx(fd_ring[arrayx],tailfile);   // point to first file to consider deleting
-  if(fd_ring[arrayx][slotx].refcount)return;  // return fast if the first file does not need to be deleted
+  if(fd_ring[arrayx][slotx].refcount_deletion)return;  // return fast if the first file does not need to be deleted
   while(1) {  // loop till tailfile is right
     if(deleted_files.size()==deleted_files.capacity())break;  // if we have no space for another deletion, stop
     deleted_files.emplace_back(tailfile,fd_ring[arrayx][slotx]);  // mark file for deletion.  This also resets the ring slot to empty
     if(++slotx==fd_ring[arrayx].size())slotx=0;  // Step to next slot; don't use Ringx() lest it perform a slow divide
     ++tailfile;  // Advance file number to match slot pointer
     if(tailfile+deletion_deadband>headfile)break;   // Tail must stop at one past head, and that only if ring is empty; but we enforce the deadband
-    if(fd_ring[arrayx][slotx].refcount)break;  // if the current slot has references, it will become the tail
+    if(fd_ring[arrayx][slotx].refcount_deletion)break;  // if the current slot has references, it will become the tail
   }
   // If we delete past the queued pointer, move the queued pointer
   if(tailfile>atomics.fd_ring_queued_fileno.load())atomics.fd_ring_queued_fileno.store(tailfile,std::memory_order_release);
@@ -336,7 +386,7 @@ int maxfilesize = 1000000;  // scaf
       if(rcdend[mid]<targetfileend)left=mid; else rcdx=mid;
     }
     // rcdend[rcdx] has the file length.  Call for the output file.
-    fileendoffsets.push_back(rcdend[rcdx]-prevbytes);
+    fileendoffsets.push_back(rcdend[rcdx]-prevbytes);   // push length of output file
     prevbytes = rcdend[rcdx];  // update total # bytes written
   }
 
@@ -371,7 +421,7 @@ ProbDelay();
 #endif 
 
     // See if the tail pointer was being held up, for whatever reason
-    if(tailfile<=headfile && fd_ring[currentarray][Ringx(fd_ring[currentarray],tailfile)].refcount==0) {  // if tail>head, the ring is empty & refcounts are invalid
+    if(tailfile<=headfile && fd_ring[currentarray][Ringx(fd_ring[currentarray],tailfile)].refcount_deletion==0) {  // if tail>head, the ring is empty & refcounts are invalid
       // The file at the tail pointer was deletable, which means the tail pointer was being held up either by proximity to the headpointer or
       // because a deletion operation hit its size limit.  We need to delete files, starting at the tailpointer.
       // This is a very rare case but we have to handle it because otherwise the tail pointer could get stuck
@@ -426,7 +476,7 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), fileendoffsets[i]);
 
       // Sync the written data.  We must make sure it is synced before the SSTs referring to it are committed to the manifest.
       // We might as well sync it right now
-      if(iostatus.ok())iostatus = writable_file->Fsync();
+      if(iostatus.ok())iostatus = writable_file->Fsync();  // scaf shuould fsync once for all files
     }  // this closes the writable_file
 
     // Reopen the file as randomly readable
@@ -464,7 +514,7 @@ ProbDelay();
 
     // Loop to add each file to the ring
     for(int i=0;i<pathnames.size();++i) {
-      (*fdring)[new_ring_slot]=std::move(VLogRingFile(filepointers[i]));
+      (*fdring)[new_ring_slot]=std::move(VLogRingFile(filepointers[i],fileendoffsets[i]));
       if(++new_ring_slot==(*fdring).size()){
         //  The write wraps around the end of the ring buffer...
         new_ring_slot = 0;   // advance to next slot, and handle wraparound (avoiding divide)
@@ -601,7 +651,7 @@ ProbDelay();
   return iostatus;
 }
 
-// Install a new SST into the ring, with the given earliest-VLog reference.  Increment refcount
+// Install a new SST into the ring, with the given earliest-VLog reference.  Increment refcounts
 void VLogRing::VLogRingSstInstall(
   FileMetaData& newsst   // the SST that has just been created & filled in
 ){
@@ -619,8 +669,9 @@ ProbDelay();
     size_t slotx = Ringx(*fdring,reffile);  // the place this file's info is stored - better be valid
 // scaf out of bounds?
 
-    // Increment the usecount for the slot
-    ++(*fdring)[slotx].refcount;  // starting from now until this SST is deleted, this VLog file is in use
+    // Increment the usecounts for the slot
+    ++(*fdring)[slotx].refcount_deletion;  // starting from now until this SST is deleted, this VLog file is in use
+    ++(*fdring)[slotx].refcount_manifest;  // starting from now until this SST is deleted, this VLog file is in use
 
     // Install the SST into the head of the chain for the slot
     newsst.ringfwdchain[ringno_] = (*fdring)[slotx].queue;   // attach old chain after new head
@@ -638,13 +689,16 @@ printf("\n");
 #if DEBLEVEL&128
 printf("Ring pointers: tail=%zd head=%zd\n   queue=",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
 for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){int ct=0; FileMetaData* qp=(*fdring)[i].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
-printf("\nrefcount=");
-for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[i].refcount);}
+printf("\nrefcount_deletion=");
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[i].refcount_deletion);}
+printf("\n");
+printf("\nrefcount_manifest=");
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[i].refcount_manifest);}
 printf("\n");
 #endif
 }
 
-// Remove an SST from the ring when it is no longer current.  Do not adjust refcount.
+// Remove an SST from the ring when it is no longer current.  Adjust manifest refcount, but not deletion refcount
 void VLogRing::VLogRingSstUnCurrent(
   FileMetaData& retiringsst   // the SST that has just been obsoleted
 ){
@@ -671,6 +725,9 @@ ProbDelay();
     // Mark the chain fields to show that this block is no longer on the ring.  We use chain-to-self to indicate this
     retiringsst.ringbwdchain[ringno_] = &retiringsst;  // indicate 'block not in ring'
 
+    // Decrement the refcount used for deciding which files are needed in the manifest
+    --(*fdring)[slotx].refcount_manifest;  // this reference is no longer in the manifest
+
   ReleaseLock();
 #if DEBLEVEL&1
 printf("VLogRingSstUnCurrent retiringsst=%p ref0=%lld refs=%d",&retiringsst,retiringsst.indirect_ref_0[ringno_],retiringsst.refs);
@@ -679,8 +736,11 @@ printf("\n");
 #if DEBLEVEL&128
 printf("Ring pointers: tail=%zd head=%zd\n   queue=",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
 for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){int ct=0; FileMetaData* qp=(*fdring)[i].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
-printf("\nrefcount=");
-for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[i].refcount);}
+printf("\nrefcount_deletion=");
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[i].refcount_deletion);}
+printf("\n");
+printf("\nrefcount_manifest=");
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[i].refcount_manifest);}
 printf("\n");
 #endif
 }
@@ -716,7 +776,7 @@ ProbDelay();
     size_t slotx = Ringx(*fdring,expiringsst.indirect_ref_0[ringno_]);  // the place this file's info is stored - better be valid
 
     // Decrement the usecount
-    if(!--(*fdring)[slotx].refcount) {
+    if(!--(*fdring)[slotx].refcount_deletion) {
       // The usecount went to 0.  We can free the file, if it is the oldest in the tail.
       // NOTE that the tailfile coming in might have a 0 refcount, if the previous deletion was interrupted.  We will never catch that case here, because
       // we are looking only for NEW deletions at the tail.  Interrupted deletions will be resumed the next time we CREATE a file.  That's not really a problem,
@@ -751,8 +811,11 @@ printf("\n");
 #if DEBLEVEL&128
 printf("Ring pointers: tail=%zd head=%zd\n   queue=",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
 for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){int ct=0; FileMetaData* qp=(*fdring)[i].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
-printf("\nrefcount=");
-for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[i].refcount);}
+printf("\nrefcount_deletion=");
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[i].refcount_deletion);}
+printf("\n");
+printf("\nrefcount_manifest=");
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[i].refcount_manifest);}
 printf("\n");
 #endif
 
@@ -875,34 +938,35 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
   // Save the ring starting levels
     starting_level_for_ring_.push_back(0);  // scaf
 
+  // The the database is not new, the CF will have the stats for the rings.  If the CF has no stats, create null stats for each level
+  if(cfd_->vloginfo().size()==0)cfd_->vloginfo().resize(starting_level_for_ring_.size());
+    // scaf worry about mismatch between # rings given & # in database
+
   // If there are VlogRings now, it means that somehow the database was reopened without being destroyed.  This is bad form but not necessarily fatal.
   // To cope, we will delete the old rings, which should go through and free up all their resources.  Then we will continue with new rings.
   rings_.clear();  // delete any rings that are hanging around
 
   // cull the list of files to leave only those that apply to this cf
   std::vector<std::string> existing_vlog_files_for_cf;  // .vlg files for this cf
+  std::vector<VLogRingRefFileLen> existing_vlog_sizes_for_cf;  // corresponding file sizes
   std::string columnsuffix = "." + kRocksDbVLogFileExt + cfd_->GetName();  // suffix for this CF's vlog files
-  for(auto fname : vlg_filenames){
-    if(fname.size()>columnsuffix.size() && 0==fname.substr(fname.size()-columnsuffix.size()).compare(columnsuffix))
-      existing_vlog_files_for_cf.emplace_back(fname);  // if suffix matches, keep the filename
+  for(int i = 0;i<vlg_filenames.size();++i){
+    if(vlg_filenames[i].size()>columnsuffix.size() && 0==vlg_filenames[i].substr(vlg_filenames[i].size()-columnsuffix.size()).compare(columnsuffix))
+      existing_vlog_files_for_cf.emplace_back(vlg_filenames[i]);  // if suffix matches, keep the filename
+      existing_vlog_sizes_for_cf.push_back(vlg_filesizes[i]);   // and size
   }
 
   // For each ring, allocate & initialize the ring, and save the resulting object address
-  for(int i = 0; i<starting_level_for_ring_.size(); ++i) {
-    // Loop through the queued SSTs to find the earliest ref therein.  Every block on chain i has a nonzero earlyref for ring i
-    VLogRingRefFileno early_ref = high_value;  // init to no ref
-    FileMetaData *sstptr = waiting_sst_queues[i];  // start on the chain for this ring
-    while(sstptr!=nullptr){if(early_ref > sstptr->indirect_ref_0[i])early_ref = sstptr->indirect_ref_0[i]; sstptr = sstptr->ringfwdchain[i];}
-    
+  for(int i = 0; i<cfd_->vloginfo().size(); ++i) {
     // Create the ring and save it
     rings_.push_back(std::move(std::make_unique<VLogRing>(i /* ring# */, cfd_ /* ColumnFamilyData */, existing_vlog_files_for_cf /* filenames */,
-      early_ref /* earliest_ref */, 
+      existing_vlog_sizes_for_cf /* filesizes */, 
       immdbopts /* immdbopts */, file_options)));
 
     // Traverse the sst waiting queue, taking each SST off and installing it into the queue according to its reference.
     // Each call will lock the ring, but the ones after the first should be processed very quickly because the lock
     // will still be held by this core
-    sstptr = waiting_sst_queues[i];  // start on the chain for this ring
+    FileMetaData *sstptr = waiting_sst_queues[i];  // start on the chain for this ring
     while(sstptr!=nullptr){FileMetaData *nextsstptr = sstptr->ringfwdchain[i]; rings_[i]->VLogRingSstInstall(*sstptr); sstptr = nextsstptr; }
        // remove new block from chain before installing it into the ring
   }
@@ -992,6 +1056,57 @@ if(!rings_.size() || !expiringsst.indirect_ref_0.size())printf("VLogSstDelete ex
     for (int i=0;i<expiringsst.indirect_ref_0.size();++i)if(expiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstDelete(expiringsst);
     }
 
+
+// Routine to look at the manifest refcounts and decide which files can be removed from the new Version.
+// Called as part of applying the edits after compaction.
+extern void DetectVLogDeletions(ColumnFamilyData *cfd,   // CF to work on
+  std::vector<VLogRingRestartInfo> *vlogedits   // result: edits to make to the current files (all deletions)
+  ) {
+  if(cfd!=nullptr && cfd->vlog()){
+    VLog *vlog = cfd->vlog().get();
+    // See if there are VLog files that will not be needed after a restart.  These are files whose manifest refcount has gone to 0.
+    // They may still be in use internally, but they will not be needed after all current business is finished.  If there are any, collect
+    // them into an edit, which will be applied by the caller
+    if(vlogedits != nullptr) {  // if the caller has requested deletions...
+      // check for deletions in each ring.  At the beginning there are no rings and no first file in any ring; there can't be deletions then either
+      // but we mustn't fail
+      for(size_t i = 0;i<cfd->vloginfo().size();++i) {
+        VLogRingRestartInfo ringchanges{};   // where we accumulate the changes for this 
+        // start looking at the first file indicated as valid in the manifested data
+        if(cfd->vloginfo()[i].valid_files.size()) {     // make sure there IS a first file
+          VLogRingRefFileno currentoldest = cfd->vloginfo()[i].valid_files[0];  // first valid file
+          VLogRingRefFileno saveoldest = currentoldest;  // save so we can see if we moved
+          // Acquire lock on the ring so we know we have the correct ping-pong buffer.  Writes to the ring, and resizes, are performed outside the
+          // current mutex
+          { vlog->rings_[i]->AcquireLock();
+            // Get the headpointer for the ring
+            VLogRingRefFileno headfile = vlog->rings_[i]->atomics.fd_ring_head_fileno.load(std::memory_order_acquire);  // lock guarantees memory ordering
+            // Get index of the current ring
+            size_t currentpong = vlog->rings_[i]->atomics.currentarrayx.load(std::memory_order_acquire);  // lock guarantees memory ordering
+            // Get pointer to current ring
+            std::vector<VLogRingFile> *currentring = vlog->rings_[i]->fd_ring+currentpong;
+            // Get slot number for the first file
+            size_t slotx = vlog->rings_[i]->Ringx(*currentring, currentoldest);
+            // Look at files. Accumulate stats of frag/size that will be removed.  End pointing to the file AFTER the last deletable file
+            while(currentoldest+deletion_deadband<headfile && (*currentring)[slotx].refcount_manifest==0){  // avoiding unsigned overflow
+              ringchanges.size -= (*currentring)[slotx].length;
+              if(++slotx == (*currentring).size())slotx=0;  // advance ring, wrapping if needed
+              ++currentoldest;
+            }
+          vlog->rings_[i]->ReleaseLock(); }
+          // if there are deletable files, add a deletion entry for them to the result area
+          if(currentoldest>saveoldest) {
+            ringchanges.frag = ringchanges.size;   // the reduction in size is also a reduction in fragmentation, since an empty file is 100% frag
+            ringchanges.valid_files.push_back(0); ringchanges.valid_files.push_back(currentoldest-1);   // make the edit a delete for all files up to the last one we deleted
+          }
+
+          // Move the edit to the result
+          (*vlogedits).push_back(ringchanges);  // tell the caller how to account for the deletion
+        }
+      }
+    }
+  }
+}
 
 }   // namespace rocksdb
 

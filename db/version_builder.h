@@ -18,11 +18,13 @@ class VersionEdit;
 struct FileMetaData;
 class InternalStats;
 class ColumnFamilyData;
+struct VLogRingRestartInfo;
 
 // A helper class so we can efficiently apply a whole sequence
 // of edits to a particular state without creating intermediate
 // Versions that contain full copies of the intermediate state.
 class VersionBuilder {
+  class Rep;
  public:
   VersionBuilder(const EnvOptions& env_options, TableCache* table_cache,
                  VersionStorageInfo* base_vstorage, Logger* info_log = nullptr);
@@ -36,9 +38,11 @@ class VersionBuilder {
   void LoadTableHandlers(InternalStats* internal_stats, int max_threads,
                          bool prefetch_index_and_filter_in_cache);
   void MaybeAddFile(VersionStorageInfo* vstorage, int level, FileMetaData* f);
+#ifdef INDIRECT_VALUE_SUPPORT
+  std::vector<VLogRingRestartInfo> VLogAdditions();
+#endif
 
  private:
-  class Rep;
   Rep* rep_;
 };
 

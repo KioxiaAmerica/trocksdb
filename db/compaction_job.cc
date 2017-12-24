@@ -1026,6 +1026,11 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
     }
   }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+  // Now that we have processed all the I/O, collect the VLog-related changes and incorporate them into the edit.
+  value_iter->getedit((const_cast<Compaction*>(sub_compact->compaction))->edit()->VLogAdditions());
+#endif
+
   sub_compact->c_iter.reset();
   input.reset();
   sub_compact->status = status;

@@ -23,6 +23,8 @@
 #include "options/db_options.h"
 #include "rocksdb/env.h"
 #include "rocksdb/transaction_log.h"
+#include "db/version_builder.h"
+
 
 #if DELAYPROB
 #include<chrono>
@@ -46,6 +48,7 @@ class ColumnFamilyData;
 class Status;
 class Slice;
 class VLogRing;
+class VersionStorageInfo;
 
 // class that can be used to create a vector of chars that doesn't initialize when you resize
 class NoInitChar {
@@ -92,7 +95,7 @@ static const VLogRingRefFileno high_value = ((VLogRingRefFileno)-1)>>1;  // bigg
 static const float expansion_fraction = 0.25;  // fraction of valid files to leave for expansion
 static const int expansion_minimum = 10;  // minimum number of expansion files   // scaf 100
 // The deletion deadband is the number of files at the end of the VLog that are protected from deletion.  The problem is that files added to the
-// VLog are unreferenced (and unprotected by earlier references) until the Version has been installed.  If the tail pointer gets to such a file while
+// VLog are unreferenced (and unprotected by earlier references) until the Version has started being created.  If the tail pointer gets to such a file while
 // it is still unprotected, it will be deleted prematurely.  Keeping track of which files should be released at the end of each compaction is a pain,
 // so we simply don't delete files that are within a few compactions of the end.  The deadband is a worst-case estimate of the number of VLog files
 // that could be created (in all threads) between the time a compaction starts and the time its Version is ratified
@@ -224,17 +227,23 @@ public:
   // reference in this ring is in the corresponding file.  When an SST is created, an element is added, and when the SST is finally deleted, one
   // is removed.
   FileMetaData* queue;  // base of forward chain
-  int refcount;   // Number of SSTs that hold a reference to this file
+  // There are 2 refcounts, one for deciding when to delete the file and one used to decide when to take the file out of the manifest.  Each
+  // refcount is incremented when a reference from an SST is created.  The deletion count is decremented only when the last referring SST has been
+  // deleted; then it is known that nothing in the current execution refers to the file.  The manifest count is decremented as soon as the last referring
+  // SST is marked to be removed from the manifest.  Once that SST is out of the manifest, the VLog file is not needed when the database is reopened.
+  // We take the VLog file out of the manifest at the same time we remove its last reference.
+  uint32_t refcount_deletion;   // Number of SSTs that hold a reference to this file, including old ones
+  uint32_t refcount_manifest;   // Number of current SSTs that hold a reference to this file
   std::unique_ptr<RandomAccessFile> filepointer;  // the open file
   VLogRingRefFileLen length;  // length of the file, needed for fragmentation bookkeeping
 
   VLogRingFile(std::unique_ptr<RandomAccessFile>& fptr,  // the file 
     VLogRingRefFileLen len   // its length
-  ) : queue(nullptr), refcount(0), filepointer(std::move(fptr)), length(len) {}
+  ) : queue(nullptr), refcount_deletion(0), refcount_manifest(0), filepointer(std::move(fptr)), length(len) {}
   VLogRingFile() :   // used to initialize empty slot
-    queue(nullptr), refcount(0), filepointer(nullptr), length(0) {}
+    queue(nullptr), refcount_deletion(0), refcount_manifest(0), filepointer(nullptr), length(0) {}
   VLogRingFile(VLogRingFile& v, int dummy) :  // used to create faux copy constructor to evade no-copy rules
-    queue(v.queue), refcount(v.refcount), filepointer(v.filepointer.get()), length(v.length) {}
+    queue(v.queue), refcount_deletion(v.refcount_deletion), refcount_manifest(v.refcount_manifest), filepointer(v.filepointer.get()), length(v.length) {}
 
   // Ensure the file is not copyable
   VLogRingFile(VLogRingFile const&) = delete;
@@ -243,23 +252,26 @@ public:
   // But make it movable, needed for emplace_back
     // Move constructor
   VLogRingFile(VLogRingFile&& other) noexcept
-  : queue(other.queue), refcount(other.refcount), length(other.length)
+  : queue(other.queue), refcount_deletion(other.refcount_deletion), refcount_manifest(other.refcount_manifest), length(other.length)
   {
     filepointer = std::move(other.filepointer);
     // Now that we have moved, reset the other to empty queue
     other.queue = nullptr;
-    other.refcount = 0;
+    other.refcount_deletion = 0;
+    other.refcount_manifest = 0;
   }
 
   // move assignment operator
   VLogRingFile& operator=(VLogRingFile&& rhs) noexcept {
     queue = rhs.queue;
-    refcount = rhs.refcount;
+    refcount_deletion = rhs.refcount_deletion;
+    refcount_manifest = rhs.refcount_manifest;
     filepointer = std::move(rhs.filepointer);
     length = rhs.length;
     // Now that we have moved, reset the other to empty queue
     rhs.queue = nullptr;
-    rhs.refcount = 0;
+    rhs.refcount_deletion = 0;
+    rhs.refcount_manifest = 0;
     return *this;
   }
 
@@ -304,13 +316,32 @@ public:
     // set of intervals is written to the manifest after each compaction.
     //
     // The intervals are written back-to-back, as start0,end0,start1,end1... each containing a file number for this ring
+    //
+    // This structure goes into an edit list, which means it is combined with other like structures to produce the current status of the CF.
     std::vector<VLogRingRefFileno> valid_files;  // a sequence of intervals start0,end0,start1,end1... indicating the valid filenumbers
   // statistics are kept for the total size of the ring and the number of bytes of fragmentation.  Fragmentation is the number of bytes in the
   // valid files that are not referred to by any SST.  Fragmentation is added by compaction, which leave gaps in the files.  Fragmentation is removed by
-  // deletion of empty files.
-    VLogRingRefFileLen size;   // total # bytes in ring
-    VLogRingRefFileLen frag;   // total # bytes of fragmentation in ring
+  // deletion of empty files.  The first interval may be 0,end0 which means DELETE all files up to end0
+    int64_t size;   // total # bytes in ring
+    int64_t frag;   // total # bytes of fragmentation in ring
+
+    // empty constructor.  Could be defaulted
+    VLogRingRestartInfo() : valid_files(std::vector<VLogRingRefFileno>()), size(0), frag(0) {}
+    // constructor when all parts are known
+    VLogRingRestartInfo(std::vector<VLogRingRefFileno> valid_files_, int64_t size_, int64_t frag_) : valid_files(valid_files_), size(size_), frag(frag_) {}
+
+    // Combine two edits into one equivalent composite.  The operation defined here must be left-associative and must work when *this is
+    // the empty state.
+    void Coalesce(VLogRingRestartInfo& sec, bool outputdeletion);  // fold sec into this
+
+    // see if valid_files contains the given fileno
+    bool ContainsFileno(VLogRingRefFileno fno)
+      { if(valid_files.size()==0)return false; for(size_t i = valid_files[0]==0?2:0; i<valid_files.size(); i+=2)if(fno>=valid_files[i] && fno<=valid_files[i+1])return true; return false; }
   };
+
+// Routine to coalesce a vector of Ring info.  Must be left-associative, and work when applied to empty arguments.
+// Leaves result in 'pri'
+extern void Coalesce(std::vector<VLogRingRestartInfo>& pri, std::vector<VLogRingRestartInfo>& sec, bool outputdeletion);
 
 
 // A VLogRing is a set of sequentially-numbered files, with a common prefix and extension .vlg, that contain
@@ -337,6 +368,9 @@ friend class VLog;
 friend class VLogRingFileDeletion;
 friend class IndirectIterator;
 friend class RecyclingIterator;
+friend void VersionBuilder::SaveTo(VersionStorageInfo*, ColumnFamilyData *);
+friend void DetectVLogDeletions(ColumnFamilyData *, std::vector<VLogRingRestartInfo> *);
+
 private:
 
 // We have to cross-index the VLog files and the SSTs for two purposes: (1) to see which VLog files can be deleted when they
@@ -541,6 +575,9 @@ void VLogRingFindLaggingSsts(
 
 // A VLog is a set of VLogRings for a single column family.  The VLogRings are distinguished by an index.
 class VLog {
+friend void VersionBuilder::SaveTo(VersionStorageInfo*, ColumnFamilyData *);
+friend void DetectVLogDeletions(ColumnFamilyData *, std::vector<VLogRingRestartInfo> *);
+
 private:
   friend class IndirectIterator;
   std::vector<std::unique_ptr<VLogRing>> rings_;  // the VLogRing objects for this CF
@@ -569,6 +606,7 @@ public:
     ColumnFamilyData *cfd
   );
   size_t nrings() { return rings_.size(); }
+  std::vector<std::unique_ptr<VLogRing>>& rings() { return rings_; }
 
   // No copying
   VLog(VLog const&) = delete;
