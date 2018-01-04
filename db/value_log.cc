@@ -361,9 +361,13 @@ Status VLog::VLogInit(
   // For each ring, allocte & initialize the ring, and save the resulting object address
   for(int i = 0; i<early_refs.size(); ++i) {
     // Create the ring and save it
-    rings_.push_back(std::move(std::make_unique<VLogRing>(i /* ring# */, cfd_ /* ColumnFamilyData */, existing_vlog_files_for_cf /* filenames */,
+// use these 3 lines when make_unique is supported    rings_.push_back(std::move(std::make_unique<VLogRing>(i /* ring# */, cfd_ /* ColumnFamilyData */, existing_vlog_files_for_cf /* filenames */,
+//      (VLogRingRefFileno)early_refs[i] /* earliest_ref */, (VLogRingRefFileno)cfd_->GetRingEnds()[i]/* latest_ref */,
+//      immdbopts /* immdbopts */, file_options)));
+    unique_ptr<VLogRing> vptr(new VLogRing(i /* ring# */, cfd_ /* ColumnFamilyData */, existing_vlog_files_for_cf /* filenames */,
       (VLogRingRefFileno)early_refs[i] /* earliest_ref */, (VLogRingRefFileno)cfd_->GetRingEnds()[i]/* latest_ref */,
-      immdbopts /* immdbopts */, file_options)));
+      immdbopts /* immdbopts */, file_options));
+    rings_.push_back(std::move(vptr));
   }
 
 // status? scaf
