@@ -2588,6 +2588,12 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     Coalesce(batch_edits.back()->vlog_additions,vlog_deletions,true);  // apply them to the current edits
     Coalesce(accum_vlog_edits,vlog_deletions,true);  // add deletions into accumulated edits
     Coalesce(column_family_data->vloginfo(),accum_vlog_edits,false);   // apply accum edits, including deletions, to database.  false means 'don't include the delete', used for the CF version
+#if DEBLEVEL&0x800
+    {printf("VlogInfo before writing manifest: ");
+       std::vector<VLogRingRestartInfo> *vring = &column_family_data->vloginfo();
+       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, files=",i,(*vring)[i].size,(*vring)[i].frag);for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
+    }
+#endif
     // Now the database matches the new Version, and the edits are right to create it on restart
 #endif
 
@@ -2949,6 +2955,17 @@ Status VersionSet::Recover(
           break;
         }
       }
+
+#ifdef INDIRECT_VALUE_SUPPORT
+      if(edit.vlog_additions.size())   // If this edit contains vlog info
+        Coalesce(cfd->vloginfo(), edit.vlog_additions, false);  // fold them into the CF, eliding any deletion record
+#if DEBLEVEL&0x800
+    {printf("Recover: edit record: ");
+       const std::vector<VLogRingRestartInfo> *vring = &edit.vlog_additions;
+       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, files=",i,(*vring)[i].size,(*vring)[i].frag);for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
+    }
+#endif
+#endif
 
       if (edit.has_prev_log_number_) {
         previous_log_number = edit.prev_log_number_;
@@ -3466,6 +3483,11 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
 #ifdef INDIRECT_VALUE_SUPPORT
       // install the current version VLog status as the starting point for this snapshot
       edit.SetVLogStats(cfd->vloginfo());
+#if DEBLEVEL&0x800
+    {printf("In Snapshot, setting edit stats before EncodeTo\n");
+    }
+#endif
+
 #endif
       std::string record;
       if (!edit.EncodeTo(&record)) {

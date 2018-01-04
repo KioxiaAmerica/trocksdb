@@ -221,6 +221,12 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
 #ifdef INDIRECT_VALUE_SUPPORT
   // write the CF information for indirect values: the active file numbers for each ring, and the amount of fragmentation in those file
   if(vlog_additions.size()) {   // if vlog changes are marked...
+#if DEBLEVEL&0x800
+    {printf("EncodeTo: ");
+       const std::vector<VLogRingRestartInfo> *vring = &vlog_additions;
+       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, files=",i,(*vring)[i].size,(*vring)[i].frag);for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
+    }
+#endif
     // Build up the record
     PutVarint32(dst, CustomTag::kValueLogStats);  // write out the record type
     std::string totalrcd;  // where we build up the whole thing
@@ -531,6 +537,13 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
           }
           vlog_additions.emplace_back(files,(int64_t)size,(int64_t)frag);  // create a new ring entry.  sizes must be signed, even though the file interface demands unsigned
         }
+#if DEBLEVEL&0x800
+    {printf("DecodeFrom: ");
+       const std::vector<VLogRingRestartInfo> *vring = &vlog_additions;
+       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, files=",i,(*vring)[i].size,(*vring)[i].frag);for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
+    }
+#endif
+        break;
         }
 #endif
       default:

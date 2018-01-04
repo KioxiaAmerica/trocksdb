@@ -81,7 +81,11 @@ CompactionIterator::CompactionIterator(
 #endif  // ROCKSDB_LITE
       shutting_down_(shutting_down),
       ignore_snapshots_(false),
-      merge_out_iter_(merge_helper_) {
+      merge_out_iter_(merge_helper_)
+#ifdef INDIRECT_VALUE_SUPPORT
+      ,ring_bytes_refd_(std::vector<int64_t>(4))  // we don't know how many rings this compaction has; init to max supported
+#endif
+  {
   assert(compaction_filter_ == nullptr || compaction_ != nullptr);
   bottommost_level_ =
       compaction_ == nullptr ? false : compaction_->bottommost_level();
@@ -173,6 +177,21 @@ void CompactionIterator::Next() {
   PrepareOutput();
 }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+// Inspect a key/value to see if it refers to data in the VLog.  Count all the bytes in the VLog.
+// Associate them with their rings
+void CompactionIterator::CountIndirectRefs(ValueType keytype, Slice& value) {
+  if(IsTypeIndirect(keytype)) {  // if value is indirect...
+    if(value.size()==16){  // if length is wrong, the reference is mangled.  We'll catch it later; ignore its size now
+      VLogRingRef ref(value.data());   // analyze the (valid) reference
+      if(ref.Ringno()<ring_bytes_refd_.size()){    // if invalid ring#, mangled reference; we'll catch it later
+        ring_bytes_refd_[ref.Ringno()] += ref.Len();
+      }
+    }
+  }
+}
+#endif
+
 void CompactionIterator::NextFromInput() {
   at_next_ = false;
   valid_ = false;
@@ -201,6 +220,9 @@ void CompactionIterator::NextFromInput() {
     }
 
     // Update input statistics
+#ifdef INDIRECT_VALUE_SUPPORT
+            CountIndirectRefs(ikey_.type,value_);  // check the discarded value for indirect refs
+#endif
     if (ikey_.type == kTypeDeletion || ikey_.type == kTypeSingleDeletion) {
       iter_stats_.num_input_deletion_records++;
     }
@@ -400,6 +422,9 @@ void CompactionIterator::NextFromInput() {
             ++iter_stats_.num_record_drop_obsolete;
             // Already called input_->Next() once.  Call it a second time to
             // skip past the second key.
+#ifdef INDIRECT_VALUE_SUPPORT
+            CountIndirectRefs(next_ikey.type,input_->value());  // check the discarded value for indirect refs
+#endif
             input_->Next();
           } else {
             // Found a matching value, but we cannot drop both keys since

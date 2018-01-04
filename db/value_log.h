@@ -10,7 +10,8 @@
 
 #pragma once
 
-#define DEBLEVEL 0x400  // 1=SST ring ops 2=file ops 4=iterator ops 8=ring pointers 16=deleted_files 32=versions 64=top-level ring ops 128=ring status 256=Versions 512=Audit ref0 1024=Destructors
+#define DEBLEVEL 0x800  // 1=SST ring ops 2=file ops 4=iterator ops 8=ring pointers 16=deleted_files 32=versions 64=top-level ring ops 128=ring status 256=Versions 512=Audit ref0 1024=Destructors
+                        // 0x800=VlogInfo
 #define DELAYPROB 0   // percentage of the time a call to ProbDelay will actually delay
 #define DELAYTIME std::chrono::milliseconds(10)
 
@@ -494,7 +495,7 @@ void CollectDeletions(
 void ApplyDeletions(std::vector<VLogRingFileDeletion>& deleted_files) {
   for(size_t i = 0;i<deleted_files.size();++i) {
 #if DEBLEVEL&1
-  printf("Deleting: %s\n",deleted_files[i].filename.data());
+  printf("Deleting: %llx\n",deleted_files[i].fileno);
 #endif
     deleted_files[i].DeleteFile(*this,immdbopts_,envopts_);
   }

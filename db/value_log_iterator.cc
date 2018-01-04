@@ -98,6 +98,7 @@ printf("Creating iterator for level=%d, earliest_passthrough=",level);
     for(int i=0;i<earliest_passthrough.size();++i)printf("%lld ",earliest_passthrough[i]);
 printf("\n");
 #endif
+    addedfrag.clear(); addedfrag.resize(current_vlog->rings_.size());   // init the fragmentation count to 0 for each ring
 
     // Read all the kvs from c_iter and save them.  We start at the first kv
     // We create:
@@ -148,7 +149,7 @@ printf("\n");
         diskdata.resize(diskdata.size()+val.size());  // advance end pointer past end of new data
         memcpy(bufend,val.data(),val.size());  // move in the new data
         diskrecl.push_back(diskdata.size());   // write running sum of record lengths, i. e. current total size of diskdata
-      } else if(IsTypeIndirect(c_iter->ikey().type)) {  // scaf
+      } else if(IsTypeIndirect(c_iter->ikey().type)) {  // is indirect ref?
         // value is indirect; does it need to be remapped?
         assert(val.size()==16);  // should be a reference
         // If the reference is ill-formed, create an error if there wasn't one already on the key
@@ -162,7 +163,13 @@ printf("\n");
         } else {
           // Valid indirect reference.  See if it needs to be remapped: too old, or not in our output ring
           VLogRingRef ref(val.data());   // analyze the reference
-          if(ref.Ringno()!=outputringno || ref.Fileno()<earliest_passthrough) {  // file number is too low to pass through
+          if(ref.Ringno()>=addedfrag.size()) {  // If ring does not exist for this CF, that's an error
+            if(vclass<vHasError){   // Don't create an error for this key if it carries one already
+              inputerrorstatus.push_back(Status::Corruption("indirect reference is ill-formed."));
+              vclass += vHasError;  // indicate that this key now carries error status...
+              val = Slice();   // expunge the errant reference.  This will be treated as a passthrough below
+            }
+          } else if(ref.Ringno()!=outputringno || ref.Fileno()<earliest_passthrough) {  // file number is too low to pass through
             // indirect value being remapped.  Replace val with the data from disk
             vclass += vIndirectRemapped;  // indicate remapping
             // read the data of the reference.  We don't decompress it or check CRC; we just pass it on.  We know that
@@ -218,6 +225,10 @@ ProbDelay();
             // As described below, we must copy the data that is going to be passed through
             passthroughdata.append(val.data(),val.size());    // copy the data
             passthroughrecl.push_back(val.size());
+            // of all the data referenced in the VLog, this is the only data that DOES NOT turn into fragmentation.  Anything else - deletions or remapping -
+            // does produce fragmentation.  We subtract the passthrough data from the frag count.  Later, we will add in the total number of bytes referenced to get
+            // the total fragmentation added.
+            addedfrag[ref.Ringno()] -= ref.Len();
           }
         }
       }
@@ -239,6 +250,12 @@ ProbDelay();
     }
 
     // All values have been read from c_iter
+
+    // See how many bytes were read from each ring.  They will become fragmentation, to the extent they were not passed through
+    std::vector<int64_t> refsread(std::vector<int64_t>(addedfrag.size()));  // for each ring, the # bytes referred to
+    c_iter->RingBytesRefd(refsread);  // read bytesread from the iterator
+    for(int i=0;i<addedfrag.size();++i)addedfrag[i] += refsread[i];  //  every byte will add to fragmentation, if not passed through
+
     // TODO: It might be worthwhile to sort the kvs by key.  This would be needed only during Active Recycling, since they are
     // automatically sorted during compaction.  Perhaps we could merge by level.
 

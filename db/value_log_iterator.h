@@ -103,15 +103,18 @@ printf("\n");
 
   // return the restart edit block, to be installed into the edit list for the compaction
   void getedit(std::vector<VLogRingRestartInfo>& result) {
+// scaf must handle the case where there was no diskref & thus no diskdatalen
     result.clear();  // init result to empty (i. e. no changes)
     if(!use_indirects_) return;  // return null value if no indirects
     result.resize(ref0_.size());  // reserve space for all the rings
-    result[nextdiskref.Ringno()].size = diskdatalen;  // # bytes written
-    result[nextdiskref.Ringno()].frag = 0;  // scaf  amount of fragmentation added
+    // account for size added to the output ring
     if(fileendoffsets.size()){   // if there are no files, output no record, since a 0 record is a delete
+      result[nextdiskref.Ringno()].size = diskdatalen;  // # bytes written
       result[nextdiskref.Ringno()].valid_files.push_back(nextdiskref.Fileno());  // output start,end of the added files
       result[nextdiskref.Ringno()].valid_files.push_back(nextdiskref.Fileno()+fileendoffsets.size()-1);
     }
+    // account for fragmentation, added to any ring we read from
+    for(int i=0;i<result.size();++i)result[i].frag = addedfrag[i];   // copy our internal calculation
   }
 
 private:
@@ -138,6 +141,7 @@ private:
   std::vector<Status> outputerrorstatus;  // error status returned when writing the output files
   std::shared_ptr<VLog> current_vlog;
   std::vector<uint64_t> ref0_;  // for each ring, the earliest reference found into the ring.  Reset when we start each new file
+  std::vector<int64_t> addedfrag;  // fragmentation added, for each ring
 struct RingFno {
   int ringno;
   VLogRingRefFileno fileno;

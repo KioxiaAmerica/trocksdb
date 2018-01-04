@@ -66,10 +66,10 @@ void VLogRingRestartInfo::Coalesce(VLogRingRestartInfo& sec,  // the stats to me
   // loop till we have output all the intervals
   while(1) {
     // initialize the interval we will build: start with the smaller input.  If there are no inputs, we are through
-    VLogRingRefFileno intlo = 0, inthi;
+    VLogRingRefFileno intlo = high_value, inthi;
     if(thisx<valid_files.size())intlo = valid_files[thisx];
-    else if(secx<sec.valid_files.size()){if(sec.valid_files[secx]<intlo)sec.valid_files[secx] = intlo;}
-    else break;
+    if(secx<sec.valid_files.size()){if(sec.valid_files[secx]<intlo)intlo = sec.valid_files[secx];}
+    if(intlo==high_value)break;  // if there are no more intervals, stop looking
     inthi = intlo;   // the interval starts small, but it will be extended
     // keep processing inputs until we can't add on to the current interval
     while(1) {
@@ -81,7 +81,7 @@ void VLogRingRestartInfo::Coalesce(VLogRingRestartInfo& sec,  // the stats to me
     };
     // we have an interval.  Write it out, after removing any parts that are to be deleted
     if(inthi>delto) {   // if the upper end doesn't make it past the deletion point, write nothing
-      if(intlo<delto)intlo = delto+1;   // clamp the low end to above the deletion point
+      if(intlo<(delto+1))intlo = delto+1;   // clamp the low end to above the deletion point
       outarea.push_back(intlo); outarea.push_back(inthi);  // write out the interval
     }
   }
@@ -171,11 +171,14 @@ printf("VLogRing cfd_=%p\n",cfd_);
           // move the file reference into the ring, and publish it to all threads
         fd_ring[0][Ringx(fd_ring[0],fnring.fileno)]=std::move(VLogRingFile(fileptr,filesizes[i]));
 #if DEBLEVEL&2
-printf("Opening file %s\n",pathfname.c_str());
+printf("Opening file %s\n",filenames[i].c_str());
 #endif
         // if error opening file, we can't do anything useful, so leave file unopened, which will give an error if a value in it is referenced
 // scaf error?
       } else {
+#if DEBLEVEL&2
+printf("Deleting file %s\n",filenames[i].c_str());
+#endif
         // The file is not referenced.  We must have crashed while deleting it, or before it was referenced.  Delete it now
         immdbopts_->env->DeleteFile(filenames[i]);   // ignore error - what could we do?
   // should log? scaf
@@ -941,6 +944,12 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
   // The the database is not new, the CF will have the stats for the rings.  If the CF has no stats, create null stats for each level
   if(cfd_->vloginfo().size()==0)cfd_->vloginfo().resize(starting_level_for_ring_.size());
     // scaf worry about mismatch between # rings given & # in database
+#if DEBLEVEL&0x800
+    {printf("VLogInit: ");
+       const std::vector<VLogRingRestartInfo> *vring = &cfd_->vloginfo();
+       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, files=",i,(*vring)[i].size,(*vring)[i].frag);for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
+    }
+#endif
 
   // If there are VlogRings now, it means that somehow the database was reopened without being destroyed.  This is bad form but not necessarily fatal.
   // To cope, we will delete the old rings, which should go through and free up all their resources.  Then we will continue with new rings.
@@ -1025,11 +1034,8 @@ if(!rings_.size() || !newsst.indirect_ref_0.size())printf("VLogSstInstall newsst
       ReleaseLock();
     } else {
       // Normal case after initial recovery.  Put the SST into each ring for which it has a reference
-if(newsst.indirect_ref_0.size()){
-  printf("VLogSstInstall newsst=%p level=%d\n",&newsst,newsst.level);  // scaf
-}
-  if(newsst.level<0)
-    printf("installing SST with no level\n");
+      if(newsst.level<0)
+        printf("installing SST with no level\n");  // scaf debug only
       for (int i=0;i<newsst.indirect_ref_0.size();++i)if(newsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstInstall(newsst);
     }
   }
@@ -1060,49 +1066,50 @@ if(!rings_.size() || !expiringsst.indirect_ref_0.size())printf("VLogSstDelete ex
 // Routine to look at the manifest refcounts and decide which files can be removed from the new Version.
 // Called as part of applying the edits after compaction.
 extern void DetectVLogDeletions(ColumnFamilyData *cfd,   // CF to work on
-  std::vector<VLogRingRestartInfo> *vlogedits   // result: edits to make to the current files (all deletions)
+  std::vector<VLogRingRestartInfo> *vlogedits   // result: edits to make to the current files (all deletions).  Initially empty
   ) {
-  if(cfd!=nullptr && cfd->vlog()){
-    VLog *vlog = cfd->vlog().get();
-    // See if there are VLog files that will not be needed after a restart.  These are files whose manifest refcount has gone to 0.
-    // They may still be in use internally, but they will not be needed after all current business is finished.  If there are any, collect
-    // them into an edit, which will be applied by the caller
-    if(vlogedits != nullptr) {  // if the caller has requested deletions...
-      // check for deletions in each ring.  At the beginning there are no rings and no first file in any ring; there can't be deletions then either
-      // but we mustn't fail
-      for(size_t i = 0;i<cfd->vloginfo().size();++i) {
-        VLogRingRestartInfo ringchanges{};   // where we accumulate the changes for this 
-        // start looking at the first file indicated as valid in the manifested data
-        if(cfd->vloginfo()[i].valid_files.size()) {     // make sure there IS a first file
-          VLogRingRefFileno currentoldest = cfd->vloginfo()[i].valid_files[0];  // first valid file
-          VLogRingRefFileno saveoldest = currentoldest;  // save so we can see if we moved
-          // Acquire lock on the ring so we know we have the correct ping-pong buffer.  Writes to the ring, and resizes, are performed outside the
-          // current mutex
-          { vlog->rings_[i]->AcquireLock();
-            // Get the headpointer for the ring
-            VLogRingRefFileno headfile = vlog->rings_[i]->atomics.fd_ring_head_fileno.load(std::memory_order_acquire);  // lock guarantees memory ordering
-            // Get index of the current ring
-            size_t currentpong = vlog->rings_[i]->atomics.currentarrayx.load(std::memory_order_acquire);  // lock guarantees memory ordering
-            // Get pointer to current ring
-            std::vector<VLogRingFile> *currentring = vlog->rings_[i]->fd_ring+currentpong;
-            // Get slot number for the first file
-            size_t slotx = vlog->rings_[i]->Ringx(*currentring, currentoldest);
-            // Look at files. Accumulate stats of frag/size that will be removed.  End pointing to the file AFTER the last deletable file
-            while(currentoldest+deletion_deadband<headfile && (*currentring)[slotx].refcount_manifest==0){  // avoiding unsigned overflow
-              ringchanges.size -= (*currentring)[slotx].length;
-              if(++slotx == (*currentring).size())slotx=0;  // advance ring, wrapping if needed
-              ++currentoldest;
-            }
-          vlog->rings_[i]->ReleaseLock(); }
-          // if there are deletable files, add a deletion entry for them to the result area
-          if(currentoldest>saveoldest) {
-            ringchanges.frag = ringchanges.size;   // the reduction in size is also a reduction in fragmentation, since an empty file is 100% frag
-            ringchanges.valid_files.push_back(0); ringchanges.valid_files.push_back(currentoldest-1);   // make the edit a delete for all files up to the last one we deleted
+  if(cfd==nullptr || cfd->vlog()==nullptr)return;   // return if no CF, or CF does not support vlogs
+  VLog *vlog = cfd->vlog().get();
+  // During initial recovery we come through LogAndApply before we have run VLogInit to set the rings.  We should not be deleting VLog files then anyway,
+  // so just return in that case
+  if(vlog->rings_.size()==0)return;
+  // See if there are VLog files that will not be needed after a restart.  These are files whose manifest refcount has gone to 0.
+  // They may still be in use internally, but they will not be needed after all current business is finished.  If there are any, collect
+  // them into an edit, which will be applied by the caller
+  if(vlogedits != nullptr) {  // if the caller has requested deletions...
+    // check for deletions in each ring.  At the beginning there are no rings and no first file in any ring; there can't be deletions then either
+    // but we mustn't fail
+    for(size_t i = 0;i<cfd->vloginfo().size();++i) {
+      VLogRingRestartInfo ringchanges{};   // where we accumulate the changes for this 
+      // start looking at the first file indicated as valid in the manifested data
+      if(cfd->vloginfo()[i].valid_files.size()) {     // make sure there IS a first file
+        VLogRingRefFileno currentoldest = cfd->vloginfo()[i].valid_files[0];  // first valid file
+        VLogRingRefFileno saveoldest = currentoldest;  // save so we can see if we moved
+        // Acquire lock on the ring so we know we have the correct ping-pong buffer.  Writes to the ring, and resizes, are performed outside the
+        // current mutex
+        { vlog->rings_[i]->AcquireLock();
+          // Get the headpointer for the ring
+          VLogRingRefFileno headfile = vlog->rings_[i]->atomics.fd_ring_head_fileno.load(std::memory_order_acquire);  // lock guarantees memory ordering
+          // Get index of the current ring
+          size_t currentpong = vlog->rings_[i]->atomics.currentarrayx.load(std::memory_order_acquire);  // lock guarantees memory ordering
+          // Get pointer to current ring
+          std::vector<VLogRingFile> *currentring = vlog->rings_[i]->fd_ring+currentpong;
+          // Get slot number for the first file
+          size_t slotx = vlog->rings_[i]->Ringx(*currentring, currentoldest);
+          // Look at files. Accumulate stats of frag/size that will be removed.  End pointing to the file AFTER the last deletable file
+          while(currentoldest+deletion_deadband<headfile && (*currentring)[slotx].refcount_manifest==0){  // avoiding unsigned overflow
+            ringchanges.size -= (*currentring)[slotx].length;
+            if(++slotx == (*currentring).size())slotx=0;  // advance ring, wrapping if needed
+            ++currentoldest;
           }
-
-          // Move the edit to the result
-          (*vlogedits).push_back(ringchanges);  // tell the caller how to account for the deletion
+        vlog->rings_[i]->ReleaseLock(); }
+        // if there are deletable files, add a deletion entry for them to the result area
+        if(currentoldest>saveoldest) {
+          ringchanges.frag = ringchanges.size;   // the reduction in size is also a reduction in fragmentation, since an empty file is 100% frag
+          ringchanges.valid_files.push_back(0); ringchanges.valid_files.push_back(currentoldest-1);   // make the edit a delete for all files up to the last one we deleted
         }
+         // Move the edit to the result
+        (*vlogedits).push_back(ringchanges);  // tell the caller how to account for the deletion
       }
     }
   }
