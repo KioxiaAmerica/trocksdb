@@ -141,7 +141,7 @@ namespace rocksdb {
     // If this table type doesn't support indirects, revert to the standard compaction iterator
     if(!use_indirects_){ c_iter_->Next(); return; }
     // Here indirects are supported.  If we have returned all the keys, set this one as invalid
-    if(valid_ = keyno_ < valueclass.size()) {
+    if(valid_ = (keyno_ < valueclass.size())) {
       // There is another key to return.  Retrieve the key info and parse it
 
       // If there are errors about, we need to make sure we attach the errors to the correct keys.
@@ -195,7 +195,8 @@ namespace rocksdb {
             }
             if(nextdiskref.Offset()==endofst) {   // if start of next rcd = endpoint of current file
               // The next reference is in the next output file.  Advance to the start of the next output file
-              if(fileendoffsets[filex_]<0)++ostatusx_;  // if we are leaving a file with error, point to the next error (if any)
+              //if(fileendoffsets[filex_]<0)++ostatusx_;  // if we are leaving a file with error, point to the next error (if any)
+              // Note: fileendoffsets[filex_]<0 is always false because fileendoffsets[x] always returns an unsigned integer.
               nextdiskref.SetFileno(nextdiskref.Fileno()+1);  // next file...
               nextdiskref.SetOffset(0);  // at the beginning...
               ++filex_;   // ... and advance to look at the ending position of the NEXT output file

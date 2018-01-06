@@ -68,11 +68,11 @@ ringexpansion = 16384;  // scaf
   for(auto pathfname : filenames) {
     // Isolate the filename from the path as required by the subroutine
     size_t fslashx = pathfname.find_last_of('/');  // index of '/'
-    if(fslashx==pathfname.size())fslashx = -1;  // if no /, start at beginning
+    if(fslashx==pathfname.size())fslashx = -1;  // if no '/', start at beginning
     size_t bslashx = pathfname.find_last_of('\\');  // index of '\'
-    if(bslashx==pathfname.size())bslashx = -1;  // if no \, start at beginning
+    if(bslashx==pathfname.size())bslashx = -1;  // if no '\', start at beginning
     if(fslashx<bslashx)fslashx=bslashx;  // fslashx is now the larger index
-    std::string fname = pathfname.substr(fslashx+1);  // get the part AFTER the last /\
+    std::string fname = pathfname.substr(fslashx+1);  // get the part AFTER the last '/' or '\'
 
     // Extract the file number (which includes the ring) from the filename
     uint64_t number;  // return value, giving file number
@@ -340,7 +340,7 @@ Status VLog::VLogInit(
       fmd->indirect_ref_0.resize(starting_level_for_ring_.size(),0);
 
       // Loop through all the early-ring-refs in this SST
-      for(int i = 0; i < starting_level_for_ring_.size(); ++i) {
+      for(uint32_t i = 0; i < starting_level_for_ring_.size(); ++i) {
         if(fmd->indirect_ref_0[i])if((VLogRingRefFileno)fmd->indirect_ref_0[i]<early_refs[i])early_refs[i]=(VLogRingRefFileno)fmd->indirect_ref_0[i];
       }
     }
@@ -359,7 +359,7 @@ Status VLog::VLogInit(
   cfd_->ResizeRingEnds(early_refs.size());
 
   // For each ring, allocte & initialize the ring, and save the resulting object address
-  for(int i = 0; i<early_refs.size(); ++i) {
+  for(uint32_t i = 0; i<early_refs.size(); ++i) {
     // Create the ring and save it
 // use these 3 lines when make_unique is supported    rings_.push_back(std::move(std::make_unique<VLogRing>(i /* ring# */, cfd_ /* ColumnFamilyData */, existing_vlog_files_for_cf /* filenames */,
 //      (VLogRingRefFileno)early_refs[i] /* earliest_ref */, (VLogRingRefFileno)cfd_->GetRingEnds()[i]/* latest_ref */,
