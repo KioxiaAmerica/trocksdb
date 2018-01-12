@@ -909,7 +909,11 @@ VersionStorageInfo::VersionStorageInfo(
     const InternalKeyComparator* internal_comparator,
     const Comparator* user_comparator, int levels,
     CompactionStyle compaction_style, VersionStorageInfo* ref_vstorage,
-    bool _force_consistency_checks)
+    bool _force_consistency_checks
+#ifdef INDIRECT_VALUE_SUPPORT
+    ,ColumnFamilyData *cfd
+#endif
+    )
     : internal_comparator_(internal_comparator),
       user_comparator_(user_comparator),
       // cfd is nullptr if Version is dummy
@@ -935,7 +939,11 @@ VersionStorageInfo::VersionStorageInfo(
       current_num_samples_(0),
       estimated_compaction_needed_bytes_(0),
       finalized_(false),
-      force_consistency_checks_(_force_consistency_checks) {
+      force_consistency_checks_(_force_consistency_checks)
+#ifdef INDIRECT_VALUE_SUPPORT
+      ,cfd_(cfd)
+#endif
+  {
   if (ref_vstorage != nullptr) {
     accumulated_file_size_ = ref_vstorage->accumulated_file_size_;
     accumulated_raw_key_size_ = ref_vstorage->accumulated_raw_key_size_;
@@ -968,7 +976,11 @@ Version::Version(ColumnFamilyData* column_family_data, VersionSet* vset,
           (cfd_ == nullptr || cfd_->current() == nullptr)
               ? nullptr
               : cfd_->current()->storage_info(),
-          cfd_ == nullptr ? false : cfd_->ioptions()->force_consistency_checks),
+          cfd_ == nullptr ? false : cfd_->ioptions()->force_consistency_checks
+#ifdef INDIRECT_VALUE_SUPPORT
+          ,column_family_data
+#endif
+      ),
       vset_(vset),
       next_(this),
       prev_(this),
@@ -2588,10 +2600,10 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     Coalesce(batch_edits.back()->vlog_additions,vlog_deletions,true);  // apply them to the current edits
     Coalesce(accum_vlog_edits,vlog_deletions,true);  // add deletions into accumulated edits
     Coalesce(column_family_data->vloginfo(),accum_vlog_edits,false);   // apply accum edits, including deletions, to database.  false means 'don't include the delete', used for the CF version
-#if DEBLEVEL&0x800
+#if DEBLEVEL&0x1000
     {printf("VlogInfo before writing manifest: ");
        std::vector<VLogRingRestartInfo> *vring = &column_family_data->vloginfo();
-       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, files=",i,(*vring)[i].size,(*vring)[i].frag);for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
+       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, space amp=%5.2f, files=",i,(*vring)[i].size,(*vring)[i].frag,((double)(*vring)[i].size)/(1+(*vring)[i].size-(*vring)[i].frag));for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
     }
 #endif
     // Now the database matches the new Version, and the edits are right to create it on restart
@@ -2962,7 +2974,7 @@ Status VersionSet::Recover(
 #if DEBLEVEL&0x800
     {printf("Recover: edit record: ");
        const std::vector<VLogRingRestartInfo> *vring = &edit.vlog_additions;
-       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, files=",i,(*vring)[i].size,(*vring)[i].frag);for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
+       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, space amp=%5.2f, files=",i,(*vring)[i].size,(*vring)[i].frag,((double)(*vring)[i].size)/(1+(*vring)[i].size-(*vring)[i].frag));for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
     }
 #endif
 #endif
@@ -3757,6 +3769,10 @@ bool VersionSet::VerifyCompactionFileConsistency(Compaction* c) {
         c->column_family_data()->GetName().c_str());
 
     if (vstorage->compaction_style_ == kCompactionStyleLevel &&
+#ifdef INDIRECT_VALUE_SUPPORT
+      // this audit does not apply to Active Recycling, which can spray files all around to any level
+      c->compaction_reason() != CompactionReason::kActiveRecycling &&
+#endif
         c->start_level() == 0 && c->num_input_levels() > 2U) {
       // We are doing a L0->base_level compaction. The assumption is if
       // base level is not L1, levels from L1 to base_level - 1 is empty.

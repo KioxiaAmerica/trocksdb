@@ -14,13 +14,12 @@ namespace rocksdb {
 // This does essentially the same thing as the TwoLevelIterator, but without a LevelFilesBrief, going forward only, and with the facility for
 // determining when an input file is exhausted.  Rather than put switches
 // into all the other iterator types, we just do everything here, in a single level.
-  RecyclingIterator::RecyclingIterator(Compaction *compaction_,  // pointer to all compation data including files
+  RecyclingIterator::RecyclingIterator(Compaction *compaction_,  // pointer to all compaction data including files
     VersionSet *versions_  //  pointer to environmant data
   ) :
     compaction(compaction_),
     file_index(-1),  // init pointing before first file
     file_iterator(nullptr),  // init no iterator for file
-    file_kvct(std::vector<size_t>(compaction->inputs()->size(),0)),  // number of kvs in each file
     env_options(versions_->env_options_compactions())
   {
     // These read options are copied from MakeInputIterator in version_set.cc
@@ -46,11 +45,17 @@ namespace rocksdb {
         file_iterator->SeekToFirst();             
       } while(!file_iterator->Valid());
     }
-    // If the kv is valid, add it to the total # valid in its SST
-    if(file_index < compaction->inputs()->size())++file_kvct[file_index];
   }
 
-
+// Make sure there are at least reservation spaces in vec.  We don't just use reserve directly,
+// because it reserves the minimum requested, which leads to quadratic performance
+static void reserveatleast(std::vector<NoInitChar>& vec, size_t reservation) {
+  if(vec.size()+reservation <= vec.capacity()) return;  // return fast if no need to expand
+  size_t newcap = vec.capacity() & -0x40;   // keep size a nice boundary
+  if(newcap < 2*maxfilesize)newcap = 2*maxfilesize;  // always at least 1MB - less will be rare & unimportant
+  while(newcap < vec.size()+reservation)newcap = (size_t)(newcap*1.5) & -0x40;  // grow in large jumps until big enough
+  vec.reserve(newcap);
+}
 
 
 // Code for building the indirect-value files.
@@ -58,12 +63,13 @@ namespace rocksdb {
 // We read all the values, save the key/values, write indirects, and then
 // return the indirect kvs one by one to the builder.
   IndirectIterator::IndirectIterator(
-   CompactionIterator* c_iter,   // the input iterator that feeds us kvs.  If 0, we will build a sequential iterator out of the input files
+   CompactionIterator* c_iter,   // the input iterator that feeds us kvs.
    ColumnFamilyData* cfd,  // the column family we are working on
-   int level,   // output level for this iterator - where the files will be written to
+   const Compaction *compaction,   // variuos info for this compaction
    Slice *end,  // end+1 key in range, if given
-   bool use_indirects  // if false, just pass c_iter through
-  ) :
+   bool use_indirects,  // if false, just pass c_iter through
+   RecyclingIterator *recyciter  // null if not Active Recycling; then, points to the iterator
+ ) :
   c_iter_(c_iter),
   pcfd(cfd),
   end_(end),
@@ -72,48 +78,58 @@ namespace rocksdb {
   {
     // If indirects are disabled, we have nothing to do.  We will just be returning values from c_iter_.
     if(!use_indirects_)return;
-    int outputringno = current_vlog->VLogRingNoForLevelOutput(level);  // get the ring number we will write output to
-    if(outputringno<0){use_indirects_ = false; return;}  // if no output ring, skip looking for indirects
-    VLogRing *outputring = current_vlog->VLogRingFromNo(outputringno);  // the ring we will write values to
+    size_t outputringno;   // The ring# we will be writing VLog files to
+    // For Active Recycling, use the ringno chosen earlier; otherwise use the ringno for the output level
+    if(recyciter!=nullptr)outputringno = compaction->ringno();   // AR
+    else{
+      int level = compaction->output_level();  // output level for this run
+      outputringno = current_vlog->VLogRingNoForLevelOutput(level);  // get the ring number we will write output to
 #if DEBLEVEL&4
 printf("Creating iterator for level=%d, earliest_passthrough=",level);
 #endif
+    }
+    if(outputringno<0){use_indirects_ = false; return;}  // if no output ring, skip looking for indirects
+    VLogRing *outputring = current_vlog->VLogRingFromNo((int)outputringno);  // the ring we will write values to
 
     // Calculate the remapping threshold.  References earlier than this will be remapped.
     //
-    // Keeping track of fragmentation and its position - whether it is towards the tail or head of the ring - is problematic,
-    // especially over a reboot or even a restart.  We will try to get by without needing it.  We will set the remapping
-    // threshold at a fixed fraction of the file-span between the head and the tail.
     // It is not necessary to lock the ring to calculate the remapping - any valid value is OK - but we do need to do an
     // atomic read to make sure we get a recent one
     //
-    // We have to calculate a threshold for our output ring.  A reference to any other ring will automatically be remapped
-    VLogRingRefFileno earliest_passthrough;  // for each ring, the lowest file# that will remain unmapped
+    // We have to calculate a threshold for our output ring.  A reference to any other ring will automatically be passed through
+    // For active Recycling, we stop just a few files above the last remapped file, because any remapping that does not
+    // result in an empty file just ADDS to fragmentation.  For normal compaction, we copy a fixed fraction of the ring
+    VLogRingRefFileno earliest_passthrough;  // the lowest file# that will remain unmapped in the output ring.  All other rings pass through
     VLogRingRefFileno head = current_vlog->rings_[outputringno]->atomics.fd_ring_head_fileno.load(std::memory_order_acquire);  // last file with data
-    VLogRingRefFileno tail = current_vlog->rings_[outputringno]->atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // first file with live refs
-    if(head>tail)head-=tail; else head=0;  // change 'head' to head-tail.  It would be possible for tail to pass head, on an
+    if(recyciter!=nullptr)earliest_passthrough = compaction->lastfileno()+4;   // AR   scaf constant, which is max # data files per compaction
+    else {
+      VLogRingRefFileno tail = current_vlog->rings_[outputringno]->atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // first file with live refs
+      if(head>tail)head-=tail; else head=0;  // change 'head' to head-tail.  It would be possible for tail to pass head, on an
            // empty ring.  What happens then doesn't matter, but to keep things polite we check for it rather than overflowing the unsigned subtraction.
-    earliest_passthrough = (VLogRingRefFileno)(tail + vlog_remapping_fraction * head);  // calc file# before which we remap
+      earliest_passthrough = (VLogRingRefFileno)(tail + vlog_remapping_fraction * head);  // calc file# before which we remap
+    }
 #if DEBLEVEL&4
     for(int i=0;i<earliest_passthrough.size();++i)printf("%lld ",earliest_passthrough[i]);
 printf("\n");
 #endif
     addedfrag.clear(); addedfrag.resize(current_vlog->rings_.size());   // init the fragmentation count to 0 for each ring
 
+    // For AR, create the list of number of records in each input file.
+    filereccnts.clear(); if(recyciter!=nullptr)filereccnts.resize((const_cast<Compaction *>(compaction))->inputs()->size());
     // Read all the kvs from c_iter and save them.  We start at the first kv
     // We create:
     // diskdata - the compressed, CRCd, values to write to disk.  Stored in key order.
     // diskrecl - the length of each value in diskdata
     // keys - the keys read from c_iter read as a Slice but converted to string
     // passthroughdata - values from c_iter that should be passed through (Slice)
-    // valueclass - bit 0 means 'value is a passthrough'; bit 1 means 'value is being converted from direct to indirect'
+    // valueclass - bit 0 means 'value is a passthrough'; bit 1 means 'value is being converted from direct to indirect', bit 2='Error'
     //
     // The Slices are references to pinned tables.  We copy them into our buffers.
     // They are immediately passed to Builder which must make a copy of the data.
     std::vector<NoInitChar> diskdata;  // where we accumulate the data to write
     std::string indirectbuffer;   // temp area where we read indirect values that need to be remapped
     while(c_iter->Valid() && 
-           !(end != nullptr && pcfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0)) {
+           !(recyciter==nullptr && end != nullptr && pcfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0)) {
       // process this kv.  It is valid and the key is not past the specified ending key
       char vclass;   // disposition of this value
 
@@ -144,7 +160,7 @@ printf("\n");
         // compress the data scaf
         // CRC the data  scaf
 
-        diskdata.reserve(diskdata.size()+val.size());  // make sure there is room for the new data
+        reserveatleast(diskdata,val.size());  // make sure there is room for the new data
         char *bufend = (char *)diskdata.data()+diskdata.size();   // address of place to put new data
         diskdata.resize(diskdata.size()+val.size());  // advance end pointer past end of new data
         memcpy(bufend,val.data(),val.size());  // move in the new data
@@ -163,6 +179,7 @@ printf("\n");
         } else {
           // Valid indirect reference.  See if it needs to be remapped: too old, or not in our output ring
           VLogRingRef ref(val.data());   // analyze the reference
+          assert(ref.Ringno()<addedfrag.size());  // should be a reference
           if(ref.Ringno()>=addedfrag.size()) {  // If ring does not exist for this CF, that's an error
             if(vclass<vHasError){   // Don't create an error for this key if it carries one already
               inputerrorstatus.push_back(Status::Corruption("indirect reference is ill-formed."));
@@ -174,10 +191,9 @@ printf("\n");
             vclass += vIndirectRemapped;  // indicate remapping
             // read the data of the reference.  We don't decompress it or check CRC; we just pass it on.  We know that
             // the compression/CRC do not depend on anything outside the actual value
-            diskdata.reserve(diskdata.size()+ref.Len());  // make sure there is room for the new data
+            reserveatleast(diskdata,ref.Len());  // make sure there is room for the new data
             char *bufend = (char *)diskdata.data()+diskdata.size();   // address of place to put new data
             diskdata.resize(diskdata.size()+ref.Len());  // advance end pointer past end of new data
-
             // point to the fdring to use for reading indirect values.  Whatever value is current now will be sufficient to translate any indirect that we find
             // in this compaction; however, the ring may be resized while we are using it, so we have to look out for that.  We could set this at the beginning
             // and change only on a change of ring, but we don't take the trouble
@@ -213,7 +229,7 @@ ProbDelay();
                 inputerrorstatus.push_back(Status::IOError("error reading indirect reference."));
                 vclass += vHasError;  // indicate that this key now carries error status...
               }
-              diskdata.resize(diskdata.size()-ref.Len());  // error: just pretend the reference was to an empty string.  Unreserve the space for the disk record
+              diskdata.resize(diskdata.size()-ref.Len());  // error: just pretend the reference was to an empty string.  Take back the space for the disk record
             }
             // move in the record length of the new data
             diskrecl.push_back(diskdata.size());   // write running sum of record lengths, i. e. current total size of diskdata
@@ -245,6 +261,10 @@ ProbDelay();
       // save the type of record for use in the replay
       valueclass.push_back(vclass);
 
+      // Associate the valid kv with the file it comes from.  We store the current record # into the file# slot it came from, so
+      // that when it's all over each slot contains the record# of the last record (except for empty files which contain 0 as the ending record#)
+      if(recyciter!=nullptr)filereccnts[recyciter->fileindex()] = valueclass.size();
+
       // We have processed one key from the compaction iterator - get the next one
       c_iter->Next();
     }
@@ -260,7 +280,8 @@ ProbDelay();
     // automatically sorted during compaction.  Perhaps we could merge by level.
 
     // Allocate space in the Value Log and write the values out, and save the information for assigning references
-    outputring->VLogRingWrite(diskdata,diskrecl,nextdiskref,fileendoffsets,outputerrorstatus);
+    outputring->VLogRingWrite(diskdata,diskrecl,firstdiskref,fileendoffsets,outputerrorstatus);
+    nextdiskref = firstdiskref;    // remember where we start, and initialize the running pointer to the disk data
 
     // save what we need to return to stats
     diskdatalen = diskdata.size();  // save # bytes written for stats report
@@ -280,6 +301,7 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
     passthroughrefx_ = 0;  // reset pointer to passthrough file/ring
     ref0_ = std::vector<uint64_t>(cfd->vlog()->nrings(),high_value);  // initialize to no refs to each ring
     prevringfno = RingFno{0,high_value};  // init to no previous key
+    outputfileno = 0;  // init that the records we are emitting are going into SST 0
 
     Next();   // first Next() gets the first key; subsequent ones return later keys
   }

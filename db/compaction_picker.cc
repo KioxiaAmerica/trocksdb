@@ -915,7 +915,11 @@ void CompactionPicker::RegisterCompaction(Compaction* c) {
   if (c == nullptr) {
     return;
   }
-  assert(ioptions_.compaction_style != kCompactionStyleLevel ||
+#ifdef INDIRECT_VALUE_SUPPORT
+  if(c->compaction_reason() != CompactionReason::kActiveRecycling)  // if Active Recycling, we do not touch any keys
+  // this IF-statement affects the compilation outside this conditional block!!!
+#endif
+  assert(ioptions_.compaction_style != kCompactionStyleLevel ||   // watch statement above!!!
          c->output_level() == 0 ||
          !FilesRangeOverlapWithCompaction(*c->inputs(), c->output_level()));
   if (c->start_level() == 0 ||
@@ -1019,6 +1023,10 @@ class LevelCompactionBuilder {
   CompactionInputFiles output_level_inputs_;
   std::vector<FileMetaData*> grandparents_;
   CompactionReason compaction_reason_ = CompactionReason::kUnknown;
+#ifdef INDIRECT_VALUE_SUPPORT
+  size_t ringno_;  // will hold the ring number if Active Recycling called for
+  VLogRingRefFileno lastfileno_;  // will hold the file number of the last file in the recycled area
+#endif
 
   const MutableCFOptions& mutable_cf_options_;
   const ImmutableCFOptions& ioptions_;
@@ -1200,26 +1208,50 @@ bool LevelCompactionBuilder::SetupOtherInputsIfNeeded() {
 }
 
 Compaction* LevelCompactionBuilder::PickCompaction() {
-  // Pick up the first file to start compaction. It may have been extended
-  // to a clean cut.
-  SetupInitialFiles();
-  if (start_level_inputs_.empty()) {
-    return nullptr;
-  }
-  assert(start_level_ >= 0 && output_level_ >= 0);
+#ifdef INDIRECT_VALUE_SUPPORT
+  // See if we need to perform an Active Recycling pass becase the fragmentation is getting too high
+  compaction_inputs_.clear();  // start with an empty set of files
+  vstorage_->GetCfd()->CheckForActiveRecycle(compaction_inputs_, ringno_, lastfileno_);  // see if we select a set of files to recycle
+  if(!compaction_inputs_.empty()) {
+    // Active Recycling needed.  Indicate that as the reason for compaction.  This reason code controls processing during the compaction
+    compaction_reason_ = CompactionReason::kActiveRecycling;
+    // Active Recycling processes SSTs in-place without changing any keys - it just remaps old VLog blocks.  We can skip most of the
+    // checking and stat-gathering for a full compaction.  Right here we will calculate the stats we need: start_level_ and output_level_.
+    // start_level_ is needed because it is used later to decide whether to suppress other level-0 compaction.  output_level_ is used only
+    // for things like figuring the path to use for the output files; we just set it to the largest level we find
+    // scaf problem: this sets compression for all levels to be the same as for the max level
+    start_level_ = output_level_ = compaction_inputs_[0].level;
+    for(size_t i = 1;i<compaction_inputs_.size();++i){
+      if(start_level_>compaction_inputs_[i].level)start_level_ = compaction_inputs_[i].level;  // find minimum level touched
+      if(output_level_<compaction_inputs_[i].level)output_level_ = compaction_inputs_[i].level;  // find maximum level touched
+    }
+  } else {
+    // Not Active Recycling.  Do a normal compaction,  pick files, etc.
+#endif
+    // Pick up the first file to start compaction. It may have been extended
+    // to a clean cut.
+    SetupInitialFiles();
+    if (start_level_inputs_.empty()) {
+      return nullptr;
+    }
+    assert(start_level_ >= 0 && output_level_ >= 0);
 
-  // If it is a L0 -> base level compaction, we need to set up other L0
-  // files if needed.
-  if (!SetupOtherL0FilesIfNeeded()) {
-    return nullptr;
-  }
+    // If it is a L0 -> base level compaction, we need to set up other L0
+    // files if needed.
+    if (!SetupOtherL0FilesIfNeeded()) {
+      return nullptr;
+    }
 
-  // Pick files in the output level and expand more files in the start level
-  // if needed.
-  if (!SetupOtherInputsIfNeeded()) {
-    return nullptr;
-  }
+    // Pick files in the output level and expand more files in the start level
+    // if needed.
+    if (!SetupOtherInputsIfNeeded()) {
+      return nullptr;
+    }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+  }
+  // Files have been picked for compaction
+#endif
   // Form a compaction object containing the files we picked.
   Compaction* c = GetCompaction();
 
@@ -1237,7 +1269,11 @@ Compaction* LevelCompactionBuilder::GetCompaction() {
       GetCompressionType(ioptions_, vstorage_, mutable_cf_options_,
                          output_level_, vstorage_->base_level()),
       std::move(grandparents_), is_manual_, start_level_score_,
-      false /* deletion_compaction */, compaction_reason_);
+      false /* deletion_compaction */, compaction_reason_
+#ifdef INDIRECT_VALUE_SUPPORT
+      ,ringno_ , lastfileno_  , start_level_  // parms for Active Recycling, used if compaction_reason_ indicates
+#endif
+      );
 
   // If it's level 0 compaction, make sure we don't execute any other level 0
   // compactions in parallel

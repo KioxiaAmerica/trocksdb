@@ -24,7 +24,7 @@
 
 namespace rocksdb {
 
-// Iterator class to go through the file for Active Recycling, in order
+// Iterator class to go through the files for Active Recycling, in order
 //
 // This does essentially the same thing as the TwoLevelIterator, but without a LevelFilesBrief, and with the facility for
 // determining when an input file is exhausted.  Rather than put switches
@@ -37,15 +37,21 @@ class RecyclingIterator : public InternalIterator {
   virtual void Next() override;
   virtual Slice key() const override { return file_iterator->key(); }
   virtual Slice value() const override { return file_iterator->value(); }
-  virtual Status status() const override { return file_index<compaction->inputs()->size() ? file_iterator->status() : Status::Corruption("error after last key."); }
+  // Return good status to a read past the end of keys.  Have to, because there is no benign EOF status
+  virtual Status status() const override { return file_index<compaction->inputs()->size() ? file_iterator->status() : Status(); }
   virtual bool Valid() const override { return file_index<compaction->inputs()->size(); }
   size_t fileindex() { return file_index; }
+
+  // The following are needed to meet the requirements of the InternalIterator:
+  virtual void SeekToLast() override {};
+  virtual void SeekForPrev(const Slice& target) override {};
+  virtual void Seek(const Slice& target) override {};
+  virtual void Prev() override {};
   
 private:
   Compaction *compaction;  // the compaction we are working on.  Points to everything we need
-  size_t file_index;  // index of the file we are working on
+  size_t file_index;  // index of the file the current kv came from
   std::unique_ptr<InternalIterator> file_iterator;  // pointer to iterator for the current file
-  std::vector<size_t> file_kvct;  // for each input file, the number of kvs found in the file.  Used to know when to switch output files
   ReadOptions read_options;  // options we will use for reading tables
   const EnvOptions *env_options;  // env options for reading the database
 };
@@ -63,9 +69,10 @@ public:
   IndirectIterator(
    CompactionIterator* c_iter,   // the input iterator that feeds us kvs
    ColumnFamilyData* cfd,  // the column family we are working on
-   int level,   // output level for this iterator - where the files will be written to
+   const Compaction *compaction,   // variuos info for this compaction
    Slice *end,   // the last+1 key to include (i. e. end of open interval), or nullptr if not given
-   bool use_indirects   // if false, do not do any indirect processing, just pass through c_iter_
+   bool use_indirects,   // if false, do not do any indirect processing, just pass through c_iter_
+   RecyclingIterator *recyciter  // null if not Active Recycling; then, points to the iterator
   );
 
 // the following lines are the interface that is shared with CompactionIterator, so these entry points
@@ -110,12 +117,18 @@ printf("\n");
     // account for size added to the output ring
     if(fileendoffsets.size()){   // if there are no files, output no record, since a 0 record is a delete
       result[nextdiskref.Ringno()].size = diskdatalen;  // # bytes written
-      result[nextdiskref.Ringno()].valid_files.push_back(nextdiskref.Fileno());  // output start,end of the added files
-      result[nextdiskref.Ringno()].valid_files.push_back(nextdiskref.Fileno()+fileendoffsets.size()-1);
+      result[nextdiskref.Ringno()].valid_files.push_back(firstdiskref.Fileno());  // output start,end of the added files
+      result[nextdiskref.Ringno()].valid_files.push_back(firstdiskref.Fileno()+fileendoffsets.size()-1);
     }
     // account for fragmentation, added to any ring we read from
     for(int i=0;i<result.size();++i)result[i].frag = addedfrag[i];   // copy our internal calculation
   }
+
+  // Indicate whether the current key/value is the last key/value in its file.  0=we don't know, 1=yes, -1=no
+  // When we are outputting the last kv for the current file, we return 1 to request that the current output file be closed
+  // We advance the output pointer until we hit the file containing the current record; then we output 'end' on the last record
+  // This DOES NOT handle the case of SSTs with no records (they would need to skip over an empty output file), but those should not occur anyway
+  int OverrideClose() { if(!use_indirects_ || filereccnts.size()==0) return 0; while(keyno_>filereccnts[outputfileno])outputfileno++; return (keyno_==filereccnts[outputfileno])?1:-1; }
 
 private:
   Slice key_;  // the next key to return, if it is Valid()
@@ -135,7 +148,8 @@ private:
   std::vector<VLogRingRefFileOffset> passthroughrecl;  // record lengths (NOT running total) of records in passthroughdata
   std::vector<char> valueclass;   // one entry per key.  bit 0 means 'value is a passthrough'; bit 1 means 'value is being converted from direct to indirect'
   std::vector<VLogRingRefFileOffset> diskrecl;  // running total of record lengths in diskdata
-  VLogRingRef nextdiskref;  // reference for the first or next first data written to VLog
+  VLogRingRef firstdiskref;  // reference for the first data written to VLog
+  VLogRingRef nextdiskref;  // reference for the next data to be written to VLog
   std::vector<VLogRingRefFileOffset>fileendoffsets;   // end+1 offset of the data written to successive VLog files  (starting offset is 0)
   std::vector<Status> inputerrorstatus;  // error status returned by the iterator
   std::vector<Status> outputerrorstatus;  // error status returned when writing the output files
@@ -149,6 +163,8 @@ struct RingFno {
   std::vector<RingFno> diskfileref;   // where we hold the reference values from the input passthroughs
   RingFno prevringfno;  // set to the ring/file for the key we are returning now.  It is not included in the ref0_ value until
     // the NEXT key is returned (this to match the way the compaction job uses the iterator), at which time it is the previous key to use
+  std::vector<size_t> filereccnts;  // record# of the last kvs in each of the input files we encounter
+  size_t outputfileno;  // For AR, the file number of the current kv being returned.  When it changes we call for a new file in the compaction
 
   int keyno_;  // number of keys processed previously
   int passx_;  // number of passthrough references returned previously

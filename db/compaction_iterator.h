@@ -51,6 +51,9 @@ class CompactionIterator {
     virtual bool allow_ingest_behind() const {
       return compaction_->immutable_cf_options()->allow_ingest_behind;
     }
+#ifdef INDIRECT_VALUE_SUPPORT
+    virtual CompactionReason compaction_reason() { return const_cast<Compaction*>(compaction_)->compaction_reason(); }
+#endif
 
    protected:
     CompactionProxy() = default;

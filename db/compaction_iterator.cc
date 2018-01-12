@@ -133,6 +133,16 @@ void CompactionIterator::SeekToFirst() {
 }
 
 void CompactionIterator::Next() {
+#ifdef INDIRECT_VALUE_SUPPORT
+  // If this is an Active Recycling operation, the compaction iterator is simply going through the kvs in order, with no
+  // comparisons.
+  if(compaction_!=nullptr && compaction_->compaction_reason() == CompactionReason::kActiveRecycling){
+    input_->Next();  // advance to next position in RecyclingIterator
+    NextFromInput();  // set our return variables from the RecyclingIterator
+    // scaf here we need to take any needed stats on the input stream
+    return;  // user will pick up the new values
+  }
+#endif
   // If there is a merge output, return it before continuing to process the
   // input.
   if (merge_out_iter_.Valid()) {
@@ -193,6 +203,24 @@ void CompactionIterator::CountIndirectRefs(ValueType keytype, Slice& value) {
 #endif
 
 void CompactionIterator::NextFromInput() {
+#ifdef INDIRECT_VALUE_SUPPORT
+  // If this is an Active Recycling operation, the compaction iterator is simply going through the kvs in order, with no
+  // comparisons.
+  if(compaction_!=nullptr && compaction_->compaction_reason() == CompactionReason::kActiveRecycling){
+    // read new values from the RecyclingIterator
+    if((valid_ = input_->Valid())) {  // don't read the other stuff if it's not valid
+      // Copy all the kv info into our iterator, where the caller will take it
+      key_ = input_->key();
+      value_ = input_->value();
+      status_ = input_->status();
+      // Calculate other derived info required by the interface
+      ParseInternalKey(key_, &ikey_);
+      // collect the stats we need for fragmentation control
+      CountIndirectRefs(ikey_.type,value_);  // see if the key is an indirect reference & account for it
+    }
+    return;  // user will pick up the new values
+  }
+#endif
   at_next_ = false;
   valid_ = false;
 
@@ -579,6 +607,11 @@ void CompactionIterator::NextFromInput() {
 }
 
 void CompactionIterator::PrepareOutput() {
+#ifdef INDIRECT_VALUE_SUPPORT
+  // If this is an Active Recycling operation, the compaction iterator is simply going through the kvs in order, with no
+  // comparisons.  We do nothing here
+  if(compaction_!=nullptr && compaction_->compaction_reason() == CompactionReason::kActiveRecycling)return;
+#endif
   // Zeroing out the sequence number leads to better compression.
   // If this is the bottommost level (no files in lower levels)
   // and the earliest snapshot is larger than this seqno

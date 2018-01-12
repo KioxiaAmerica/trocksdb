@@ -117,7 +117,7 @@ struct FileMetaData {
   // as it is current, i. e. part of the current version
   std::vector<FileMetaData*> ringfwdchain;
   std::vector<FileMetaData*> ringbwdchain;
-  VLog *vlog;  // The value log for the CF this file is in.  It's a shame to waste 8 bytes, but it's just too hard to get a pointer
+  std::shared_ptr<VLog> vlog;  // The value log for the CF this file is in.  It's a shame to waste 8 bytes, but it's just too hard to get a pointer
                  // to the ColumnFamilyData down to all the routines that need it
   int level;   // The level of this file, needed so that Active Recycling can put the file back to the same level
 #endif

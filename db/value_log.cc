@@ -360,7 +360,6 @@ std::vector<Status>& resultstatus   // result: place to save error status.  For 
   if(!bytes.size())return;   // fast exit if no data
 
   // split the input into file-sized pieces
-int maxfilesize = 1000000;  // scaf
   // Loop till we have processed all the inputs
   int64_t prevbytes = 0;  // total bytes written to previous files
   for(size_t rcdx = 0; rcdx<rcdend.size();++rcdx){   // rcdptr is the index of the next input record to process
@@ -422,7 +421,6 @@ ProbDelay();
 #if DELAYPROB
 ProbDelay();
 #endif 
-
     // See if the tail pointer was being held up, for whatever reason
     if(tailfile<=headfile && fd_ring[currentarray][Ringx(fd_ring[currentarray],tailfile)].refcount_deletion==0) {  // if tail>head, the ring is empty & refcounts are invalid
       // The file at the tail pointer was deletable, which means the tail pointer was being held up either by proximity to the headpointer or
@@ -544,7 +542,6 @@ ProbDelay();
 
   // fill in the FileRef for the first value, with its length
   firstdataref.FillVLogRingRef(ringno_,fileno_for_writing,0,rcdend[0]);
-
   return;
 
 }
@@ -691,12 +688,12 @@ printf("\n");
 #endif
 #if DEBLEVEL&128
 printf("Ring pointers: tail=%zd head=%zd\n   queue=",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
-for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){int ct=0; FileMetaData* qp=(*fdring)[i].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){int ct=0; FileMetaData* qp=(*fdring)[Ringx(*fdring,i)].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
 printf("\nrefcount_deletion=");
-for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[i].refcount_deletion);}
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[Ringx(*fdring,i)].refcount_deletion);}
 printf("\n");
 printf("\nrefcount_manifest=");
-for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[i].refcount_manifest);}
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[Ringx(*fdring,i)].refcount_manifest);}
 printf("\n");
 #endif
 }
@@ -738,12 +735,12 @@ printf("\n");
 #endif
 #if DEBLEVEL&128
 printf("Ring pointers: tail=%zd head=%zd\n   queue=",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
-for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){int ct=0; FileMetaData* qp=(*fdring)[i].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){int ct=0; FileMetaData* qp=(*fdring)[Ringx(*fdring,i)].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
 printf("\nrefcount_deletion=");
-for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[i].refcount_deletion);}
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[Ringx(*fdring,i)].refcount_deletion);}
 printf("\n");
 printf("\nrefcount_manifest=");
-for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[i].refcount_manifest);}
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[Ringx(*fdring,i)].refcount_manifest);}
 printf("\n");
 #endif
 }
@@ -813,12 +810,12 @@ printf("\n");
 #endif
 #if DEBLEVEL&128
 printf("Ring pointers: tail=%zd head=%zd\n   queue=",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
-for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){int ct=0; FileMetaData* qp=(*fdring)[i].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){int ct=0; FileMetaData* qp=(*fdring)[Ringx(*fdring,i)].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
 printf("\nrefcount_deletion=");
-for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[i].refcount_deletion);}
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[Ringx(*fdring,i)].refcount_deletion);}
 printf("\n");
 printf("\nrefcount_manifest=");
-for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[i].refcount_manifest);}
+for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[Ringx(*fdring,i)].refcount_manifest);}
 printf("\n");
 #endif
 
@@ -833,8 +830,10 @@ printf("\n");
 // otherwise we would have to use memory-acquire ordering on reads from the sst chain fields, lest there be a problem with store
 // ordering when another thread is writing to the chains
 void VLogRing::VLogRingFindLaggingSsts(
-  size_t n,  // minimum number of lagging ssts to return
-  std::vector<CompactionInputFiles>& laggingssts  // result: vector of SSTs that should be recycled.  The capacity on entry is the maximum size allowed
+  size_t minfreevlogfiles,  // minimum number of files to free up
+  size_t minssts,   // minimum number of SSTs to put into the compaction
+  std::vector<CompactionInputFiles>& laggingssts,  // result: vector of SSTs that should be recycled.  The capacity on entry is the maximum size allowed
+  VLogRingRefFileno& lastfile   // result: the last VLog file that is being freed
 ) {
   laggingssts.resize(0);   // int size to 0, but leave the capacity.  clear() may change the capacity
 
@@ -846,12 +845,22 @@ void VLogRing::VLogRingFindLaggingSsts(
   // undeleted files.  We lock/unlock the ring over each file, to ensure that the chains are not messed up while we are chasing them AND
   // to ensure that the queued_fileno is not written back (or to the same spot) before we advance it.
 
+  // We accept SSTs for processing as long as they are worth the trouble.  They are worth the trouble if: (1) they are needed to free up
+  // a minimum number of files so that we make progress in defragmenting; (2) the ratio of files freed to SSTs processed is high enough.
+  // We can't answer this last question about a file until we see how many empty files follow it.
+
   VLogRingRefFileno currentfile = 0;  // the file we are working on (at top of loop, the file we worked on in the previous iteration).
+  VLogRingRefFileno startingnonemptyfile = 0;  // the first file that will be freed by action here.  Init to invalid low value
+
    // init to a low_value
-  size_t evenfilesize = 0;  // the size of the result area after the last file whose SSTs all fit into the output region
+  size_t viablesstct = 0;  // the number of SSTs in the last acceptable solution found (lastfile will hold the # VLog files)
 
   // Get the head pointer, beyond which we will not read.  This may become obsolete, but that's no big deal.  It will surely be big enough.
   VLogRingRefFileno headfile = atomics.fd_ring_head_fileno.load(std::memory_order_acquire);
+
+  // There has to be enough room between the recycling queue pointer and the head to actually allow files to be deleted; otherwise
+  // we just grind away trying to recycle but never getting anywhere
+  if(headfile<=atomics.fd_ring_queued_fileno.load(std::memory_order_acquire)+deletion_deadband+minfreevlogfiles)return;
 
   // Loop until we have collected enough references.  Stop if we have run out of files to look at
   while(laggingssts.size()<laggingssts.capacity()) {
@@ -865,13 +874,19 @@ void VLogRing::VLogRingFindLaggingSsts(
       VLogRingRefFileno queuefile = atomics.fd_ring_queued_fileno.load(std::memory_order_acquire);
       // slot to process is larger of (previous slot processed+1) and queued_fileno
       ++currentfile; if(queuefile>currentfile)currentfile = queuefile;
-      // if we have processed all the files, exit
-      if(currentfile>headfile)break;
+      // if we have processed all the deletable files, exit.   In fact, stop one file early for safety
+      if(currentfile+deletion_deadband>=headfile){ReleaseLock(); break;}  // *** early loop exit, must release lock
+
+      // Tell caller what file we stopped on.  We may have stopped one before, but that's no problem
+      lastfile = currentfile;
 
       // Chase the chain.  If the chain is empty, and we are processing queued_fileno, increment queued_fileno
       size_t slotx = Ringx(*vlogringbase,currentfile);    // get slot number for the file we are working on
       FileMetaData *chainptr = (*vlogringbase)[slotx].queue;  // first SST in chain
-      if(chainptr==nullptr && currentfile==queuefile)atomics.fd_ring_queued_fileno.store(queuefile+1,std::memory_order_acquire);  // if this chain empty, don't look here again
+      if(chainptr==nullptr && currentfile==queuefile)atomics.fd_ring_queued_fileno.store(queuefile+1,std::memory_order_release);  // if this chain empty, don't look here again
+      // Remember the file# of the first file we try to free up
+      if(chainptr!=nullptr && startingnonemptyfile==0)startingnonemptyfile = currentfile;
+      bool nonemptychain = chainptr!=nullptr;  // was this chain nonempty?
 
       for(;chainptr!=nullptr;chainptr=chainptr->ringfwdchain[ringno_]) {
         // If the file is not marked as being compacted, copy it to the result area
@@ -883,14 +898,29 @@ void VLogRing::VLogRingFindLaggingSsts(
     // release lock
     ReleaseLock();
 
-    // If we read the whole chain, save current result size as ending size
-    if(chainptr==nullptr)evenfilesize = laggingssts.size();
+    // If all the SSTs of the first file are in compaction, stop.
+    // This is how we keep from repeatedly starting an Active Recycling pass when there is one running, or a compaction that will serve as well.
+    if(nonemptychain && laggingssts.size()==0)return;  // stop looking if we encounter a compaction going on
+
+    // Assess whether the current selection is a keeper.  It is, if
+    // (1) we have not freed up the minimum # files
+    // (2) we have not processed the minimum # SSTs
+    // (3) we got all the SST files for the last VLog file, and the ratio of files/SST is acceptable
+    if(  (currentfile-startingnonemptyfile+1<minfreevlogfiles)  // file requirement not satisfied yet
+      || (laggingssts.size()<minssts)      // SST requirement not satisfied
+      || (chainptr==nullptr && (currentfile-startingnonemptyfile+1)>((double)laggingssts.size()*0.15)) ) {  // getting 1 data file for every 3 SSTs   scaf the constant
+      // The current solution is viable.  Save it so we can revert to it if we don't get anything better
+      lastfile = currentfile;  // save the last VLog file being freed, in the result
+      viablesstct = laggingssts.size();   // save the corresponding # input files
+    }
+     // (if the result buffer exactly fills up, we will not stick around to see if a run of following empty files would make the
+     // solution viable.  That's no great loss.)
 
     // continue looking if there is more room for results
   }
 
-  // if the whole-chain endpoint is greater than the minimum size, use that size for the return size; otherwise use all we collected
-  if(evenfilesize>=n)laggingssts.resize(evenfilesize);
+  // if there is a viable solution point saved, revert to it; otherwise use all we collected
+  if(viablesstct)laggingssts.resize(viablesstct); else lastfile=currentfile;  // lastfile is valid if we revert; if not, set it to current file#.
 
   // Sort the files on starting key
   std::sort(laggingssts.begin(), laggingssts.end(),
@@ -947,7 +977,7 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
 #if DEBLEVEL&0x800
     {printf("VLogInit: ");
        const std::vector<VLogRingRestartInfo> *vring = &cfd_->vloginfo();
-       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, files=",i,(*vring)[i].size,(*vring)[i].frag);for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
+       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, space amp=%5.2f, files=",i,(*vring)[i].size,(*vring)[i].frag,((double)(*vring)[i].size)/(1+(*vring)[i].size-(*vring)[i].frag));for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
     }
 #endif
 
@@ -1013,7 +1043,7 @@ if(!rings_.size() || !newsst.indirect_ref_0.size())printf("VLogSstInstall newsst
 #endif
     // Initialization of SSTs that have been installed on the ring:
     // put the address of this VLog into the SST, so we can get back to this VLog from a reference to the file
-    newsst.vlog=this;   // We have to have this chain field since cfd is not available in most functions
+    newsst.vlog=cfd_->vlog();   // Point the SST to this VLog, through a shared_ptr.  We have to have this chain field since cfd is not available in most functions
     // Make sure there is one chain-field pair per ring containing a reference
     newsst.ringfwdchain.clear(); newsst.ringfwdchain.resize(newsst.indirect_ref_0.size(),nullptr);
     newsst.ringbwdchain.clear(); newsst.ringbwdchain.resize(newsst.indirect_ref_0.size(),&newsst);

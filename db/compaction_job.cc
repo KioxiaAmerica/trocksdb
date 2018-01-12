@@ -674,10 +674,25 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
 void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   assert(sub_compact != nullptr);
   ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
+#ifdef INDIRECT_VALUE_SUPPORT
+  std::unique_ptr<RangeDelAggregator> range_del_agg;
+  std::unique_ptr<InternalIterator> input;
+  if(const_cast<Compaction*>(sub_compact->compaction)->compaction_reason() != CompactionReason::kActiveRecycling) {
+    // normal case, using the merging iterator
+    range_del_agg.reset(new RangeDelAggregator(cfd->internal_comparator(), existing_snapshots_));
+    input.reset(versions_->MakeInputIterator(sub_compact->compaction, range_del_agg.get()));
+  } else {
+    // Active Recycling, using the RecyclingIterator
+    // leave range_del_agg null, since we don't need it
+    input.reset(new RecyclingIterator(const_cast<Compaction*>(sub_compact->compaction),versions_));
+  }
+
+#else
   std::unique_ptr<RangeDelAggregator> range_del_agg(
       new RangeDelAggregator(cfd->internal_comparator(), existing_snapshots_));
   std::unique_ptr<InternalIterator> input(versions_->MakeInputIterator(
       sub_compact->compaction, range_del_agg.get()));
+#endif
 
   AutoThreadOperationStageUpdater stage_updater(
       ThreadStatus::STAGE_COMPACTION_PROCESS_KV);
@@ -730,6 +745,9 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
         sub_compact->compaction->CreateCompactionFilter();
     compaction_filter = compaction_filter_from_factory.get();
   }
+#ifdef INDIRECT_VALUE_SUPPORT
+  // really ought to make merge a pointer rather than a reference since it is not needed by Active Recycling
+#endif
   MergeHelper merge(
       env_, cfd->user_comparator(), cfd->ioptions()->merge_operator,
       compaction_filter, db_options_.info_log.get(),
@@ -770,6 +788,9 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   auto c_iter = sub_compact->c_iter.get();
   c_iter->SeekToFirst();
   if (c_iter->Valid() &&
+#ifdef INDIRECT_VALUE_SUPPORT
+      sub_compact->compaction->compaction_reason() != CompactionReason::kActiveRecycling && 
+#endif
       sub_compact->compaction->output_level() != 0) {
     // ShouldStopBefore() maintains state based on keys processed so far. The
     // compaction loop always calls it on the "next" key, thus won't tell it the
@@ -792,7 +813,18 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   // Then in the loop it returns the references to the values that were written.  Errors encountered during c_iter are preserved
   // and associated with the failing keys.
   // If there is no VLog it means this table type doesn't support indirects, and the iterator will be a passthrough
-  auto value_iter = std::make_unique<IndirectIterator>(c_iter,cfd,sub_compact->compaction->output_level(),end,cfd->vlog()!=nullptr);  // keep iterator around till end of function
+if(sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling)
+  printf("Starting kv capture for Active Recycling (%zd SSTs, VLogFiles up to %zd)\n",sub_compact->compaction->num_input_levels(),sub_compact->compaction->lastfileno());  // scaf
+  std::unique_ptr<IndirectIterator> value_iter(new IndirectIterator(
+    c_iter,cfd,sub_compact->compaction,end,cfd->vlog()!=nullptr,
+    // For Active Recycling we pass a pointer to the RecyclingIterator, so the IndirectIterator can query it directly about end-of-file
+    sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling ? (RecyclingIterator*)input.get() : nullptr
+    ));  // keep iterator around till end of function
+  // For Active Recycling, we need to keep track of which input file's keys we are working on so that when we create the corresponding output
+  // file we mark it at the correct level.  If we are not AR, we will just use the output_level
+  int arfileno = 0;
+if(sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling)
+  printf("Starting kv processing for Active Recycling\n");  // scaf
 #if DEBLEVEL&512
 std::vector<uint64_t> our_ref0;  // vector of file-refs
 our_ref0.push_back(~0);
@@ -891,6 +923,16 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
       }
     }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+    // If we are Active Recycling, we close exactly when the input file runs out of records.  The override code indicates this:
+    // 0=no override, proceed normally, closing based oon size; 1=override, close now; -1=override, don't close
+    int overrideclose = value_iter->OverrideClose();
+if((sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling) ^ (overrideclose!=0))
+  printf("overrideclose value %d invalid\n",overrideclose);  // scaf
+#else
+#define overrideclose 0
+#endif
+
     // Close output file if it is big enough. Two possibilities determine it's
     // time to close it: (1) the current key should be this file's last key, (2)
     // the next key should not be in this file.
@@ -901,16 +943,16 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
     // and 0.6MB instead of 1MB and 0.2MB)
     bool output_file_ended = false;
     Status input_status;
-    if (sub_compact->compaction->output_level() != 0 &&
+    if (overrideclose>0 || (!overrideclose && sub_compact->compaction->output_level() != 0 &&
         sub_compact->current_output_file_size >=
-            sub_compact->compaction->max_output_file_size()) {
+            sub_compact->compaction->max_output_file_size())) {
       // (1) this key terminates the file. For historical reasons, the iterator
       // status before advancing will be given to FinishCompactionOutputFile().
       input_status = input->status();
       output_file_ended = true;
     }
     value_iter->Next();
-    if (!output_file_ended && value_iter->Valid() &&
+    if (!overrideclose && !output_file_ended && value_iter->Valid() &&
         sub_compact->compaction->output_level() != 0 &&
         sub_compact->ShouldStopBefore(
           value_iter->key(), sub_compact->current_output_file_size) &&
@@ -935,7 +977,13 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
     printf("Mismatched ref0\n");
   our_ref0[0]=~0;  // reset for next time
 #endif
-      sub_compact->current_output()->meta.InstallRef0(sub_compact->compaction->output_level(),ref0,cfd);
+      // Put the output level into the FileMetaData so that we keep track of what level each file is on.
+      // That level is the output level EXCEPT when we are doing Active Recycling, in which case it comes from
+      // the corresponding input level
+     sub_compact->current_output()->meta.InstallRef0(
+       overrideclose ? (*(const_cast<Compaction*>(sub_compact->compaction))->inputs())[arfileno].level : sub_compact->compaction->output_level(),
+       ref0,cfd);
+      ++arfileno;   // increment the file number now that we have output the file
 #endif
       CompactionIterationStats range_del_out_stats;
       status = FinishCompactionOutputFile(input_status, sub_compact,
@@ -984,6 +1032,9 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
 
   if (status.ok() && sub_compact->builder == nullptr &&
       sub_compact->outputs.size() == 0 &&
+#ifdef INDIRECT_VALUE_SUPPORT
+      range_del_agg!=nullptr &&
+#endif
       range_del_agg->ShouldAddTombstones(bottommost_level_)) {
     // handle subcompaction containing only range deletions
     status = OpenCompactionOutputFile(sub_compact);
@@ -993,6 +1044,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
   // close the output file.
   if (sub_compact->builder != nullptr) {
 #ifdef INDIRECT_VALUE_SUPPORT
+    assert(sub_compact->compaction->compaction_reason() != CompactionReason::kActiveRecycling);  // if AR, we must have matched the keys exactly
     // Install the earliest-file-refs that were encountered for the file being closed, and reset that value for the next file
     std::vector<uint64_t> ref0;  // vector of file-refs
     value_iter->ref0(ref0, true /* include_last */);  // true to pick up the very last key
@@ -1030,6 +1082,9 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
   // Now that we have processed all the I/O, collect the VLog-related changes and incorporate them into the edit.
   value_iter->getedit((const_cast<Compaction*>(sub_compact->compaction))->edit()->VLogAdditions());
 #endif
+if(sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling)
+  printf("Active Recycling finished kv processing\n");  // scaf
+
 
   sub_compact->c_iter.reset();
   input.reset();
@@ -1117,7 +1172,7 @@ Status CompactionJob::FinishCompactionOutputFile(
       // subcompaction ends.
       upper_bound = sub_compact->end;
     }
-    range_del_agg->AddToBuilder(sub_compact->builder.get(), lower_bound,
+    if(range_del_agg)range_del_agg->AddToBuilder(sub_compact->builder.get(), lower_bound,
                                 upper_bound, meta, range_del_out_stats,
                                 bottommost_level_);
     meta->marked_for_compaction = sub_compact->builder->NeedCompact();
@@ -1278,8 +1333,16 @@ Status CompactionJob::InstallCompactionResults(
   compaction->AddInputDeletions(compact_->compaction->edit());
 
   for (const auto& sub_compact : compact_->sub_compact_states) {
-    for (const auto& out : sub_compact.outputs) {
-      compaction->edit()->AddFile(compaction->output_level(), out.meta);
+    for (int i = 0;i<sub_compact.outputs.size();++i) {
+#ifdef INDIRECT_VALUE_SUPPORT
+      // For Active Recycling there is no concept of 'output level', because each file is put back into the level it started at.
+      // We take advantage of the fact that subcompactions are disabled for AR, and thus that the output files in the sole subcompaction
+      // match one-for-one with the files in the input.  Since we have already installed the correct level into the FileMetaData, just use that level here
+      int outlevel = sub_compact.outputs[i].meta.level;
+#else
+      int outlevel = compaction->output_level();
+#endif
+      compaction->edit()->AddFile(outlevel, sub_compact.outputs[i].meta);
     }
   }
   return versions_->LogAndApply(compaction->column_family_data(),

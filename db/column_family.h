@@ -343,6 +343,10 @@ class ColumnFamilyData {
 #ifdef INDIRECT_VALUE_SUPPORT
   std::shared_ptr<VLog> vlog() { return vlog_;}    // the VLog to be used for this column family.  May contain no rings
   std::vector<VLogRingRestartInfo>& vloginfo() { return vlog_info; }
+  void CheckForActiveRecycle(std::vector<CompactionInputFiles>& compaction_inputs,  // result: the files to Active Recycle, if any, each on its own 'level'.  If no AR needed, empty
+     size_t& ringno,    // result: the ring number to be recycled, if any
+     VLogRingRefFileno& lastfileno    // the last file# in the recycled region
+     );
 #endif
 
  private:

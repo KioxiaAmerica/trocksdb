@@ -225,17 +225,18 @@ static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(le
 TEST_F(DBCompactionTest, IndirectTest) {
   Options options = CurrentOptions();
   options.write_buffer_size = 10 * 1024 * 1024;
-  options.max_bytes_for_level_multiplier = 2;
   options.num_levels = 4;
   options.level0_file_num_compaction_trigger = 3;
   options.max_background_compactions = 3;
+  options.max_bytes_for_level_base = 1 * (1LL<<20);
+  options.max_bytes_for_level_multiplier = 10;
 
   DestroyAndReopen(options);
   int32_t value_size = 18;  // 10 KB
   int32_t key_size = 10 * 1024 - value_size;
   int32_t value_size_var = 20;
   int32_t key_size_var = 1000;
-  int32_t batch_size = 20000;
+  int32_t batch_size = 200000;
 
   // Add 2 non-overlapping files
   Random rnd(301);
@@ -284,7 +285,9 @@ for(int32_t k=0;k<10;++k) {
 //        dbfull()->TEST_WaitForFlushMemTable();
 //      }
       if((rnd.Next()&0x7f)==0)values[j] = RandomString(&rnd, value_size + rnd.Next()%value_size_var);  // replace one value in 100
-      ASSERT_OK(Put(LongKey(j,key_size), values[j]));
+      Status s = (Put(LongKey(j,key_size), values[j]));
+      if(!s.ok())
+        printf("Put failed\n");
       if(i|k) {   // if we have filled up all the slots...
         for(int32_t m=0;m<2;++m){
           int32_t randkey = (rnd.Next()) % batch_size;  // make 2 random gets per put
@@ -313,6 +316,7 @@ for(int32_t k=0;k<10;++k) {
   }
   printf("...verified.\n");
   TryReopen(options);
+  printf("reopened.\n");
 }
 
 

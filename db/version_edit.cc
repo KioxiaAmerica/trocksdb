@@ -221,10 +221,13 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
 #ifdef INDIRECT_VALUE_SUPPORT
   // write the CF information for indirect values: the active file numbers for each ring, and the amount of fragmentation in those file
   if(vlog_additions.size()) {   // if vlog changes are marked...
-#if DEBLEVEL&0x800
-    {printf("EncodeTo: ");
-       const std::vector<VLogRingRestartInfo> *vring = &vlog_additions;
-       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, files=",i,(*vring)[i].size,(*vring)[i].frag);for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
+#if DEBLEVEL&0x1800
+    {const std::vector<VLogRingRestartInfo> *vring = &vlog_additions;
+       int doprint = 0;
+       for(int i=0;i<vring->size();++i){if((*vring)[i].size || (*vring)[i].frag)doprint=1;}
+       if(doprint) {
+         printf("EncodeTo: ");for(int i=0;i<vring->size();++i){if((*vring)[i].size || (*vring)[i].frag){printf("ring %d: adding size=%zd, frag=%zd ",i,(*vring)[i].size,(*vring)[i].frag);}}printf("\n");
+       }
     }
 #endif
     // Build up the record
@@ -332,6 +335,7 @@ const char* VersionEdit::DecodeNewFile4From(Slice* input) {
             if(!GetVarint64(&field,&earlyref))return("indirect ref no value");
             f.indirect_ref_0.push_back(earlyref);
           }
+          f.level = level;  // If there's a ref0, there needs to be a level too
           break;
 #endif
         default:
@@ -540,7 +544,7 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
 #if DEBLEVEL&0x800
     {printf("DecodeFrom: ");
        const std::vector<VLogRingRestartInfo> *vring = &vlog_additions;
-       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, files=",i,(*vring)[i].size,(*vring)[i].frag);for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
+       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, space amp=%5.2f, files=",i,(*vring)[i].size,(*vring)[i].frag,((double)(*vring)[i].size)/(1+(*vring)[i].size-(*vring)[i].frag));for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
     }
 #endif
         break;
@@ -723,7 +727,7 @@ std::string VersionEdit::DebugJSON(int edit_num, bool hex_key) const {
     indirect_ref_0 = earliestref;
     ringfwdchain.resize(earliestref.size(),nullptr);  // keep the chain fields lockstep in size with indirect_ref
     ringbwdchain.resize(earliestref.size(),nullptr);
-    vlog = cfd->vlog().get();
+    vlog = cfd->vlog();
     level = outputlevel;
   }
 

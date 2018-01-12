@@ -96,7 +96,11 @@ class VersionStorageInfo {
                      const Comparator* user_comparator, int num_levels,
                      CompactionStyle compaction_style,
                      VersionStorageInfo* src_vstorage,
-                     bool _force_consistency_checks);
+                     bool _force_consistency_checks
+#ifdef INDIRECT_VALUE_SUPPORT
+                     ,ColumnFamilyData* cfd   // the goods on the column family this Version belongs to
+#endif
+  );
   ~VersionStorageInfo();
 
   void Reserve(int level, size_t size) { files_[level].reserve(size); }
@@ -104,6 +108,10 @@ class VersionStorageInfo {
   void AddFile(int level, FileMetaData* f, Logger* info_log = nullptr);
 
   void SetFinalized();
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  ColumnFamilyData* GetCfd() { return cfd_; }
+#endif
 
   // Update num_non_empty_levels_.
   void UpdateNumNonEmptyLevels();
@@ -442,6 +450,9 @@ class VersionStorageInfo {
   // If set to true, we will run consistency checks even if RocksDB
   // is compiled in release mode
   bool force_consistency_checks_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  ColumnFamilyData *cfd_;  // we need access to the cfd summary info, and through it to the VLog
+#endif
 
   friend class Version;
   friend class VersionSet;

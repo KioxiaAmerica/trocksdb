@@ -10,8 +10,8 @@
 
 #pragma once
 
-#define DEBLEVEL 0x800  // 1=SST ring ops 2=file ops 4=iterator ops 8=ring pointers 16=deleted_files 32=versions 64=top-level ring ops 128=ring status 256=Versions 512=Audit ref0 1024=Destructors
-                        // 0x800=VlogInfo
+#define DEBLEVEL 0x1000  // 1=SST ring ops 2=file ops 4=iterator ops 8=ring pointers 16=deleted_files 32=versions 64=top-level ring ops 128=ring status 256=Versions 512=Audit ref0 1024=Destructors
+                        // 0x800=VlogInfo 0x1000=space amp
 #define DELAYPROB 0   // percentage of the time a call to ProbDelay will actually delay
 #define DELAYTIME std::chrono::milliseconds(10)
 
@@ -103,7 +103,8 @@ static const int expansion_minimum = 10;  // minimum number of expansion files  
 static const int deletion_deadband = 10;  // scaf should be 1000 for multi-VLog files
 static const int max_simultaneous_deletions = 1000;  // maximum number of files we can delete in one go.  The limitation is that we have to reserve
    // space for them before we acquire the lock
-static const double vlog_remapping_fraction = 0.4;  // References to the oldest VLog files - this fraction of them - will be remapped if encountered during compaction
+static const double vlog_remapping_fraction = 0.5;  // References to the oldest VLog files - this fraction of them - will be remapped if encountered during compaction
+static const int maxfilesize = 100000;  // scaf largest file to write out
 
 // ParsedFnameRing contains filenumber and ringnumber for a file.  We use it to split the compositie filename/ring into its parts
 
@@ -559,8 +560,10 @@ void VLogRingSstDelete(
 // there are fewer SSTs than that.
 // We don't return SSTs that are being compacted or are not current.
 void VLogRingFindLaggingSsts(
-  size_t n,  // minimum number of lagging ssts to return
-  std::vector<CompactionInputFiles>& laggingssts  // result: vector of SSTs that should be recycled.  The size on entry is the maximum size allowed
+  size_t minfreevlogfiles,  // minimum number of files to free up
+  size_t minssts,   // minimum number of SSTs to put into the compaction
+  std::vector<CompactionInputFiles>& laggingssts,  // result: vector of SSTs that should be recycled.  The size on entry is the maximum size allowed
+  VLogRingRefFileno& lastfile   // result: the last VLog file that is being freed
 )
 ;
 

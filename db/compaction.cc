@@ -149,9 +149,19 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
                        std::vector<FileMetaData*> _grandparents,
                        bool _manual_compaction, double _score,
                        bool _deletion_compaction,
-                       CompactionReason _compaction_reason)
+                       CompactionReason _compaction_reason
+#ifdef INDIRECT_VALUE_SUPPORT
+                       ,size_t ringno    // for Active Recycling: ring number being recycled
+                       ,VLogRingRefFileno lastfileno  // for Active Recycling: last filenumber in the recycled region
+                       ,int start_level   // for Active Recycling: the smallest level that is referenced
+#endif
+                       )
     : input_vstorage_(vstorage),
+#ifdef INDIRECT_VALUE_SUPPORT
+      start_level_(start_level<0 ? _inputs[0].level : start_level),   // if defaulted, use the first level in the list
+#else
       start_level_(_inputs[0].level),
+#endif
       output_level_(_output_level),
       max_output_file_size_(_target_file_size),
       max_compaction_bytes_(_max_compaction_bytes),
@@ -170,12 +180,23 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
       is_full_compaction_(IsFullCompaction(vstorage, inputs_)),
       is_manual_compaction_(_manual_compaction),
       is_trivial_move_(false),
-      compaction_reason_(_compaction_reason) {
+      compaction_reason_(_compaction_reason)
+#ifdef INDIRECT_VALUE_SUPPORT
+      ,ringno_(ringno)   // for Active Recycling: ring number being recycled
+      ,lastfileno_(lastfileno)  // for Active Recycling: last filenumber in the recycled region
+#endif
+
+{
   MarkFilesBeingCompacted(true);
   if (is_manual_compaction_) {
     compaction_reason_ = CompactionReason::kManualCompaction;
   }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+  // if we are Active Recycling, we don't need LevelFilesBrief or boundary keys.  And, we make
+  // no guarantee that the levels are in order.  So just  return before all that.
+  if(compaction_reason_ == CompactionReason::kActiveRecycling)return;
+#endif
 #ifndef NDEBUG
   for (size_t i = 1; i < inputs_.size(); ++i) {
     assert(inputs_[i].level > inputs_[i - 1].level);
@@ -233,6 +254,11 @@ bool Compaction::IsTrivialMove() const {
     // We cannot move files from L0 to L1 if the files are overlapping
     return false;
   }
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  // Don't allow a trivial move if we are doing Active Recycling, since the essence of the compaction is to pass over the inputs
+  if(compaction_reason_ == CompactionReason::kActiveRecycling)return false;
+#endif
 
   if (is_manual_compaction_ &&
       (immutable_cf_options_.compaction_filter != nullptr ||
@@ -336,7 +362,20 @@ const char* Compaction::InputLevelSummary(
     InputLevelSummaryBuffer* scratch) const {
   int len = 0;
   bool is_first = true;
-  for (auto& input_level : inputs_) {
+  std::vector<CompactionInputFiles> *inputarea = const_cast<std::vector<CompactionInputFiles> *>(&inputs_);
+  std::vector<CompactionInputFiles> totalsarea;  // used for reformatting AR files
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  // For Active Recycling, the files are in key order, unrelated to level, with each file a single element of 'inputs_'.  Formatted in the normal way, this leads to long
+  // descriptive strings which are hard to read and might even overflow the scratch buffer.  So for that case only, we convert the inputs_ to orthodox form
+  if(compaction_reason_ == CompactionReason::kActiveRecycling) {
+    totalsarea.resize(output_level_ - start_level_ + 1);
+    for (int i = start_level_; i<output_level_; ++i) { totalsarea[i-start_level_].level = i; }
+    for (auto& input_level : inputs_) { totalsarea[input_level.level-start_level_].files.push_back(nullptr); }  // for each file, add 1 to level file count
+    inputarea = &totalsarea;  // use the coalesced version for the formatted string
+  }
+#endif
+  for (auto& input_level : *inputarea) {
     if (input_level.empty()) {
       continue;
     }
@@ -458,6 +497,10 @@ bool Compaction::IsOutputLevelEmpty() const {
 }
 
 bool Compaction::ShouldFormSubcompactions() const {
+#ifdef INDIRECT_VALUE_SUPPORT
+  // If this is Active Recycling, don't split up the compaction so that all the outputs get written to a single file.  That reduces the number of references outstanding
+  if(compaction_reason_ == CompactionReason::kActiveRecycling)return false;
+#endif
   if (immutable_cf_options_.max_subcompactions <= 1 || cfd_ == nullptr) {
     return false;
   }

@@ -50,6 +50,11 @@ class Compaction {
              bool manual_compaction = false, double score = -1,
              bool deletion_compaction = false,
              CompactionReason compaction_reason = CompactionReason::kUnknown
+#ifdef INDIRECT_VALUE_SUPPORT
+             ,size_t ringno = 0  // For Active Recycling (as indicated in compaction_reason): ring number being recycled
+             ,VLogRingRefFileno lastfileno = 0  // For Active Recycling: last file in the recycled region
+             ,int start_level = -1  // number of lowest level being compacted
+#endif
     );
 
   // No copying allowed
@@ -240,7 +245,7 @@ class Compaction {
 
   Slice GetLargestUserKey() const { return largest_user_key_; }
 
-  CompactionReason compaction_reason() { return compaction_reason_; }
+  CompactionReason compaction_reason() const { return compaction_reason_; }
 
   const std::vector<FileMetaData*>& grandparents() const {
     return grandparents_;
@@ -249,6 +254,11 @@ class Compaction {
   uint64_t max_compaction_bytes() const { return max_compaction_bytes_; }
 
   uint64_t MaxInputFileCreationTime() const;
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  size_t ringno() const { return ringno_; }
+  VLogRingRefFileno lastfileno() const { return lastfileno_; }
+#endif
 
  private:
   // mark (or clear) all files that are being compacted
@@ -271,11 +281,13 @@ class Compaction {
   VersionStorageInfo* input_vstorage_;
 
   const int start_level_;    // the lowest level to be compacted
-  const int output_level_;  // levels to which output files are stored  BUT -1 to indicate that output files are to be stored back into the level of the corresponding input file.
+  const int output_level_;  // levels to which output files are stored; for AR, the highest level being compacted
     // this is set only for Active Recycling passes in support of indirect values.
 #ifdef INDIRECT_VALUE_SUPPORT
   VLogRing *vlogring_;   // for Active Recycling, points to the VLogRing that is being recycled.  This is nonnull ONLY for Active Recycling and is used as the flag
-    // for that state.
+    // for that state.  scaf?
+  size_t ringno_;   // the ring number that is being Active Recycled
+  VLogRingRefFileno lastfileno_;  // the last file in the recycled prefix
 #endif
   uint64_t max_output_file_size_;
   uint64_t max_compaction_bytes_;

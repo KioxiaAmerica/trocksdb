@@ -831,6 +831,25 @@ bool ColumnFamilyData::NeedsCompaction() const {
   return compaction_picker_->NeedsCompaction(current_->storage_info());
 }
 
+void ColumnFamilyData::CheckForActiveRecycle(std::vector<CompactionInputFiles>& compaction_inputs,  // result: the files to Active Recycle, if any, each on its own 'level'.  If no AR needed, empty.
+     size_t& ringno,    // result: the ring number to be recycled, if any
+     VLogRingRefFileno& lastfileno    // the last file# in the recycled region
+     ) {
+  compaction_inputs.clear();  // set to empty, to indicate no AR if we don't find one
+  if(vlog_==nullptr) return;  // If this CF doesn't support VLogs, return 'no AR'
+  // Loop for each ring, starting with the largest:
+  for(size_t i = vlog_->rings().size();i>0;) {
+    --i;
+    // See if this ring needs to be recycled: if it is large enough and its fragmentation is high enough
+    if(vlog_info[i].size*0.1>=vlog_info[i].frag)continue;  // scaf use option; also check for min # files.  If there is not enough fragmentation, don't AR
+    // Fetch the files to be recycled and return them
+    compaction_inputs.reserve(40);  // scaf 40   handle quite a few files at once.  The capacity of the ring tells the max # result SSTs
+    vlog_->rings()[i]->VLogRingFindLaggingSsts(5,10,compaction_inputs,lastfileno);  // scaf 20  find out what to recycle
+    ringno = i;  // tell the caller which ring to use
+    if(compaction_inputs.size()!=0)break;  // if we found an AR, stop looking
+  }
+}
+
 Compaction* ColumnFamilyData::PickCompaction(
     const MutableCFOptions& mutable_options, LogBuffer* log_buffer) {
   auto* result = compaction_picker_->PickCompaction(
