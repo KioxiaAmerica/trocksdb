@@ -110,7 +110,11 @@ class VersionStorageInfoTest : public testing::Test {
         options_(GetOptionsWithNumLevels(6, logger_)),
         ioptions_(options_),
         mutable_cf_options_(options_),
-        vstorage_(&icmp_, ucmp_, 6, kCompactionStyleLevel, nullptr, false) {}
+        vstorage_(&icmp_, ucmp_, 6, kCompactionStyleLevel, nullptr, false
+#ifdef INDIRECT_VALUE_SUPPORT
+                                  , nullptr  // needs to be &c_f_d for AR compactions
+#endif
+        ) {}
 
   ~VersionStorageInfoTest() {
     for (int i = 0; i < vstorage_.num_levels(); i++) {

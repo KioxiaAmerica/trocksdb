@@ -31,8 +31,12 @@ class VersionBuilderTest : public testing::Test {
         ioptions_(options_),
         mutable_cf_options_(options_),
         vstorage_(&icmp_, ucmp_, options_.num_levels, kCompactionStyleLevel,
-                  nullptr, false),
-        file_num_(1) {
+                  nullptr, false
+#ifdef INDIRECT_VALUE_SUPPORT
+                  , nullptr  // needs to be &c_f_d for AR compactions
+#endif
+    ),
+    file_num_(1) {
     mutable_cf_options_.RefreshDerivedOptions(ioptions_);
     size_being_compacted_.resize(options_.num_levels);
   }
@@ -139,7 +143,11 @@ TEST_F(VersionBuilderTest, ApplyAndSaveTo) {
   VersionBuilder version_builder(env_options, nullptr, &vstorage_);
 
   VersionStorageInfo new_vstorage(&icmp_, ucmp_, options_.num_levels,
-                                  kCompactionStyleLevel, nullptr, false);
+                                  kCompactionStyleLevel, nullptr, false
+#ifdef INDIRECT_VALUE_SUPPORT
+                                  , nullptr  // needs to be &c_f_d for AR compactions
+#endif
+  );
   version_builder.Apply(&version_edit);
   version_builder.SaveTo(&new_vstorage);
 
@@ -174,7 +182,11 @@ TEST_F(VersionBuilderTest, ApplyAndSaveToDynamic) {
   VersionBuilder version_builder(env_options, nullptr, &vstorage_);
 
   VersionStorageInfo new_vstorage(&icmp_, ucmp_, options_.num_levels,
-                                  kCompactionStyleLevel, nullptr, false);
+                                  kCompactionStyleLevel, nullptr, false
+#ifdef INDIRECT_VALUE_SUPPORT
+                                  , nullptr  // needs to be &c_f_d for AR compactions
+#endif
+  );
   version_builder.Apply(&version_edit);
   version_builder.SaveTo(&new_vstorage);
 
@@ -214,7 +226,11 @@ TEST_F(VersionBuilderTest, ApplyAndSaveToDynamic2) {
   VersionBuilder version_builder(env_options, nullptr, &vstorage_);
 
   VersionStorageInfo new_vstorage(&icmp_, ucmp_, options_.num_levels,
-                                  kCompactionStyleLevel, nullptr, false);
+                                  kCompactionStyleLevel, nullptr, false
+#ifdef INDIRECT_VALUE_SUPPORT
+                                  , nullptr  // needs to be &c_f_d for AR compactions
+#endif
+  );
   version_builder.Apply(&version_edit);
   version_builder.SaveTo(&new_vstorage);
 
@@ -245,7 +261,11 @@ TEST_F(VersionBuilderTest, ApplyMultipleAndSaveTo) {
   VersionBuilder version_builder(env_options, nullptr, &vstorage_);
 
   VersionStorageInfo new_vstorage(&icmp_, ucmp_, options_.num_levels,
-                                  kCompactionStyleLevel, nullptr, false);
+                                  kCompactionStyleLevel, nullptr, false
+#ifdef INDIRECT_VALUE_SUPPORT
+                                  , nullptr  // needs to be &c_f_d for AR compactions
+#endif
+  );
   version_builder.Apply(&version_edit);
   version_builder.SaveTo(&new_vstorage);
 
@@ -260,7 +280,11 @@ TEST_F(VersionBuilderTest, ApplyDeleteAndSaveTo) {
   EnvOptions env_options;
   VersionBuilder version_builder(env_options, nullptr, &vstorage_);
   VersionStorageInfo new_vstorage(&icmp_, ucmp_, options_.num_levels,
-                                  kCompactionStyleLevel, nullptr, false);
+                                  kCompactionStyleLevel, nullptr, false
+#ifdef INDIRECT_VALUE_SUPPORT
+                                  , nullptr  // needs to be &c_f_d for AR compactions
+#endif
+  );
 
   VersionEdit version_edit;
   version_edit.AddFile(2, 666, 0, 100U, GetInternalKey("301"),

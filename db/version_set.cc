@@ -3751,6 +3751,10 @@ InternalIterator* VersionSet::MakeInputIterator(
   InternalIterator* result =
       NewMergingIterator(&c->column_family_data()->internal_comparator(), list,
                          static_cast<int>(num));
+#ifdef INDIRECT_VALUE_SUPPORT
+  // Install the VLog object into the iterator so that resolving values can get to it
+  result->SetVlogForIteratorCF(cfd->vlog());
+#endif
   delete[] list;
   return result;
 }
