@@ -138,12 +138,21 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
   // original_key_is_iter variable is just caching the information:
   // original_key_is_iter == (iter->key().ToString() == original_key)
   bool original_key_is_iter = true;
-  std::string original_key = iter->key().ToString();
+  Slice origkeyslice = iter->key();  // set the slice form of the original key
   // Important:
   // orig_ikey is backed by original_key if keys_.empty()
   // orig_ikey is backed by keys_.back() if !keys_.empty()
   ParsedInternalKey orig_ikey;
-  ParseInternalKey(original_key, &orig_ikey);
+  ParseInternalKey(origkeyslice, &orig_ikey);
+#ifdef INDIRECT_VALUE_SUPPORT
+  // If the type was changed when the value was resolved, replicate that change here.  This is a pitiable kludge.  It would be better
+  // for the user's merge to be required to set the type properly, but the tests don't do that, never mind actual users.  We require that
+  // the merge fiter return a direct type (which may be converted to indirect by the compaction job)
+  if(IsTypeIndirect(orig_ikey.type)){
+    orig_ikey.type = orig_ikey.type==kTypeIndirectMerge ? kTypeMerge : kTypeValue;   // the types we show to the merge filter are always direct
+  }
+#endif
+  std::string original_key = *InternalKey(orig_ikey).rep();   // create string rep of (possibly updated) key
 
   Status s;
   bool hit_the_next_user_key = false;
@@ -152,10 +161,11 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       return Status::ShutdownInProgress();
     }
 
+    Slice ikeyslice = iter->key();  // set the slice form of the next key
     ParsedInternalKey ikey;
     assert(keys_.size() == merge_context_.GetNumOperands());
 
-    if (!ParseInternalKey(iter->key(), &ikey)) {
+    if (!ParseInternalKey(ikeyslice, &ikey)) {
       // stop at corrupted key
       if (assert_valid_internal_key_) {
         assert(!"Corrupted internal key not expected.");
@@ -190,6 +200,8 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       vlog->VLogGet(val,&iter->resolved_indirect_values.back());   // turn the reference into a value, in the string
       // In any case, the key is now the last string in the read buffers.
       val = Slice(iter->resolved_indirect_values.back());  // create a slice for the resolved value
+      ikey.type = ikey.type==kTypeIndirectMerge ? kTypeMerge : kTypeValue;   // the types we give to the merge filter are always direct, for backward compatibility
+      ikeyslice = InternalKey(ikey).Encode();  // keep ikey and ikeyslice current with the resolved value
     }
 #endif
     if (!IsTypeMerge(ikey.type)) {
@@ -256,7 +268,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       if (filter != CompactionFilter::Decision::kRemoveAndSkipUntil &&
           range_del_agg != nullptr &&
           range_del_agg->ShouldDelete(
-              iter->key(),
+              ikeyslice,
               RangeDelAggregator::RangePositioningMode::kForwardTraversal)) {
         filter = CompactionFilter::Decision::kRemove;
       }
@@ -266,7 +278,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
           // this is just an optimization that saves us one memcpy
           keys_.push_front(std::move(original_key));
         } else {
-          keys_.push_front(iter->key().ToString());
+          keys_.push_front(ikeyslice.ToString());
         }
         if (keys_.size() == 1) {
           // we need to re-anchor the orig_ikey because it was anchored by
