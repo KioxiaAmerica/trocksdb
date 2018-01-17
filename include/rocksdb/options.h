@@ -277,6 +277,8 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   // such that values entering at that level are put into the ring.
   //Activation Level : values coming into this level are written to the ring. Level 1 is the smallest level on disk.
   //Activation level should be in increasing order and always >0.
+  //
+  // NOTE: if you add a class like vector of shared_ptr, you must add to the blacklist in options_settable_test, and to the options string there
   std::vector<uint32_t> activation_level;
   
   //Minimum Indirect Value Size : only values this size or larger are written to the Value Log(default 0)

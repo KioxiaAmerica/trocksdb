@@ -335,6 +335,28 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
        sizeof(std::shared_ptr<const SliceTransform>)},
       {offset_of(&ColumnFamilyOptions::table_factory),
        sizeof(std::shared_ptr<TableFactory>)},
+#ifdef INDIRECT_VALUE_SUPPORT
+      {offset_of(&ColumnFamilyOptions::activation_level),
+       sizeof(std::vector<uint32_t>)},
+      {offset_of(&ColumnFamilyOptions::min_indirect_val_size),
+       sizeof(std::vector<size_t>)},
+       {offset_of(&ColumnFamilyOptions::gc_velocity),
+       sizeof(std::vector<float>)},
+      {offset_of(&ColumnFamilyOptions::space_amp_limit),
+       sizeof(std::vector<float>)},
+      {offset_of(&ColumnFamilyOptions::space_amp_warn),
+       sizeof(std::vector<float>)},
+      {offset_of(&ColumnFamilyOptions::emergency_size),
+       sizeof(std::vector<size_t>)},
+      {offset_of(&ColumnFamilyOptions::active_recycling_size),
+       sizeof(std::vector<size_t>)},
+      {offset_of(&ColumnFamilyOptions::max_vlog_size),
+       sizeof(std::vector<uint64_t>)},
+      {offset_of(&ColumnFamilyOptions::passive_recycling_leeway),
+       sizeof(std::vector<float>)},
+      {offset_of(&ColumnFamilyOptions::ring_style_compression),
+       sizeof(std::vector<CompressionType>)},
+#endif
   };
 
   char* options_ptr = new char[sizeof(ColumnFamilyOptions)];
