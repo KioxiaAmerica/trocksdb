@@ -120,6 +120,9 @@ class DBIter final: public Iterator {
         total_order_seek_(read_options.total_order_seek),
         range_del_agg_(cf_options.internal_comparator, s,
                        true /* collapse_deletions */),
+#ifdef INDIRECT_VALUE_SUPPORT
+        resolved_indirect_values(std::vector<shared_ptr<std::string>>(16)),  // init a capacity that will probably cover all needs
+#endif
         allow_blob_(allow_blob) {
     RecordTick(statistics_, NO_ITERATORS);
     prefix_extractor_ = cf_options.prefix_extractor;
@@ -236,13 +239,14 @@ class DBIter final: public Iterator {
         // We have to cast names here to avoid compiler complaints about constness.  Thus, this
         // function violates the const declaration.  Really, it's none of the user's business whether value() modifies
         // the object, so this function should not be defined as const; but that would affect user code, so we don't change it
-        ((std::vector<std::string>*)&resolved_indirect_values)->emplace_back();  // add a new empty string for upcoming read
+        shared_ptr<std::string> newstring(new std::string);
+        (const_cast<std::vector<shared_ptr<std::string>>*>(&resolved_indirect_values))->emplace_back(newstring);  // add a new empty string for upcoming read
         // resolve the value in the new string.
-        iter_->GetVlogForIteratorCF()->VLogGet(val,&((std::vector<std::string>*)&resolved_indirect_values)->back());   // turn the reference into a value, in the string
+        iter_->GetVlogForIteratorCF()->VLogGet(val,(const_cast<std::vector<shared_ptr<std::string>>*>(&resolved_indirect_values))->back().get());   // turn the reference into a value, in the string
         *(IndirectState*)&indirect_state = kISResolved;  // change state so we don't resolve again
       }
       // In any case, the key is now the last string in the read buffers.
-      val = Slice(resolved_indirect_values.back());  // create a slice for the resolved value
+      val = Slice(*resolved_indirect_values.back());  // create a slice for the resolved value
     }
 #endif
   return val;
@@ -408,7 +412,17 @@ enum IndirectState : unsigned char {
   // To handle Merges easily, we keep all the resolved merge records in separate strings.  That allows us to report
   // any indirect value as 'pinned' (not in the pinned-slice sense, but in the sense that the value can be passed
   // into the merge mill as a reference rather than with a copy).
-  std::vector<std::string> resolved_indirect_values;
+  //
+  // The seemingly natural way to do this is as a vector of strings.  Unfortunately, when a vector of strings is
+  // resized, the strings are all copied - deep copied - and the addresses change; so that pointers to those strings, for example
+  // in the merge operands, will become invalid.  So, we need a vector of pointers.  To handle freeing the buffers, we need
+  // a vector of unique_ptrs.  But you can't have a vector of unique_ptrs, because resizing such a vector copies the
+  // contents, and unique_ptrs are uncopyable.  So we have a vector of shared_ptrs, which is overkill.  If you can find a container
+  // that doesn't deep-copy its contents on a resize, use it.
+  //
+  // This container persists to the end of the iterator, at which time all the strings are freed.  It is initialized with
+  // a capacity of 16, which will probably be enough for any normal use.
+  std::vector<shared_ptr<std::string>> resolved_indirect_values;
 #endif
 
   // No copying allowed
