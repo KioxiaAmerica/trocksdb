@@ -162,6 +162,9 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
     }
 
     Slice ikeyslice = iter->key();  // set the slice form of the next key
+#ifdef INDIRECT_VALUE_SUPPORT
+    std::string ikeystring;  // place to save the modified key, if we modify it
+#endif
     ParsedInternalKey ikey;
     assert(keys_.size() == merge_context_.GetNumOperands());
 
@@ -195,13 +198,15 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       // in separate strings, so that they are all available for merge.  The string is copied to
       // the persistent name resolved_indirect_values before it is filled.  resolved_indirect_values
       // is defined at the compaction-iterator level
-      iter->resolved_indirect_values.emplace_back();  // add a new empty string for upcoming read
+      // The vector holds pointers to the strings so that resizing the vector doesn't invalidate them
+      auto newstring = std::make_shared<std::string>();
+      iter->resolved_indirect_values.emplace_back(newstring);  // add a new empty string for upcoming read
       // resolve the value in the new string.
-      vlog->VLogGet(val,&iter->resolved_indirect_values.back());   // turn the reference into a value, in the string
-      // In any case, the key is now the last string in the read buffers.
-      val = Slice(iter->resolved_indirect_values.back());  // create a slice for the resolved value
+      vlog->VLogGet(val,iter->resolved_indirect_values.back().get());   // turn the reference into a value, in the string
+      val = Slice(*iter->resolved_indirect_values.back());  // create a slice for the resolved value
       ikey.type = ikey.type==kTypeIndirectMerge ? kTypeMerge : kTypeValue;   // the types we give to the merge filter are always direct, for backward compatibility
-      ikeyslice = InternalKey(ikey).Encode();  // keep ikey and ikeyslice current with the resolved value
+      ikeystring = InternalKey(ikey).Encode().ToString();  // save string form where it won't be freed till we've used it
+      ikeyslice = ikeystring;   // keep the Slice form, which is what we refer to below, current
     }
 #endif
     if (!IsTypeMerge(ikey.type)) {
