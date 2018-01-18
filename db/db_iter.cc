@@ -239,8 +239,8 @@ class DBIter final: public Iterator {
         // We have to cast names here to avoid compiler complaints about constness.  Thus, this
         // function violates the const declaration.  Really, it's none of the user's business whether value() modifies
         // the object, so this function should not be defined as const; but that would affect user code, so we don't change it
-        shared_ptr<std::string> newstring(new std::string);
-        (const_cast<std::vector<shared_ptr<std::string>>*>(&resolved_indirect_values))->emplace_back(newstring);  // add a new empty string for upcoming read
+        auto newstring = std::make_shared<std::string>();
+        (const_cast<std::vector<std::shared_ptr<std::string>>*>(&resolved_indirect_values))->emplace_back(newstring);  // add a new empty string for upcoming read
         // resolve the value in the new string.
         iter_->GetVlogForIteratorCF()->VLogGet(val,(const_cast<std::vector<shared_ptr<std::string>>*>(&resolved_indirect_values))->back().get());   // turn the reference into a value, in the string
         *(IndirectState*)&indirect_state = kISResolved;  // change state so we don't resolve again
@@ -421,7 +421,7 @@ enum IndirectState : unsigned char {
   // that doesn't deep-copy its contents on a resize, use it.
   //
   // This container persists to the end of the iterator, at which time all the strings are freed.
-  std::vector<shared_ptr<std::string>> resolved_indirect_values;
+  std::vector<std::shared_ptr<std::string>> resolved_indirect_values;
 #endif
 
   // No copying allowed
