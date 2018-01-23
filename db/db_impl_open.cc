@@ -945,6 +945,44 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
   return s;
 }
 
+  // Called after versions have been initialized, to create and populate VLogs
+Status DBImpl::OpenVLogs(const DBOptions& db_options) {
+  // Initialize the rings for each column family.
+  // First, get the list of all the files in the last path of the database (that's where all the .vlg file go)
+  std::vector<std::string> existing_files;  // all the files in the last level
+  immutable_db_options_.env->GetChildren(immutable_db_options_.db_paths.back().path, &existing_files);
+
+  // Now cull the file-list down to .vlg files only
+  std::vector<std::string> existing_vlog_files;  // will hold .vlg* files in the last level
+  for(auto fname : existing_files){
+    uint64_t number;  // return value, not used
+    FileType type;  // return value, giving type of file
+
+    if(ParseFileName(fname, &number, &type) && type==kVLogFile){
+      // .vlg file exists.  We have to cover an OS kludge (at least on Windows): it is illegal to memory-map
+      // an empty file.  When we eventually open the .vlg file, that will crash if it is empty.  So, right here
+      // we delete any empty .vlg file that we see from the filesystem, before it can cause trouble.
+      uint64_t filesize;
+      // Use the full path/filename to interface to file routines and to pass to later levels, in case we ever support .vlg files not in last path
+      std::string pathfname(immutable_db_options_.db_paths.back().path + "/" + fname);
+
+      if((immutable_db_options_.env->GetFileSize(pathfname,&filesize)).ok()) {  // check size of file
+        // If we get an error looking for filesize, there's not much we can do, so we ignore it.  If no error, we keep or delete the file
+        if(filesize)existing_vlog_files.emplace_back(pathfname);  // if file has length, keep it
+        else immutable_db_options_.env->DeleteFile(pathfname);  // if not, delete it
+      }
+    }
+  }  // if name not recognized a VLog name, ignore the file - maybe the user created it
+
+  // Get the options to use for the VLog files   scaf perhaps we need to modify these based on column options
+  EnvOptions vlog_options(db_options);
+  // for each column family, init the VLogs.  This includes pointing themto the existing files
+  for (auto cfd : *versions_->GetColumnFamilySet()){
+    if(cfd->vlog()!=nullptr)cfd->vlog()->VLogInit(existing_vlog_files,&immutable_db_options_,vlog_options);
+  }
+  return Status();  // scaf need to catch errors
+}
+
 Status DB::Open(const DBOptions& db_options, const std::string& dbname,
                 const std::vector<ColumnFamilyDescriptor>& column_families,
                 std::vector<ColumnFamilyHandle*>* handles, DB** dbptr) {
@@ -1092,42 +1130,7 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     }
   }
 #ifdef INDIRECT_VALUE_SUPPORT   // fill in the rings for each column family
-  {
-    // Initialize the rings for each column family.
-    // First, get the list of all the files in the last path of the database (that's where all the .vlg file go)
-    std::vector<std::string> existing_files;  // all the files in the last level
-    impl->immutable_db_options_.env->GetChildren(impl->immutable_db_options_.db_paths.back().path, &existing_files);
-
-    // Now cull the file-list down to .vlg files only
-    std::vector<std::string> existing_vlog_files;  // will hold .vlg* files in the last level
-    for(auto fname : existing_files){
-      uint64_t number;  // return value, not used
-      FileType type;  // return value, giving type of file
-
-      if(ParseFileName(fname, &number, &type) && type==kVLogFile){
-        // .vlg file exists.  We have to cover an OS kludge (at least on Windows): it is illegal to memory-map
-        // an empty file.  When we eventually open the .vlg file, that will crash if it is empty.  So, right here
-        // we delete any empty .vlg file that we see from the filesystem, before it can cause trouble.
-        uint64_t filesize;
-        // Use the full path/filename to interface to file routines and to pass to later levels, in case we ever support .vlg files not in last path
-        std::string pathfname(impl->immutable_db_options_.db_paths.back().path + "/" + fname);
-
-        if((impl->immutable_db_options_.env->GetFileSize(pathfname,&filesize)).ok()) {  // check size of file
-          // If we get an error looking for filesize, there's not much we can do, so we ignore it.  If no error, we keep or delete the file
-          if(filesize)existing_vlog_files.emplace_back(pathfname);  // if file has length, keep it
-          else impl->immutable_db_options_.env->DeleteFile(pathfname);  // if not, delete it
-        }
-      }
-    }  // if name not recognized a VLog name, ignore the file - maybe the user created it
-
-    // Get the options to use for the VLog files   scaf perhaps we need to modify these based on column options
-    EnvOptions vlog_options(db_options);
-    // for each column family, init the VLogs
-    for (auto cfd : *impl->versions_->GetColumnFamilySet()){
-      if(cfd->vlog()!=nullptr)cfd->vlog()->VLogInit(existing_vlog_files,&impl->immutable_db_options_,vlog_options);
-    }
-// if no error, create the VLog rings for those CFs that support indirect values, and initialize the early-reference values in the priority queue
-  }
+  impl->OpenVLogs(db_options);  // scaf check status?   Init the VLogs for the CFs that were opened
 #endif
   TEST_SYNC_POINT("DBImpl::Open:Opened");
   Status persist_options_status;

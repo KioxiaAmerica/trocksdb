@@ -207,8 +207,6 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       ikey.type = ikey.type==kTypeIndirectMerge ? kTypeMerge : kTypeValue;   // the types we give to the merge filter are always direct, for backward compatibility
       ikeystring = InternalKey(ikey).Encode().ToString();  // save string form where it won't be freed till we've used it
       ikeyslice = ikeystring;   // keep the Slice form, which is what we refer to below, current
-ParsedInternalKey xxkey;  // scaf
-bool okkey = ParseInternalKey(ikeyslice, &xxkey);
     }
 #endif
     if (!IsTypeMerge(ikey.type)) {

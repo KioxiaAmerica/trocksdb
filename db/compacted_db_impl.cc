@@ -124,6 +124,9 @@ Status CompactedDBImpl::Init(const Options& options) {
               DefaultColumnFamily())->cfd();
     delete cfd_->InstallSuperVersion(new SuperVersion(), &mutex_);
   }
+#ifdef INDIRECT_VALUE_SUPPORT   // fill in the rings for each column family
+  OpenVLogs(options);  // scaf check status?   Init the VLogs for the CFs that were opened
+#endif
   mutex_.Unlock();
   if (!s.ok()) {
     return s;
