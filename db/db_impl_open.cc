@@ -945,6 +945,7 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
   return s;
 }
 
+#ifdef INDIRECT_VALUE_SUPPORT
   // Called after versions have been initialized, to create and populate VLogs
 Status DBImpl::OpenVLogs(const DBOptions& db_options) {
   // Initialize the rings for each column family.
@@ -982,6 +983,7 @@ Status DBImpl::OpenVLogs(const DBOptions& db_options) {
   }
   return Status();  // scaf need to catch errors
 }
+#endif
 
 Status DB::Open(const DBOptions& db_options, const std::string& dbname,
                 const std::vector<ColumnFamilyDescriptor>& column_families,
