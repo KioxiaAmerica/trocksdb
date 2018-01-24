@@ -1023,6 +1023,9 @@ TEST_F(DBTest2, WalFilterTestWithColumnFamilies) {
 }
 
 TEST_F(DBTest2, PresetCompressionDict) {
+#ifdef INDIRECT_VALUE_SUPPORT  // scaf must use options
+  // this test does not apply to indirect values
+#else
   const size_t kBlockSizeBytes = 4 << 10;
   const size_t kL0FileBytes = 128 << 10;
   const size_t kApproxPerBlockOverheadBytes = 50;
@@ -1113,6 +1116,7 @@ TEST_F(DBTest2, PresetCompressionDict) {
       DestroyAndReopen(options);
     }
   }
+#endif
 }
 
 class CompactionCompressionListener : public EventListener {
@@ -1166,7 +1170,11 @@ TEST_F(DBTest2, CompressionOptions) {
   options.listeners.emplace_back(listener);
 
   const int kKeySize = 5;
+#ifdef INDIRECT_VALUE_SUPPORT  // scaf must use option
+  const int kValSize = 20+(16-4);  // references compress so well that we have to expect only 4 out of 16 bytes after compression
+#else
   const int kValSize = 20;
+#endif
   Random rnd(301);
 
   for (int iter = 0; iter <= 2; iter++) {
@@ -1198,7 +1206,7 @@ TEST_F(DBTest2, CompressionOptions) {
     for (int i = 0; i < 10; i++) {
       for (int j = 0; j < 5; j++) {
         ASSERT_OK(
-            Put(RandomString(&rnd, kKeySize), RandomString(&rnd, kValSize)));
+            PutBig(RandomString(&rnd, kKeySize), RandomString(&rnd, kValSize)));
       }
       ASSERT_OK(Flush());
       dbfull()->TEST_WaitForCompact();
@@ -1505,7 +1513,7 @@ TEST_F(DBTest2, MaxCompactionBytesTest) {
   Random rnd(301);
 
   for (int num = 0; num < 8; num++) {
-    GenerateNewRandomFile(&rnd);
+    GenerateNewRandomFileBig(&rnd);
   }
   CompactRangeOptions cro;
   cro.bottommost_level_compaction = BottommostLevelCompaction::kForce;
