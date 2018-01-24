@@ -625,6 +625,35 @@ Status DBTestBase::Flush(int cf) {
   }
 }
 
+
+// perform a Put, giving a predictable size to the key/value even if the value is indirect,
+// by transferring length from the value to the key if the value is longer than a reference
+Status DBTestBase::PutBig(const Slice& k, const Slice& v) {
+#ifdef INDIRECT_VALUE_SUPPORT
+  if(v.size()<=16)Put(k,v);  // return if no excess length to move
+  // transfer the length of the data to the key, and make the data 16 bytes long
+  std::string newkey(k.data(),k.size());
+  for(size_t i = 16;i<v.size();++i)newkey.push_back(v[i]);  // move data from value to key
+  std::string newval(v.data(),16);  // cut the value off at the length of a reference
+  return Put(Slice(newkey),Slice(newval));
+#else
+  return Put(k,v);
+#endif
+}
+Status DBTestBase::PutBig(int cf, const Slice& k, const Slice& v) {
+#ifdef INDIRECT_VALUE_SUPPORT
+  if(v.size()<=16)Put(cf,k,v);  // return if no excess length to move
+  // transfer the length of the data to the key, and make the data 16 bytes long
+  std::string newkey(k.data(),k.size());
+  for(size_t i = 16;i<v.size();++i)newkey.push_back(v[i]);  // move data from value to key
+  std::string newval(v.data(),16);  // cut the value off at the length of a reference
+  return Put(cf,Slice(newkey),Slice(newval));
+#else
+  return Put(cf,k,v);
+#endif
+}
+
+
 Status DBTestBase::Put(const Slice& k, const Slice& v, WriteOptions wo) {
   if (kMergePut == option_config_) {
     return db_->Merge(wo, k, v);
@@ -933,16 +962,29 @@ std::string DBTestBase::FilesPerLevel(int cf) {
   return result;
 }
 
-size_t DBTestBase::CountFiles() {
+// typemask tells which files to count: 1=non-SST/vlg, 2=sst, 3=VLog
+size_t DBTestBase::CountFiles(int typemask) {
   std::vector<std::string> files;
   env_->GetChildren(dbname_, &files);
 
   std::vector<std::string> logfiles;
   if (dbname_ != last_options_.wal_dir) {
     env_->GetChildren(last_options_.wal_dir, &logfiles);
+    // create composite list of files
+    for(auto logfile : logfiles)files.push_back(logfile);
+  }
+  size_t qualcount = 0;  // number of files qualifying
+  int typefound;
+  for(auto file : files) {
+    size_t dotpos = file.find_last_of('.'); if(dotpos>file.size())dotpos=file.size();  // index to '.', or end-of-string if missing
+    // qualify type of file
+    if(file.substr(dotpos)==".sst")typefound = 2;  //  .sst
+    else if(file.substr(dotpos,4)==".vlg")typefound = 4;  // .vlg*
+    else typefound = 1;  // all other
+    if(typemask&typefound)++qualcount;
   }
 
-  return files.size() + logfiles.size();
+  return qualcount;
 }
 
 uint64_t DBTestBase::Size(const Slice& start, const Slice& limit, int cf) {
@@ -1069,6 +1111,17 @@ void DBTestBase::GenerateNewRandomFile(Random* rnd, bool nowait) {
     ASSERT_OK(Put("key" + RandomString(rnd, 7), RandomString(rnd, 2000)));
   }
   ASSERT_OK(Put("key" + RandomString(rnd, 7), RandomString(rnd, 200)));
+  if (!nowait) {
+    dbfull()->TEST_WaitForFlushMemTable();
+    dbfull()->TEST_WaitForCompact();
+  }
+}
+// this version guarantees a predictable size for the kv even if the value was replaced with an indirect reference
+void DBTestBase::GenerateNewRandomFileBig(Random* rnd, bool nowait) {
+  for (int i = 0; i < kNumKeysByGenerateNewRandomFile; i++) {
+    ASSERT_OK(PutBig("key" + RandomString(rnd, 7), RandomString(rnd, 2000)));
+  }
+  ASSERT_OK(PutBig("key" + RandomString(rnd, 7), RandomString(rnd, 200)));
   if (!nowait) {
     dbfull()->TEST_WaitForFlushMemTable();
     dbfull()->TEST_WaitForCompact();

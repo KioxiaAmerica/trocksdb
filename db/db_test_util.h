@@ -779,6 +779,9 @@ class DBTestBase : public testing::Test {
 
   Status Flush(int cf = 0);
 
+  Status PutBig(const Slice& k, const Slice& v);  // write kv of constant total size regardless of indirect values
+  Status PutBig(int cf, const Slice& k, const Slice& v);  // write kv of constant total size regardless of indirect values to column family
+
   Status Put(const Slice& k, const Slice& v, WriteOptions wo = WriteOptions());
 
   Status Put(int cf, const Slice& k, const Slice& v,
@@ -836,7 +839,7 @@ class DBTestBase : public testing::Test {
   // Return spread of files per level
   std::string FilesPerLevel(int cf = 0);
 
-  size_t CountFiles();
+  size_t CountFiles(int types=3);  // types: 1=non-SSTs, 2=SSTs, 4=VLog
 
   uint64_t Size(const Slice& start, const Slice& limit, int cf = 0);
 
@@ -876,6 +879,7 @@ class DBTestBase : public testing::Test {
   static const int KNumKeysByGenerateNewFile = 100;
 
   void GenerateNewRandomFile(Random* rnd, bool nowait = false);
+  void GenerateNewRandomFileBig(Random* rnd, bool nowait = false);
 
   std::string IterStatus(Iterator* iter);
 
