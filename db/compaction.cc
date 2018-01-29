@@ -249,16 +249,20 @@ bool Compaction::IsTrivialMove() const {
   // If start_level_== output_level_, the purpose is to force compaction
   // filter to be applied to that level, and thus cannot be a trivial move.
 
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  // If we are building a VLog for this CF, we must avoid trivial moves.  Compaction is the place where values get written to the VLog,
+  // and if we allow trivial moves we will end up with a full database with no VLogs.  We might have to revisit this for the case of
+  // bulk-loading the database
+  return false;  // scaf check option
+  // Don't allow a trivial move if we are doing Active Recycling, since the essence of the compaction is to pass over the inputs
+  if(compaction_reason_ == CompactionReason::kActiveRecycling)return false;
+#endif
   // Check if start level have files with overlapping ranges
   if (start_level_ == 0 && input_vstorage_->level0_non_overlapping() == false) {
     // We cannot move files from L0 to L1 if the files are overlapping
     return false;
   }
-
-#ifdef INDIRECT_VALUE_SUPPORT
-  // Don't allow a trivial move if we are doing Active Recycling, since the essence of the compaction is to pass over the inputs
-  if(compaction_reason_ == CompactionReason::kActiveRecycling)return false;
-#endif
 
   if (is_manual_compaction_ &&
       (immutable_cf_options_.compaction_filter != nullptr ||

@@ -135,6 +135,7 @@ Status DBImpl::PromoteL0(ColumnFamilyHandle* column_family, int target_level) {
                    f->marked_for_compaction
 #ifdef INDIRECT_VALUE_SUPPORT
                    ,f->indirect_ref_0
+                   ,f->avgparentfileno
 #endif
                    );
     }

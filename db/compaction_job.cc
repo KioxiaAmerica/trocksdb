@@ -1333,6 +1333,78 @@ Status CompactionJob::InstallCompactionResults(
   compaction->AddInputDeletions(compact_->compaction->edit());
 
   for (const auto& sub_compact : compact_->sub_compact_states) {
+#ifdef INDIRECT_VALUE_SUPPORT
+    // For files that are not at the last level, we must assign a ring position that we can use for picking compactions, giving
+    // priority to compactions that will free up files in the tail.  The ring position is the average file number of the last-level files
+    // that overlap the key-range of the new file.  We assign the number based on the last-level files, not the parent files, because ultimately the last-level
+    // files are the ones that need to be freed.  The 'last level' is the last level within the ring that the new outputs are to be compacted into;
+    // thus if we are compacting into the last level of ring n, the file number will be with respect to the last level of ring n+1.
+    //
+    // Files that come out of Active Recycling simply keep their ring position, since nothing has happened to change the files that would
+    // be compacted if they were picked.  We make no effort to update the ring position in files in lower levels.  Such files will thus
+    // be compacted a little early, but in practice this won't happen much because the files selected for Active Recycling are precisely
+    // those files that do not have files in lower levels overlapping with them (if they did, they would have been selected for a compaction
+    // rather than an AR).
+    // For Active Recycling, copy the references from the input to the output
+    if(compaction->compaction_reason() == CompactionReason::kActiveRecycling) {
+      for (int i = 0;i<sub_compact.outputs.size();++i)const_cast<SubcompactionState&>(sub_compact).outputs[i].meta.avgparentfileno = (*compaction->inputs())[i].files[0]->avgparentfileno;
+
+    } else {
+      // Normal compaction.  Find the last level in the ring the new outputs will be compacted into.
+      std::vector<FileMetaData*> overlapping_files;  // pointer to the files for the reference level
+      int outlevel;
+
+      int outringno = compaction->column_family_data()->vlog()->VLogRingNoForLevelOutput(compaction->output_level()+1);  // ring# the output goes into
+      if(outringno>=0) {  // if there are rings...
+        outlevel = outringno >= compaction->column_family_data()->vlog()->rings().size()-1 ? compaction->column_family_data()->current()->storage_info()->num_levels()-1
+                                                                                         : compaction->column_family_data()->vlog()->starting_level_for_ring(outringno+1)-1;  // get last level for output ring
+        for(;outlevel>compaction->output_level();--outlevel){ if(compaction->column_family_data()->current()->storage_info()->NumLevelFiles(outlevel)!=0)break; }
+        // now outlevel is the last level in the output ring that has files.  If that's not below the new files, there's nothing to look at
+        // If outlevel is far below the compaction result, there will be many files - perhaps the entire database - in the region of overlap.
+        // And the hint is not needed so much, because the chance is high that a file a couple of levels above the bottom will have been compacted naturally
+        // before it gets close to the tail of the ring.  So, we don't bother with calculating avg file hints for files that are 2 or more levels away from
+        // the last level in the ring (scaf should look at the fanout of the level sizes to make this decision)
+        if(outlevel>compaction->output_level() && outlevel<compaction->output_level()+2) {   // if the new output files are not already in the last populated level, and we need the hint...
+          // *ref_files is the files in the ref level.  
+      
+          // Binary search to find the files in the ref level that overlap the outputs.  We know the output files
+          // are in key order
+          compaction->column_family_data()->current()->storage_info()->GetOverlappingInputsRangeBinarySearch(
+              outlevel, ExtractUserKey(*const_cast<SubcompactionState&>(sub_compact).outputs.front().meta.smallest.rep()),
+              ExtractUserKey(*const_cast<SubcompactionState&>(sub_compact).outputs.back().meta.largest.rep()),
+              &overlapping_files, -1 /* no hint */, nullptr /* place to return found index */,
+              false /* 'look for overlapping files' */);  // sets overlapping_files to the overlaps, in order
+          const Comparator* user_cmp = compaction->column_family_data()->user_comparator();  // the comparator for this CF
+
+          // Traverse the files, accumulating the ring-ref_0s for the output files
+          int curroverlapx = 0;  // index to the overlap files as we progress
+          for(int curroutx = 0; curroutx<sub_compact.outputs.size();++curroutx) {
+            // we are looking for overlaps with curroutx.  Count the numbers of files and the index of each
+            int nolaps = 0; double totalolaps = 0.0;  // number of overlaps, and index for each
+            // skip over files that do not go past the min key for curroutx
+            while(curroverlapx<overlapping_files.size() &&
+                user_cmp->Compare(*const_cast<SubcompactionState&>(sub_compact).outputs[curroutx].meta.smallest.rep(), *overlapping_files[curroverlapx]->largest.rep()) > 0)++curroverlapx;
+            // process files, stopping when one goes past the max key for curroutx.  Ignore files that have no reference in the ring we are looking at
+            while(curroverlapx<overlapping_files.size()) {
+              if(outringno<overlapping_files[curroverlapx]->indirect_ref_0.size()) {  // if this SST has an entry for the ring of interest
+                VLogRingRefFileno ref0 = overlapping_files[curroverlapx]->indirect_ref_0[outringno];  // value of the ref
+                if(ref0) {    // if the ref is to a legit file...
+                  ++nolaps, totalolaps += ref0;  // accumulate the file reference into the total
+                }
+              }
+              if(user_cmp->Compare(*const_cast<SubcompactionState&>(sub_compact).outputs[curroutx].meta.largest.rep(), *overlapping_files[curroverlapx]->largest.rep()) < 0)break;  // stop if the next file cannot possibly overlap this output.  It may overlap the next output.
+              ++curroverlapx;
+            }
+            // store the average result.  curroverlapx still points to the file that passed the max key.  It may overlap
+            // the next output file so we will start looking there
+            VLogRingRefFileno avgparentfileno = 0;
+            if(nolaps)avgparentfileno = ParsedFnameRing(outringno,(VLogRingRefFileno) totalolaps/nolaps).filering();  // calculate average ref0, if there are any
+            const_cast<SubcompactionState&>(sub_compact).outputs[curroutx].meta.avgparentfileno = avgparentfileno;  // store average ref0, or 0 if none
+          }
+        }
+      }
+    }
+#endif
     for (int i = 0;i<sub_compact.outputs.size();++i) {
 #ifdef INDIRECT_VALUE_SUPPORT
       // For Active Recycling there is no concept of 'output level', because each file is put back into the level it started at.

@@ -163,13 +163,13 @@ printf("VLogRing cfd_=%p\n",cfd_);
   for(int i=0;i<filenames.size();++i) {
     ParsedFnameRing fnring = VlogFnametoRingFname(filenames[i]);
 
-    if(fnring.ringno==ringno) {  // If this file is for our ring...
-      if(cfd_->vloginfo()[ringno_].ContainsFileno(fnring.fileno)) {
+    if(fnring.ringno_==ringno) {  // If this file is for our ring...
+      if(cfd_->vloginfo()[ringno_].ContainsFileno(fnring.fileno_)) {
         // the file is valid according to the manifest.  Open it
         std::unique_ptr<RandomAccessFile> fileptr;  // pointer to the opened file
         immdbopts_->env->NewRandomAccessFile(filenames[i], &fileptr,envopts_);  // open the file if it exists
           // move the file reference into the ring, and publish it to all threads
-        fd_ring[0][Ringx(fd_ring[0],fnring.fileno)]=std::move(VLogRingFile(fileptr,filesizes[i]));
+        fd_ring[0][Ringx(fd_ring[0],fnring.fileno_)]=std::move(VLogRingFile(fileptr,filesizes[i]));
 #if DEBLEVEL&2
 printf("Opening file %s\n",filenames[i].c_str());
 #endif

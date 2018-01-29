@@ -758,6 +758,7 @@ Status DBImpl::ReFitLevel(ColumnFamilyData* cfd, int level, int target_level) {
                    f->marked_for_compaction
 #ifdef INDIRECT_VALUE_SUPPORT
                    ,f->indirect_ref_0
+                   ,f->avgparentfileno
 #endif
                    );
     }
@@ -1613,6 +1614,7 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
                            f->marked_for_compaction
 #ifdef INDIRECT_VALUE_SUPPORT
                    ,f->indirect_ref_0
+                   ,f->avgparentfileno
 #endif
                    );
         ROCKS_LOG_BUFFER(log_buffer, "[%s] Moving #%" PRIu64

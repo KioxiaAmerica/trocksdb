@@ -3526,6 +3526,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
                        f->marked_for_compaction
 #ifdef INDIRECT_VALUE_SUPPORT
                        ,f->indirect_ref_0
+                       ,f->avgparentfileno
 #endif
                        );
         }

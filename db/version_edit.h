@@ -120,6 +120,7 @@ struct FileMetaData {
   std::shared_ptr<VLog> vlog;  // The value log for the CF this file is in.  It's a shame to waste 8 bytes, but it's just too hard to get a pointer
                  // to the ColumnFamilyData down to all the routines that need it
   int level;   // The level of this file, needed so that Active Recycling can put the file back to the same level
+  VLogRingRefFileno avgparentfileno;  // average value of indirect_ref_0 for the parents (i. e. higher level) of this file, 0 if no parents, and the ring it is in (62/2 bits)
 #endif
 
   FileMetaData()
@@ -141,6 +142,7 @@ struct FileMetaData {
         ,ringbwdchain(std::vector<FileMetaData*>())
         ,vlog(nullptr)   // vlog is filled in when we add the file to a CF
         ,level(-1)
+        ,avgparentfileno(0)
 #endif
         {}
 
@@ -241,7 +243,7 @@ class VersionEdit {
                uint64_t file_size, const InternalKey& smallest,
                const InternalKey& largest, const SequenceNumber& smallest_seqno,
                const SequenceNumber& largest_seqno,
-               bool marked_for_compaction, const std::vector<uint64_t>& indirect_ref_0 = std::vector<uint64_t>()) {
+               bool marked_for_compaction, const std::vector<uint64_t>& indirect_ref_0 = std::vector<uint64_t>(), const uint64_t avgparentfileno = 0) {
     assert(smallest_seqno <= largest_seqno);
     FileMetaData f;
     f.fd = FileDescriptor(file, file_path_id, file_size);
@@ -254,6 +256,7 @@ class VersionEdit {
       // older code doesn't know about indirect_ref; use 'omitted' (0) then
     f.indirect_ref_0=indirect_ref_0;  // set the earliest refs, if any
     f.level = level;  // save level # in the metadata so VLogRing can get to it
+    f.avgparentfileno = avgparentfileno;  // higher-level information
 #endif
     new_files_.emplace_back(level, std::move(f));
   }

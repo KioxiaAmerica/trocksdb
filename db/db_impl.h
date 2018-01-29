@@ -578,7 +578,7 @@ class DBImpl : public DB {
   Status NewDB();
 
 #ifdef INDIRECT_VALUE_SUPPORT
-  Status DBImpl::OpenVLogs(const DBOptions& db_options);  // Called after versions have been initialized, to create and populate VLogs
+  Status OpenVLogs(const DBOptions& db_options);  // Called after versions have been initialized, to create and populate VLogs
 #endif
 
  protected:

@@ -48,6 +48,7 @@ enum CustomTag {
 #ifdef INDIRECT_VALUE_SUPPORT   // add earliest_ref field in Edit record
   kIndirectRef0 = 70,  // indicates the oldest ref to VLog in this file
   kValueLogStats = 71,  // files, frag, and bytes deleted/added
+  kAvgFileRef = 72,  // indicator of age in VLog of overlapping files in next level
 #endif
 };
 // If this bit for the custom tag is set, opening DB should fail if
@@ -123,6 +124,7 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
     if (f.marked_for_compaction
 #ifdef INDIRECT_VALUE_SUPPORT
         || f.indirect_ref_0.size()
+        || f.avgparentfileno
 #endif
     ) {
       PutVarint32(dst, kNewFile4);
@@ -202,6 +204,10 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
         PutVarint32(dst, totallength);  // write out total field length
         PutVarint32(dst, (uint32_t)f.indirect_ref_0.size());  // write out number of refs
         for(auto ref : f.indirect_ref_0)PutVarint64(dst, ref);  // write refs
+      }
+      if (f.avgparentfileno) {
+        PutVarint32(dst, CustomTag::kAvgFileRef);  // write out the record type
+        PutVarint64(dst, f.avgparentfileno);  // write out total field length
       }
 #endif
       TEST_SYNC_POINT_CALLBACK("VersionEdit::EncodeTo:NewFile4:CustomizeFields",
@@ -336,6 +342,11 @@ const char* VersionEdit::DecodeNewFile4From(Slice* input) {
             f.indirect_ref_0.push_back(earlyref);
           }
           f.level = level;  // If there's a ref0, there needs to be a level too
+          break;
+        case kAvgFileRef:
+          uint64_t avgparentfileno;   // number of rings in this field
+          if(!GetVarint64(&field,&avgparentfileno))return("avg parent ref no value");
+          f.avgparentfileno = avgparentfileno;  // install into meta
           break;
 #endif
         default:

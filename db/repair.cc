@@ -565,6 +565,7 @@ class Repairer {
                      table->max_sequence, table->meta.marked_for_compaction
 #ifdef INDIRECT_VALUE_SUPPORT
                      ,table->meta.indirect_ref_0
+                     ,table->meta.avgparentfileno
 #endif
                      );
       }

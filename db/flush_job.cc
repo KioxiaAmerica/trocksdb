@@ -341,6 +341,7 @@ Status FlushJob::WriteLevel0Table() {
                    meta_.marked_for_compaction
 #ifdef INDIRECT_VALUE_SUPPORT
                   ,meta_.indirect_ref_0
+                  ,meta_.avgparentfileno
 #endif
                    );
   }

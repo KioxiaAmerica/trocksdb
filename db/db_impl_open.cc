@@ -917,6 +917,7 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
                   meta.marked_for_compaction
 #ifdef INDIRECT_VALUE_SUPPORT
                   ,meta.indirect_ref_0
+                  ,meta.avgparentfileno
 #endif
 );
   }

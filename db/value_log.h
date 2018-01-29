@@ -111,10 +111,14 @@ static const int maxfilesize = 100000;  // scaf largest file to write out
 // Convert file number to file number and ring
 class ParsedFnameRing {
 public:
-  int ringno;
-  uint64_t fileno;
-  ParsedFnameRing(VLogRingRefFileno file_ring) :
-    fileno(file_ring>>2), ringno((int)file_ring&3) {}
+  int ringno_;
+  uint64_t fileno_;
+  ParsedFnameRing(VLogRingRefFileno file_ring) :  // construct from combined fileno/ring
+    fileno_(file_ring>>2), ringno_((int)file_ring&3) {}
+  ParsedFnameRing(int ring, VLogRingRefFileno file) : ringno_(ring), fileno_(file) {}  // construct from separate ring & file
+  int ringno() { return ringno_; }
+  VLogRingRefFileno fileno() { return fileno_; }
+  VLogRingRefFileno filering() { return fileno_*4 + ringno_; }
 };
 
 //
@@ -611,6 +615,7 @@ public:
   );
   size_t nrings() { return rings_.size(); }
   std::vector<std::unique_ptr<VLogRing>>& rings() { return rings_; }
+  int starting_level_for_ring(int ringno) { return starting_level_for_ring_[ringno]; }
 
   // No copying
   VLog(VLog const&) = delete;
