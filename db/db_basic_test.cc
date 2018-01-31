@@ -67,26 +67,7 @@ TEST_F(DBBasicTest, ReadOnlyDB) {
 }
 
 const uint64_t kFileSize = 1 << 20;
-
-// Get the key for a Key/Value pair that takes up half a file
-static std::string KeyBig(char *key) {
-  std::string result {key};  // init to the bare key
-#ifdef INDIRECT_VALUE_SUPPORT
-  result.append((kFileSize/2)-result.size(),' ');  // fill out with space to make a big key
-#endif
-  return result;
-}
-
-// Get the value for a Key/Value pair that takes up half a file
-static std::string ValueBig(char value) {
-  std::string result;  // init to the bare key
-#ifdef INDIRECT_VALUE_SUPPORT
-  return std::string {16,value};  // make the value have the same size as the indirect reference
-#else
-  return std::string {kFileSize/2,value};  // make the value big
-#endif
-}
-
+const uint64_t kHalfFileSize = kFileSize >> 1;
 TEST_F(DBBasicTest, CompactedDB) {
   Options options = CurrentOptions();
   options.disable_auto_compactions = true;
@@ -96,30 +77,30 @@ TEST_F(DBBasicTest, CompactedDB) {
   options.compression = kNoCompression;
   Reopen(options);
   // 1 L0 file, use CompactedDB if max_open_files = -1
-  ASSERT_OK(Put(KeyBig("aaa"), ValueBig('1')));
+  ASSERT_OK(Put(KeyBig(std::string("aaa"),kHalfFileSize), ValueBig(std::string(kHalfFileSize,'1'))));
   Flush();
   Close();
   ASSERT_OK(ReadOnlyReopen(options));
   Status s = Put("new", "value");
   ASSERT_EQ(s.ToString(),
             "Not implemented: Not supported operation in read only mode.");
-  ASSERT_EQ(ValueBig('1'), Get(KeyBig("aaa")));
+  ASSERT_EQ(ValueBig(std::string(kHalfFileSize,'1')), Get(KeyBig(std::string("aaa"),kHalfFileSize)));
   Close();
   options.max_open_files = -1;
   ASSERT_OK(ReadOnlyReopen(options));
   s = Put("new", "value");
   ASSERT_EQ(s.ToString(),
             "Not implemented: Not supported in compacted db mode.");
-  ASSERT_EQ(ValueBig('1'), Get(KeyBig("aaa")));
+  ASSERT_EQ(ValueBig(std::string(kHalfFileSize,'1')), Get(KeyBig(std::string("aaa"),kHalfFileSize)));
   Close();
   Reopen(options);
   // Add more L0 files
-  ASSERT_OK(Put(KeyBig("bbb"), ValueBig('2')));
+  ASSERT_OK(Put(KeyBig(std::string("bbb"),kHalfFileSize), ValueBig(std::string(kHalfFileSize,'2'))));
   Flush();
-  ASSERT_OK(Put(KeyBig("aaa"), ValueBig('a')));
+  ASSERT_OK(Put(KeyBig(std::string("aaa"),kHalfFileSize), ValueBig(std::string(kHalfFileSize,'a'))));
   Flush();
-  ASSERT_OK(Put(KeyBig("bbb"), ValueBig('b')));
-  ASSERT_OK(Put(KeyBig("eee"), ValueBig('e')));
+  ASSERT_OK(Put(KeyBig(std::string("bbb"),kHalfFileSize), ValueBig(std::string(kHalfFileSize,'b'))));
+  ASSERT_OK(Put(KeyBig(std::string("eee"),kHalfFileSize), ValueBig(std::string(kHalfFileSize,'e'))));
   Flush();
   Close();
 
@@ -133,10 +114,10 @@ TEST_F(DBBasicTest, CompactedDB) {
   // Full compaction
   Reopen(options);
   // Add more keys
-  ASSERT_OK(Put(KeyBig("fff"), ValueBig('f')));
-  ASSERT_OK(Put(KeyBig("hhh"), ValueBig('h')));
-  ASSERT_OK(Put(KeyBig("iii"), ValueBig('i')));
-  ASSERT_OK(Put(KeyBig("jjj"), ValueBig('j')));
+  ASSERT_OK(Put(KeyBig(std::string("fff"),kHalfFileSize), ValueBig(std::string(kHalfFileSize,'f'))));
+  ASSERT_OK(Put(KeyBig(std::string("hhh"),kHalfFileSize), ValueBig(std::string(kHalfFileSize,'h'))));
+  ASSERT_OK(Put(KeyBig(std::string("iii"),kHalfFileSize), ValueBig(std::string(kHalfFileSize,'i'))));
+  ASSERT_OK(Put(KeyBig(std::string("jjj"),kHalfFileSize), ValueBig(std::string(kHalfFileSize,'j'))));
   db_->CompactRange(CompactRangeOptions(), nullptr, nullptr);
   ASSERT_EQ(3, NumTableFilesAtLevel(1));
   Close();
@@ -146,40 +127,40 @@ TEST_F(DBBasicTest, CompactedDB) {
   s = Put("new", "value");
   ASSERT_EQ(s.ToString(),
             "Not implemented: Not supported in compacted db mode.");
-  ASSERT_EQ("NOT_FOUND", Get(KeyBig("abc")));
-  ASSERT_EQ(ValueBig('a'), Get(KeyBig("aaa")));
-  ASSERT_EQ(ValueBig('b'), Get(KeyBig("bbb")));
-  ASSERT_EQ("NOT_FOUND", Get(KeyBig("ccc")));
-  ASSERT_EQ(ValueBig('e'), Get(KeyBig("eee")));
-  ASSERT_EQ(ValueBig('f'), Get(KeyBig("fff")));
-  ASSERT_EQ("NOT_FOUND", Get(KeyBig("ggg")));
-  ASSERT_EQ(ValueBig('h'), Get(KeyBig("hhh")));
-  ASSERT_EQ(ValueBig('i'), Get(KeyBig("iii")));
-  ASSERT_EQ(ValueBig('j'), Get(KeyBig("jjj")));
-  ASSERT_EQ("NOT_FOUND", Get(KeyBig("kkk")));
+  ASSERT_EQ("NOT_FOUND", Get(KeyBig(std::string("abc"),kHalfFileSize)));
+  ASSERT_EQ(ValueBig(std::string(kHalfFileSize,'a')), Get(KeyBig(std::string("aaa"),kHalfFileSize)));
+  ASSERT_EQ(ValueBig(std::string(kHalfFileSize,'b')), Get(KeyBig(std::string("bbb"),kHalfFileSize)));
+  ASSERT_EQ("NOT_FOUND", Get(KeyBig(std::string("ccc"),kHalfFileSize)));
+  ASSERT_EQ(ValueBig(std::string(kHalfFileSize,'e')), Get(KeyBig(std::string("eee"),kHalfFileSize)));
+  ASSERT_EQ(ValueBig(std::string(kHalfFileSize,'f')), Get(KeyBig(std::string("fff"),kHalfFileSize)));
+  ASSERT_EQ("NOT_FOUND", Get(KeyBig(std::string("ggg"),kHalfFileSize)));
+  ASSERT_EQ(ValueBig(std::string(kHalfFileSize,'h')), Get(KeyBig(std::string("hhh"),kHalfFileSize)));
+  ASSERT_EQ(ValueBig(std::string(kHalfFileSize,'i')), Get(KeyBig(std::string("iii"),kHalfFileSize)));
+  ASSERT_EQ(ValueBig(std::string(kHalfFileSize,'j')), Get(KeyBig(std::string("jjj"),kHalfFileSize)));
+  ASSERT_EQ("NOT_FOUND", Get(KeyBig(std::string("kkk"),kHalfFileSize)));
 
   // MultiGet
   std::vector<std::string> values;
   std::vector<Status> status_list = dbfull()->MultiGet(
       ReadOptions(),
-      std::vector<Slice>({Slice(KeyBig("aaa")), Slice(KeyBig("ccc")), Slice(KeyBig("eee")),
-                          Slice(KeyBig("ggg")), Slice(KeyBig("iii")), Slice(KeyBig("kkk"))}),
+      std::vector<Slice>({Slice(KeyBig(std::string("aaa"),kHalfFileSize)), Slice(KeyBig(std::string("ccc"),kHalfFileSize)), Slice(KeyBig(std::string("eee"),kHalfFileSize)),
+                          Slice(KeyBig(std::string("ggg"),kHalfFileSize)), Slice(KeyBig(std::string("iii"),kHalfFileSize)), Slice(KeyBig(std::string("kkk"),kHalfFileSize))}),
       &values);
   ASSERT_EQ(status_list.size(), static_cast<uint64_t>(6));
   ASSERT_EQ(values.size(), static_cast<uint64_t>(6));
   ASSERT_OK(status_list[0]);
-  ASSERT_EQ(ValueBig('a'), values[0]);
+  ASSERT_EQ(ValueBig(std::string(kHalfFileSize,'a')), values[0]);
   ASSERT_TRUE(status_list[1].IsNotFound());
   ASSERT_OK(status_list[2]);
-  ASSERT_EQ(ValueBig('e'), values[2]);
+  ASSERT_EQ(ValueBig(std::string(kHalfFileSize,'e')), values[2]);
   ASSERT_TRUE(status_list[3].IsNotFound());
   ASSERT_OK(status_list[4]);
-  ASSERT_EQ(ValueBig('i'), values[4]);
+  ASSERT_EQ(ValueBig(std::string(kHalfFileSize,'i')), values[4]);
   ASSERT_TRUE(status_list[5].IsNotFound());
 
   Reopen(options);
   // Add a key
-  ASSERT_OK(Put(KeyBig("fff"), ValueBig('f')));
+  ASSERT_OK(Put(KeyBig(std::string("fff"),kHalfFileSize), ValueBig(std::string(kHalfFileSize,'f'))));
   Close();
   ASSERT_OK(ReadOnlyReopen(options));
   s = Put("new", "value");

@@ -226,16 +226,18 @@ void GetExpectedTableProperties(TableProperties* expected_tp,
                                 const size_t kBlockSize) {
   const int kKeyCount = kTableCount * kKeysPerTable;
   const int kAvgSuccessorSize = kKeySize / 5;
-  const int kEncodingSavePerKey = kKeySize / 4;
+  const int kEncodingSavePerKey = std::min(2,kKeySize / 10);  // empirical.  Using random keys it's very unlikely to share bytes
   expected_tp->raw_key_size = kKeyCount * (kKeySize + 8);
   expected_tp->raw_value_size = kKeyCount * kValueSize;
   expected_tp->num_entries = kKeyCount;
   expected_tp->num_data_blocks =
       kTableCount *
-      (kKeysPerTable * (kKeySize - kEncodingSavePerKey + kValueSize)) /
-      kBlockSize;
+      (1 + kKeysPerTable / (kBlockSize / (1 + kKeySize + 8 - kEncodingSavePerKey + 1 + kValueSize)));
+// old      kTableCount *
+// old      (kKeysPerTable * (kKeySize - kEncodingSavePerKey + kValueSize)) /
+// old      kBlockSize;
   expected_tp->data_size =
-      kTableCount * (kKeysPerTable * (kKeySize + 8 + kValueSize));
+      kTableCount * (kKeysPerTable * (1 + kKeySize + 8 + 1 + kValueSize));
   expected_tp->index_size =
       expected_tp->num_data_blocks * (kAvgSuccessorSize + 8);
   expected_tp->filter_size =
@@ -288,7 +290,11 @@ TEST_F(DBPropertiesTest, AggregatedTableProperties) {
   for (int kTableCount = 40; kTableCount <= 100; kTableCount += 30) {
     const int kKeysPerTable = 100;
     const int kKeySize = 80;
+#ifdef INDIRECT_VALUE_SUPPORT
+    const int kValueSize = 16;
+#else
     const int kValueSize = 200;
+#endif
     const int kBloomBitsPerKey = 20;
 
     Options options = CurrentOptions();
@@ -437,8 +443,13 @@ TEST_F(DBPropertiesTest, ReadLatencyHistogramByLevel) {
 TEST_F(DBPropertiesTest, AggregatedTablePropertiesAtLevel) {
   const int kTableCount = 100;
   const int kKeysPerTable = 10;
+#ifdef INDIRECT_VALUE_SUPPORT
+  const int kKeySize = 80;
+  const int kValueSize = 16;
+#else
   const int kKeySize = 50;
   const int kValueSize = 400;
+#endif
   const int kMaxLevel = 7;
   const int kBloomBitsPerKey = 20;
   Random rnd(301);
@@ -501,7 +512,12 @@ TEST_F(DBPropertiesTest, AggregatedTablePropertiesAtLevel) {
                                  table_options.block_size);
       // Gives larger bias here as index block size, filter block size,
       // and data block size become much harder to estimate in this test.
-      VerifyTableProperties(tp, expected_tp, 0.5, 0.4, 0.4, 0.25);
+#ifdef INDIRECT_VALUE_SUPPORT
+      const double nblocksbias = 0.35;  // with small values, nblocks is small and has large fractional error
+#else
+      const double nblocksbias = 0.25;  // with small values, nblocks is small and has large fractional error
+#endif
+      VerifyTableProperties(tp, expected_tp, 0.5, 0.4, 0.4, nblocksbias);
     }
   }
 }
@@ -931,6 +947,9 @@ TEST_F(DBPropertiesTest, EstimatePendingCompBytes) {
 }
 
 TEST_F(DBPropertiesTest, EstimateCompressionRatio) {
+#ifdef INDIRECT_VALUE_SUPPORT
+  return;  // can't measure SST compression when there are indirect values
+#endif
   if (!Snappy_Supported()) {
     return;
   }

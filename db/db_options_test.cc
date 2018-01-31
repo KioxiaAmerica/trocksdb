@@ -141,7 +141,7 @@ TEST_F(DBOptionsTest, SetBytesPerSync) {
   WriteOptions write_opts;
   // should sync approximately 40MB/1MB ~= 40 times.
   for (i = 0; i < 40; i++) {
-    Put(Key(i), kValue, write_opts);
+    PutBig(i, kValue, write_opts);
   }
   rocksdb::SyncPoint::GetInstance()->EnableProcessing();
   ASSERT_OK(dbfull()->CompactRange(CompactRangeOptions(), nullptr, nullptr));
@@ -157,7 +157,7 @@ TEST_F(DBOptionsTest, SetBytesPerSync) {
   // should sync approximately 40MB*2/8MB ~= 10 times.
   // data will be 40*2MB because of previous Puts too.
   for (i = 0; i < 40; i++) {
-    Put(Key(i), kValue, write_opts);
+    PutBig(i, kValue, write_opts);
   }
   rocksdb::SyncPoint::GetInstance()->EnableProcessing();
   ASSERT_OK(dbfull()->CompactRange(CompactRangeOptions(), nullptr, nullptr));

@@ -360,16 +360,22 @@ TEST_P(DBBloomFilterTestWithParam, BloomFilter) {
     }
     int reads = env_->random_read_counter_.Read();
     fprintf(stderr, "%d present => %d reads\n", N, reads);
-    ASSERT_GE(reads, N);
+#ifdef INDIRECT_VALUE_SUPPORT
+    const int indirectvaluereads = N - (N/100); // we read each value, except for the few that were rewritten after compaction, which are not indirect
+#else
+    const int indirectvaluereads = 0;
+#endif
+    ASSERT_GE(reads, N);  // if level compaction, the first compaction uses trivial move and has no indirects.  When multi-compactions supported,
+                          // the compactions occur and cause indirects
     if (partition_filters_) {
       // Without block cache, we read an extra partition filter per each
       // level*read and a partition index per each read
-      ASSERT_LE(reads, 4 * N + 2 * N / 100);
+      ASSERT_LE(reads, indirectvaluereads + 4 * N + 2 * N / 100);
     } else {
-      ASSERT_LE(reads, N + 2 * N / 100);
+      ASSERT_LE(reads, indirectvaluereads + N + 2 * N / 100);
     }
 
-    // Lookup present keys.  Should rarely read from either sstable.
+    // Lookup missing keys.  Should rarely read from either sstable.  No indirect reads on misses
     env_->random_read_counter_.Reset();
     for (int i = 0; i < N; i++) {
       ASSERT_EQ("NOT_FOUND", Get(1, Key(i) + ".missing"));
@@ -919,14 +925,21 @@ TEST_F(DBBloomFilterTest, PrefixScan) {
 }
 
 TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
+#ifdef INDIRECT_VALUE_SUPPORT
+// kv size is 1+9+1+16 = 27
+const int kvblock = (27*73);
+#else
+// kv size is 1+9+1+3 = 14
+const int kvblock = (14*73);
+#endif
   Options options = CurrentOptions();
-  options.write_buffer_size = 64 * 1024;
-  options.arena_block_size = 4 * 1024;
-  options.target_file_size_base = 64 * 1024;
+  options.arena_block_size = 4 * kvblock;
+  options.write_buffer_size = 64 * kvblock;
+  options.target_file_size_base = 64 * kvblock;
   options.level0_file_num_compaction_trigger = 2;
   options.level0_slowdown_writes_trigger = 2;
   options.level0_stop_writes_trigger = 4;
-  options.max_bytes_for_level_base = 256 * 1024;
+  options.max_bytes_for_level_base = 256 * kvblock;
   options.max_write_buffer_number = 2;
   options.max_background_compactions = 8;
   options.max_background_flushes = 8;
