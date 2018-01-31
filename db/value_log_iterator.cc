@@ -288,22 +288,28 @@ ProbDelay();
 #if DEBLEVEL&4
 printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.size());
 #endif
+    if(outputerrorstatus.empty()) {
+      // No error reading: set up to read first key
+      // set up the variables for the first key
+      keyno_ = 0;  // we start on the first key
+      keysx_ = 0;   // it is at position 0 in keys[]
+      passx_ = 0;  // initialize data pointers to start of region
+      diskx_ = 0;
+      nextpassthroughref = 0;  // init offset of first passthrough record
+      filex_ = 0;  // indicate that we are creating references to the first file in filelengths
+      statusx_ = 0;  // reset input error pointer to first error
+      ostatusx_ = 0;  // reset output error pointer to first error
+      passthroughrefx_ = 0;  // reset pointer to passthrough file/ring
+      ref0_ = std::vector<uint64_t>(cfd->vlog()->nrings(),high_value);  // initialize to no refs to each ring
+      prevringfno = RingFno{0,high_value};  // init to no previous key
+      outputfileno = 0;  // init that the records we are emitting are going into SST 0
 
-    // set up the variables for the first key
-    keyno_ = 0;  // we start on the first key
-    keysx_ = 0;   // it is at position 0 in keys[]
-    passx_ = 0;  // initialize data pointers to start of region
-    diskx_ = 0;
-    nextpassthroughref = 0;  // init offset of first passthrough record
-    filex_ = 0;  // indicate that we are creating references to the first file in filelengths
-    statusx_ = 0;  // reset input error pointer to first error
-    ostatusx_ = 0;  // reset output error pointer to first error
-    passthroughrefx_ = 0;  // reset pointer to passthrough file/ring
-    ref0_ = std::vector<uint64_t>(cfd->vlog()->nrings(),high_value);  // initialize to no refs to each ring
-    prevringfno = RingFno{0,high_value};  // init to no previous key
-    outputfileno = 0;  // init that the records we are emitting are going into SST 0
-
-    Next();   // first Next() gets the first key; subsequent ones return later keys
+      Next();   // first Next() gets the first key; subsequent ones return later keys
+    } else {
+      // If there is an error(s) writing to the VLog, we don't have any way to give them all.  Until such an
+      // interface is created, we will just give initial error status, which will abort the compaction 
+      status_ = Status::Corruption("error writing to VLog");
+    }
   }
 
   // set up key_ etc. with the data for the next valid key, whose index in our tables is keyno_

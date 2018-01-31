@@ -820,6 +820,7 @@ if(sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecy
     // For Active Recycling we pass a pointer to the RecyclingIterator, so the IndirectIterator can query it directly about end-of-file
     sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling ? (RecyclingIterator*)input.get() : nullptr
     ));  // keep iterator around till end of function
+  status = value_iter->status();  // initial status indicates errors writing VLog files
   // For Active Recycling, we need to keep track of which input file's keys we are working on so that when we create the corresponding output
   // file we mark it at the correct level.  If we are not AR, we will just use the output_level
   int arfileno = 0;
@@ -830,6 +831,7 @@ std::vector<uint64_t> our_ref0;  // vector of file-refs
 our_ref0.push_back(~0);
 #endif
 #else
+  // in the non-indirect version, initial error status on the iterator is never checked.  Bug?
   CompactionIterator *value_iter(c_iter);
 #endif
 

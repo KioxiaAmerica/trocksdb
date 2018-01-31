@@ -344,7 +344,7 @@ std::vector<VLogRingRefFileOffset>& fileendoffsets,   // result: ending offset o
           // following the one in firstdataref.  The starting offset in the first file is in firstdataref; it is 0 for the others
 std::vector<Status>& resultstatus   // result: place to save error status.  For any file that got an error in writing or reopening,
           // we add the error status to resultstatus and change the sign of the file's entry in fileendoffsets.  (no entry in fileendoffsets
-          // can be 0).  must be initialized to empty by the caller
+          // can be 0).
 )
 {
   // In this implementation, we write only complete files, rather than adding on to the last one
@@ -355,6 +355,7 @@ std::vector<Status>& resultstatus   // result: place to save error status.  For 
   // that might block while we hold the lock.  We use CAS to acquire the spinlock, and we code with the assumption that the spinlock
   // is always available, but takes ~50 cycles to complete the read
 
+  resultstatus.clear();  // init no errors returned
   // If there is nothing to write, abort early.  We must, because 0-length files are not allowed when memory-mapping is turned on
   // This also avoids errors if there are no references
   if(!bytes.size())return;   // fast exit if no data
@@ -525,7 +526,7 @@ ProbDelay();
         // Almost always, this will be fast because the previous buffer will already be empty.  Only the first time after
         // a resize will this clear a large vector.  And even then, the elements of the vector will already have been
         // invalidated (when they were moved to the current buffer) and thus will take no processing beyond visiting the pointer.
-        // Thus, it is safe to do this under lock; it is the completion of the ring resizing.  We will only have trouble if
+        // Thus, it is safe to do this under lock; it is the completion of the ring resizing.  We will only have delay if
         // freeing the buffer causes this thread to be preempted by a higher-priority thread, leaving this thread waiting while holding
         // the lock; but nothing could be done to prevent that anyway.
         if(atomics.fd_ring_head_fileno.load(std::memory_order_acquire)>atomics.fd_ring_prevbuffer_clear_fileno.load(std::memory_order_acquire)){
@@ -537,8 +538,6 @@ ProbDelay();
       }
     }
   ReleaseLock();
- 
-  // move the file reference into the ring, and publish it to all threads
 
   // fill in the FileRef for the first value, with its length
   firstdataref.FillVLogRingRef(ringno_,fileno_for_writing,0,rcdend[0]);

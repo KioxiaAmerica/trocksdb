@@ -13,6 +13,9 @@
 #include <memory>
 #include <string>
 #include <vector>
+#ifdef INDIRECT_VALUE_SUPPORT
+#include "db/value_log.h"
+#endif
 
 namespace rocksdb {
 
@@ -36,6 +39,9 @@ class CompactionFilter {
   enum ValueType {
     kValue,
     kMergeOperand,
+#ifdef INDIRECT_VALUE_SUPPORT
+    kValueIndirect,  // value is an indirect reference and must be resolved before use
+#endif
   };
 
   enum class Decision {
@@ -157,7 +163,8 @@ class CompactionFilter {
   // MergeOperator.
   virtual Decision FilterV2(int level, const Slice& key, ValueType value_type,
                             const Slice& existing_value, std::string* new_value,
-                            std::string* skip_until) const {
+                            std::string* skip_until
+    ) const {
     switch (value_type) {
       case ValueType::kValue: {
         bool value_changed = false;
@@ -175,6 +182,37 @@ class CompactionFilter {
     assert(false);
     return Decision::kKeep;
   }
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  // Because deployed code will not be compatible with the VLog filter interface, we give it a new version number and call it only by option
+  virtual Decision FilterV3(int level, const Slice& key, ValueType value_type,
+                            const Slice& existing_value, std::string* new_value,
+                            std::string* skip_until,
+                            std::shared_ptr<VLog> pvlog   // pointer to VLog, if any, for resolving indirect references
+    ) const {
+    Slice resolved_value{existing_value};
+    switch (value_type) {
+      case ValueType::kValueIndirect:
+        if(pvlog)pvlog->VLogGet(existing_value,new_value);   // resolve the indirect value, using new_value as a temp
+        resolved_value = *new_value;  // use resolved_value below
+      // fall through to...
+      case ValueType::kValue: {
+        bool value_changed = false;
+        bool rv = Filter(level, key, resolved_value, new_value, &value_changed);
+        if (rv) {
+          return Decision::kRemove;
+        }
+        return value_changed ? Decision::kChangeValue : Decision::kKeep;
+      }
+      case ValueType::kMergeOperand: {
+        bool rv = FilterMergeOperand(level, key, existing_value);
+        return rv ? Decision::kRemove : Decision::kKeep;
+      }
+    }
+    assert(false);
+    return Decision::kKeep;
+  }
+#endif
 
   // By default, compaction will only call Filter() on keys written after the
   // most recent call to GetSnapshot(). However, if the compaction filter

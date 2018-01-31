@@ -3926,7 +3926,7 @@ TEST_F(DBTest, DynamicLevelCompressionPerLevel) {
   // Insert more than 80K. L4 should be base level. Neither L0 nor L4 should
   // be compressed, so total data size should be more than 80K.
   for (int i = 0; i < 20; i++) {
-    ASSERT_OK(Put(Key(keys[i]), CompressibleString(&rnd, 4000)));
+    ASSERT_OK(PutBig(Key(keys[i]), CompressibleString(&rnd, 4000)));
   }
   Flush();
   dbfull()->TEST_WaitForCompact();
@@ -3939,7 +3939,7 @@ TEST_F(DBTest, DynamicLevelCompressionPerLevel) {
 
   // Insert 400KB. Some data will be compressed
   for (int i = 21; i < 120; i++) {
-    ASSERT_OK(Put(Key(keys[i]), CompressibleString(&rnd, 4000)));
+    ASSERT_OK(PutBig(Key(keys[i]), CompressibleString(&rnd, 4000)));
   }
   Flush();
   dbfull()->TEST_WaitForCompact();
@@ -4124,7 +4124,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
   auto gen_l0_kb = [this](int start, int size, int stride) {
     Random rnd(301);
     for (int i = 0; i < size; i++) {
-      ASSERT_OK(Put(Key(start + stride * i), RandomString(&rnd, 1024)));
+      ASSERT_OK(PutBig(Key(start + stride * i), RandomString(&rnd, 1024)));
     }
     dbfull()->TEST_WaitForFlushMemTable();
   };
@@ -4219,7 +4219,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
   Random rnd(301);
   WriteOptions wo;
   while (count < 64) {
-    ASSERT_OK(Put(Key(count), RandomString(&rnd, 1024), wo));
+    ASSERT_OK(PutBig(Key(count), RandomString(&rnd, 1024), wo));
     dbfull()->TEST_FlushMemTable(true);
     count++;
     if (dbfull()->TEST_write_controler().IsStopped()) {
@@ -4247,7 +4247,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
   sleeping_task_low.WaitUntilSleeping();
   count = 0;
   while (count < 64) {
-    ASSERT_OK(Put(Key(count), RandomString(&rnd, 1024), wo));
+    ASSERT_OK(PutBig(Key(count), RandomString(&rnd, 1024), wo));
     dbfull()->TEST_FlushMemTable(true);
     count++;
     if (dbfull()->TEST_write_controler().IsStopped()) {
@@ -4269,7 +4269,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
   ASSERT_EQ(NumTableFilesAtLevel(0), 0);
 
   for (int i = 0; i < 4; ++i) {
-    ASSERT_OK(Put(Key(i), RandomString(&rnd, 1024)));
+    ASSERT_OK(PutBig(Key(i), RandomString(&rnd, 1024)));
     // Wait for compaction so that put won't stop
     dbfull()->TEST_FlushMemTable(true);
   }
@@ -4283,7 +4283,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
   ASSERT_EQ(NumTableFilesAtLevel(0), 0);
 
   for (int i = 0; i < 4; ++i) {
-    ASSERT_OK(Put(Key(i), RandomString(&rnd, 1024)));
+    ASSERT_OK(PutBig(Key(i), RandomString(&rnd, 1024)));
     // Wait for compaction so that put won't stop
     dbfull()->TEST_FlushMemTable(true);
   }
@@ -4763,39 +4763,39 @@ TEST_F(DBTest, SuggestCompactRangeTest) {
   Random rnd(301);
 
   for (int num = 0; num < 3; num++) {
-    GenerateNewRandomFile(&rnd);
+    GenerateNewRandomFileBig(&rnd);
   }
 
-  GenerateNewRandomFile(&rnd);
+  GenerateNewRandomFileBig(&rnd);
   ASSERT_EQ("0,4", FilesPerLevel(0));
   ASSERT_TRUE(!CompactionFilterFactoryGetContext::IsManual(
       options.compaction_filter_factory.get()));
 
-  GenerateNewRandomFile(&rnd);
+  GenerateNewRandomFileBig(&rnd);
   ASSERT_EQ("1,4", FilesPerLevel(0));
 
-  GenerateNewRandomFile(&rnd);
+  GenerateNewRandomFileBig(&rnd);
   ASSERT_EQ("2,4", FilesPerLevel(0));
 
-  GenerateNewRandomFile(&rnd);
+  GenerateNewRandomFileBig(&rnd);
   ASSERT_EQ("3,4", FilesPerLevel(0));
 
-  GenerateNewRandomFile(&rnd);
+  GenerateNewRandomFileBig(&rnd);
   ASSERT_EQ("0,4,4", FilesPerLevel(0));
 
-  GenerateNewRandomFile(&rnd);
+  GenerateNewRandomFileBig(&rnd);
   ASSERT_EQ("1,4,4", FilesPerLevel(0));
 
-  GenerateNewRandomFile(&rnd);
+  GenerateNewRandomFileBig(&rnd);
   ASSERT_EQ("2,4,4", FilesPerLevel(0));
 
-  GenerateNewRandomFile(&rnd);
+  GenerateNewRandomFileBig(&rnd);
   ASSERT_EQ("3,4,4", FilesPerLevel(0));
 
-  GenerateNewRandomFile(&rnd);
+  GenerateNewRandomFileBig(&rnd);
   ASSERT_EQ("0,4,8", FilesPerLevel(0));
 
-  GenerateNewRandomFile(&rnd);
+  GenerateNewRandomFileBig(&rnd);
   ASSERT_EQ("1,4,8", FilesPerLevel(0));
 
   // compact it three times
@@ -4808,7 +4808,7 @@ TEST_F(DBTest, SuggestCompactRangeTest) {
   ASSERT_EQ(0, NumTableFilesAtLevel(0));
   ASSERT_EQ(0, NumTableFilesAtLevel(1));
 
-  GenerateNewRandomFile(&rnd);
+  GenerateNewRandomFileBig(&rnd);
   ASSERT_EQ(1, NumTableFilesAtLevel(0));
 
   // nonoverlapping with the file on level 0
@@ -5003,7 +5003,7 @@ TEST_F(DBTest, FlushesInParallelWithCompactRange) {
 
     Random rnd(301);
     for (int num = 0; num < 14; num++) {
-      GenerateNewRandomFile(&rnd);
+      GenerateNewRandomFileBig(&rnd);
     }
 
     if (iter == 1) {
@@ -5030,7 +5030,7 @@ TEST_F(DBTest, FlushesInParallelWithCompactRange) {
     // create
     // 3 memtables, and that will fail because max_write_buffer_number is 2
     for (int num = 0; num < 3; num++) {
-      GenerateNewRandomFile(&rnd, /* nowait */ true);
+      GenerateNewRandomFileBig(&rnd, /* nowait */ true);
     }
 
     TEST_SYNC_POINT("DBTest::FlushesInParallelWithCompactRange:2");
@@ -5180,7 +5180,7 @@ TEST_F(DBTest, SoftLimit) {
 
   // Generating 360KB in Level 3
   for (int i = 0; i < 72; i++) {
-    Put(Key(i), std::string(5000, 'x'));
+    PutBig(Key(i), std::string(5000, 'x'));
     if (i % 10 == 0) {
       Flush();
     }
@@ -5190,7 +5190,7 @@ TEST_F(DBTest, SoftLimit) {
 
   // Generating 360KB in Level 2
   for (int i = 0; i < 72; i++) {
-    Put(Key(i), std::string(5000, 'x'));
+    PutBig(Key(i), std::string(5000, 'x'));
     if (i % 10 == 0) {
       Flush();
     }
@@ -5208,8 +5208,8 @@ TEST_F(DBTest, SoftLimit) {
 
   // Create 3 L0 files, making score of L0 to be 3.
   for (int i = 0; i < 3; i++) {
-    Put(Key(i), std::string(5000, 'x'));
-    Put(Key(100 - i), std::string(5000, 'x'));
+    PutBig(Key(i), std::string(5000, 'x'));
+    PutBig(Key(100 - i), std::string(5000, 'x'));
     // Flush the file. File size is around 30KB.
     Flush();
   }
@@ -5241,8 +5241,8 @@ TEST_F(DBTest, SoftLimit) {
   sleeping_task_low.WaitUntilSleeping();
   // Create 3 L0 files, making score of L0 to be 3
   for (int i = 0; i < 3; i++) {
-    Put(Key(10 + i), std::string(5000, 'x'));
-    Put(Key(90 - i), std::string(5000, 'x'));
+    PutBig(Key(10 + i), std::string(5000, 'x'));
+    PutBig(Key(90 - i), std::string(5000, 'x'));
     // Flush the file. File size is around 30KB.
     Flush();
   }
@@ -5261,8 +5261,8 @@ TEST_F(DBTest, SoftLimit) {
 
   // Create 3 L0 files, making score of L0 to be 3, higher than L0.
   for (int i = 0; i < 3; i++) {
-    Put(Key(20 + i), std::string(5000, 'x'));
-    Put(Key(80 - i), std::string(5000, 'x'));
+    PutBig(Key(20 + i), std::string(5000, 'x'));
+    PutBig(Key(80 - i), std::string(5000, 'x'));
     // Flush the file. File size is around 30KB.
     Flush();
   }
