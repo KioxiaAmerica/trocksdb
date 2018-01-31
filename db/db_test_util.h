@@ -725,7 +725,7 @@ class DBTestBase : public testing::Test {
     return retstg;
   }
   // like Key, but give a big Key suitable for keeping constant kv size regardless of indirects
-  std::string KeyBig(std::string& k, size_t valuelen) {
+  std::string KeyBig(const std::string& k, size_t valuelen) {
     std::string retstg;
     retstg.assign(k);
 #ifdef INDIRECT_VALUE_SUPPORT  // scaf need option
