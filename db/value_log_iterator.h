@@ -40,6 +40,7 @@ public:
 // must not be modified
   const Slice& key() { return  use_indirects_ ? key_ : c_iter_->key(); }
   const Slice& value() { return use_indirects_ ? value_ : c_iter_->value(); }
+  // for the IndirectIterator, the status after creation indicates whether there were errors writing the data
   const Status& status() { return use_indirects_ ? status_ : c_iter_->status(); }
   const ParsedInternalKey& ikey() { return use_indirects_ ? ikey_ : c_iter_->ikey(); }
     // If an end key (exclusive) is specified, check if the current key is

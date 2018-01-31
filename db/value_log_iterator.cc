@@ -108,20 +108,25 @@ namespace rocksdb {
 
     // All values have been read from c_iter
 
-    // Allocate space in the Value Log and write the values out, and save the information for assigning references
-    outputring->VLogRingWrite(diskdata,diskrecl,nextdiskref,fileendoffsets,outputerrorstatus);
+    // Allocate space in the Value Log and write the values out, and save the information for assigning references.
+    // If there is an error writing to a file, make that status available to the caller
+    if(outputring->VLogRingWrite(diskdata,diskrecl,nextdiskref,fileendoffsets,outputerrorstatus)){
+      status_ = Status::Corruption("error writing to VLog");
+      // If there is an error(s) writing to the VLog, we don't have any way to give them all.  Until such an
+      // interface is created, we will just give initial error status, which will abort the compaction 
+    } else {
+      // set up the variables for the first key
+      keyno_ = 0;  // we start on the first key
+      keysx_ = 0;   // it is at position 0 in keys[]
+      passx_ = 0;  // initialize data pointers to start of region
+      diskx_ = 0;
+      nextpassthroughref = 0;  // init offset of first passthrough record
+      filex_ = 0;  // indicate that we are creating references to the first file in filelengths
+      statusx_ = 0;  // reset input error pointer to first error
+      ostatusx_ = 0;  // reset output error pointer to first error
 
-    // set up the variables for the first key
-    keyno_ = 0;  // we start on the first key
-    keysx_ = 0;   // it is at position 0 in keys[]
-    passx_ = 0;  // initialize data pointers to start of region
-    diskx_ = 0;
-    nextpassthroughref = 0;  // init offset of first passthrough record
-    filex_ = 0;  // indicate that we are creating references to the first file in filelengths
-    statusx_ = 0;  // reset input error pointer to first error
-    ostatusx_ = 0;  // reset output error pointer to first error
-
-    Next();   // first Next() gets the first key; subsequent ones return later keys
+      Next();   // first Next() gets the first key; subsequent ones return later keys
+    }
   }
 
   // set up key_ etc. with the data for the next valid key, whose index in our tables is keyno_

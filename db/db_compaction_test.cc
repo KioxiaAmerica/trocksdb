@@ -607,6 +607,7 @@ TEST_P(DBCompactionTestWithParam, CompactionsGenerateMultipleFiles) {
   options.write_buffer_size = 100000000;        // Large write buffer
   options.max_subcompactions = max_subcompactions_;
   CreateAndReopenWithCF({"pikachu"}, options);
+  const int value_size=100000;
 
   Random rnd(301);
 
@@ -614,8 +615,8 @@ TEST_P(DBCompactionTestWithParam, CompactionsGenerateMultipleFiles) {
   ASSERT_EQ(NumTableFilesAtLevel(0, 1), 0);
   std::vector<std::string> values;
   for (int i = 0; i < 80; i++) {
-    values.push_back(RandomString(&rnd, 100000));
-    ASSERT_OK(Put(1, Key(i), values[i]));
+    values.push_back(RandomString(&rnd, value_size));
+    ASSERT_OK(PutBig(1, i, value_size, values[i]));
   }
 
   // Reopening moves updates to level-0
@@ -626,7 +627,7 @@ TEST_P(DBCompactionTestWithParam, CompactionsGenerateMultipleFiles) {
   ASSERT_EQ(NumTableFilesAtLevel(0, 1), 0);
   ASSERT_GT(NumTableFilesAtLevel(1, 1), 1);
   for (int i = 0; i < 80; i++) {
-    ASSERT_EQ(Get(1, Key(i)), values[i]);
+    ASSERT_EQ(Get(1, KeyBig(i,value_size)), ValueBig(values[i]));
   }
 }
 
@@ -1337,14 +1338,14 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
   // file 1 [0 => 100]
   for (int32_t i = 0; i < 100; i++) {
     values[i] = RandomString(&rnd, value_size);
-    ASSERT_OK(Put(Key(i), values[i]));
+    ASSERT_OK(PutBig(i, value_size, values[i]));
   }
   ASSERT_OK(Flush());
 
   // file 2 [100 => 300]
   for (int32_t i = 100; i < 300; i++) {
     values[i] = RandomString(&rnd, value_size);
-    ASSERT_OK(Put(Key(i), values[i]));
+    ASSERT_OK(PutBig(i, value_size, values[i]));
   }
   ASSERT_OK(Flush());
 
@@ -1356,11 +1357,10 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
   ASSERT_OK(db_->CompactRange(compact_options, nullptr, nullptr));
   // 2 files in L2
   ASSERT_EQ("0,0,2", FilesPerLevel(0));
-
   // file 3 [ 0 => 200]
   for (int32_t i = 0; i < 200; i++) {
     values[i] = RandomString(&rnd, value_size);
-    ASSERT_OK(Put(Key(i), values[i]));
+    ASSERT_OK(PutBig(i, value_size, values[i]));
   }
   ASSERT_OK(Flush());
 
@@ -1372,7 +1372,7 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
         dbfull()->TEST_WaitForFlushMemTable();
       }
       values[j] = RandomString(&rnd, value_size);
-      ASSERT_OK(Put(Key(j), values[j]));
+      ASSERT_OK(PutBig(j, value_size, values[j]));
     }
   }
   ASSERT_OK(Flush());
@@ -1388,8 +1388,8 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
   }
 
   size_t old_num_files = CountFiles();
-  std::string begin_string = Key(1000);
-  std::string end_string = Key(2000);
+  std::string begin_string = KeyBig(1000, value_size);
+  std::string end_string = KeyBig(2000, value_size);
   Slice begin(begin_string);
   Slice end(end_string);
   ASSERT_OK(DeleteFilesInRange(db_, db_->DefaultColumnFamily(), &begin, &end));
@@ -1397,11 +1397,11 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
   int32_t deleted_count = 0;
   for (int32_t i = 0; i < 4300; i++) {
     if (i < 1000 || i > 2000) {
-      ASSERT_EQ(Get(Key(i)), values[i]);
+      ASSERT_EQ(Get(KeyBig(i, value_size)), ValueBig(values[i]));
     } else {
       ReadOptions roptions;
       std::string result;
-      Status s = db_->Get(roptions, Key(i), &result);
+      Status s = db_->Get(roptions, KeyBig(i, value_size), &result);
       ASSERT_TRUE(s.IsNotFound() || s.ok());
       if (s.IsNotFound()) {
         deleted_count++;
@@ -1409,8 +1409,8 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
     }
   }
   ASSERT_GT(deleted_count, 0);
-  begin_string = Key(5000);
-  end_string = Key(6000);
+  begin_string = KeyBig(5000, value_size);
+  end_string = KeyBig(6000, value_size);
   Slice begin1(begin_string);
   Slice end1(end_string);
   // Try deleting files in range which contain no keys
@@ -1430,7 +1430,7 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
   for (int32_t i = 0; i < 4300; i++) {
     ReadOptions roptions;
     std::string result;
-    Status s = db_->Get(roptions, Key(i), &result);
+    Status s = db_->Get(roptions, KeyBig(i, value_size), &result);
     ASSERT_TRUE(s.IsNotFound());
     deleted_count2++;
   }
@@ -1462,7 +1462,7 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveToLastLevelWithFiles) {
   // File with keys [ 0 => 99 ]
   for (int i = 0; i < 100; i++) {
     values.push_back(RandomString(&rnd, value_size));
-    ASSERT_OK(Put(Key(i), values[i]));
+    ASSERT_OK(PutBig(i, value_size, values[i]));
   }
   ASSERT_OK(Flush());
 
@@ -1480,7 +1480,7 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveToLastLevelWithFiles) {
   // File with keys [ 100 => 199 ]
   for (int i = 100; i < 200; i++) {
     values.push_back(RandomString(&rnd, value_size));
-    ASSERT_OK(Put(Key(i), values[i]));
+    ASSERT_OK(PutBig(i, value_size, values[i]));
   }
   ASSERT_OK(Flush());
 
@@ -1494,7 +1494,7 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveToLastLevelWithFiles) {
   ASSERT_EQ(non_trivial_move, 0);
 
   for (int i = 0; i < 200; i++) {
-    ASSERT_EQ(Get(Key(i)), values[i]);
+    ASSERT_EQ(Get(KeyBig(i, value_size)), ValueBig(values[i]));
   }
 
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
@@ -1515,6 +1515,11 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionThirdPath) {
   options.max_bytes_for_level_base = 400 * 1024;
   options.max_subcompactions = max_subcompactions_;
   //  options = CurrentOptions(options);
+#ifdef INDIRECT_VALUE_SUPPORT
+  const int largevaluesize = 16;  // RandomFileBig produces value length of either 1 or this
+#else
+  const int largevaluesize = 990;  // RandomFileBig produces value length of either 1 or this
+#endif
 
   std::vector<std::string> filenames;
   env_->GetChildren(options.db_paths[1].path, &filenames);
@@ -1531,87 +1536,87 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionThirdPath) {
   // First three 110KB files are not going to second path.
   // After that, (100K, 200K)
   for (int num = 0; num < 3; num++) {
-    GenerateNewFile(&rnd, &key_idx);
+    GenerateNewFileBig(&rnd, &key_idx);
   }
 
   // Another 110KB triggers a compaction to 400K file to fill up first path
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(3, GetSstFileCount(options.db_paths[1].path));
 
   // (1, 4)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ("1,4", FilesPerLevel(0));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 4, 1)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ("1,4,1", FilesPerLevel(0));
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 4, 2)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ("1,4,2", FilesPerLevel(0));
   ASSERT_EQ(2, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 4, 3)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ("1,4,3", FilesPerLevel(0));
   ASSERT_EQ(3, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 4, 4)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ("1,4,4", FilesPerLevel(0));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 4, 5)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ("1,4,5", FilesPerLevel(0));
   ASSERT_EQ(5, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 4, 6)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ("1,4,6", FilesPerLevel(0));
   ASSERT_EQ(6, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 4, 7)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ("1,4,7", FilesPerLevel(0));
   ASSERT_EQ(7, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 4, 8)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ("1,4,8", FilesPerLevel(0));
   ASSERT_EQ(8, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   for (int i = 0; i < key_idx; i++) {
-    auto v = Get(Key(i));
+    auto v = Get(KeyBig(i,990));
     ASSERT_NE(v, "NOT_FOUND");
-    ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+    ASSERT_TRUE(v.size() == 1 || v.size() == largevaluesize);
   }
 
   Reopen(options);
 
   for (int i = 0; i < key_idx; i++) {
-    auto v = Get(Key(i));
+    auto v = Get(KeyBig(i,990));
     ASSERT_NE(v, "NOT_FOUND");
-    ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+    ASSERT_TRUE(v.size() == 1 || v.size() == largevaluesize);
   }
 
   Destroy(options);
@@ -2185,7 +2190,7 @@ TEST_P(DBCompactionTestWithParam, PartialCompactionFailure) {
   for (int k = 0; k < kNumInsertedKeys; ++k) {
     keys.emplace_back(RandomString(&rnd, kKeySize));
     values.emplace_back(RandomString(&rnd, kKvSize - kKeySize));
-    ASSERT_OK(Put(Slice(keys[k]), Slice(values[k])));
+    ASSERT_OK(Put(Slice(KeyBig(keys[k],kKvSize - kKeySize)), Slice(ValueBig(values[k]))));
     dbfull()->TEST_WaitForFlushMemTable();
   }
 
@@ -2213,7 +2218,7 @@ TEST_P(DBCompactionTestWithParam, PartialCompactionFailure) {
 
   // All key-values must exist after compaction fails.
   for (int k = 0; k < kNumInsertedKeys; ++k) {
-    ASSERT_EQ(values[k], Get(keys[k]));
+    ASSERT_EQ(ValueBig(values[k]), Get(KeyBig(keys[k],kKvSize - kKeySize)));
   }
 
   env_->non_writable_count_ = 0;
@@ -2223,11 +2228,13 @@ TEST_P(DBCompactionTestWithParam, PartialCompactionFailure) {
 
   // Verify again after reopen.
   for (int k = 0; k < kNumInsertedKeys; ++k) {
-    ASSERT_EQ(values[k], Get(keys[k]));
+    ASSERT_EQ(ValueBig(values[k]), Get(KeyBig(keys[k],kKvSize - kKeySize)));
   }
 }
 
 TEST_P(DBCompactionTestWithParam, DeleteMovedFileAfterCompaction) {
+  const int value_size = 10*1024;
+
   // iter 1 -- delete_obsolete_files_period_micros == 0
   for (int iter = 0; iter < 2; ++iter) {
     // This test triggers move compaction and verifies that the file is not
@@ -2250,7 +2257,7 @@ TEST_P(DBCompactionTestWithParam, DeleteMovedFileAfterCompaction) {
     for (int i = 0; i < 2; ++i) {
       // Create 1MB sst file
       for (int j = 0; j < 100; ++j) {
-        ASSERT_OK(Put(Key(i * 50 + j), RandomString(&rnd, 10 * 1024)));
+        ASSERT_OK(PutBig(i * 50 + j, value_size, RandomString(&rnd, value_size)));
       }
       ASSERT_OK(Flush());
     }
@@ -2285,7 +2292,7 @@ TEST_P(DBCompactionTestWithParam, DeleteMovedFileAfterCompaction) {
     for (int i = 0; i < 2; ++i) {
       // Create 1MB sst file
       for (int j = 0; j < 100; ++j) {
-        ASSERT_OK(Put(Key(i * 50 + j + 100), RandomString(&rnd, 10 * 1024)));
+        ASSERT_OK(PutBig(i * 50 + j + 100, value_size, RandomString(&rnd, value_size)));
       }
       ASSERT_OK(Flush());
     }

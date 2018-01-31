@@ -110,7 +110,7 @@ TEST_F(DBSSTTest, DontDeleteMovedFile) {
   for (int i = 0; i < 2; ++i) {
     // Create 1MB sst file
     for (int j = 0; j < 100; ++j) {
-      ASSERT_OK(Put(Key(i * 50 + j), RandomString(&rnd, 10 * 1024)));
+      ASSERT_OK(PutBig(Key(i * 50 + j), RandomString(&rnd, 10 * 1024)));
     }
     ASSERT_OK(Flush());
   }
@@ -158,7 +158,7 @@ TEST_F(DBSSTTest, DeleteObsoleteFilesPendingOutputs) {
   for (int i = 0; i < 2; ++i) {
     // Create 1MB sst file
     for (int j = 0; j < 100; ++j) {
-      ASSERT_OK(Put(Key(i * 50 + j), RandomString(&rnd, 10 * 1024)));
+      ASSERT_OK(PutBig(Key(i * 50 + j), RandomString(&rnd, 10 * 1024)));
     }
     ASSERT_OK(Flush());
   }
@@ -189,7 +189,7 @@ TEST_F(DBSSTTest, DeleteObsoleteFilesPendingOutputs) {
   // write_buffer_size. The flush will be blocked with block_first_time
   // pending_file is protecting all the files created after
   for (int j = 0; j < 256; ++j) {
-    ASSERT_OK(Put(Key(j), RandomString(&rnd, 10 * 1024)));
+    ASSERT_OK(PutBig(Key(j), RandomString(&rnd, 10 * 1024)));
   }
   blocking_thread.WaitUntilSleeping();
 
@@ -658,6 +658,10 @@ TEST_F(DBSSTTest, GetTotalSstFilesSize) {
   for (int i = 0; i < 5; i++) {
     for (int j = 0; j < 10; j++) {
       std::string val = "val_file_" + ToString(i);
+#ifdef INDIRECT_VALUE_SUPPORT
+      // for indirect values, make sure the data has the same length in all levels, by making the length the length of a reference
+      val.resize(16,'*');
+#endif
       ASSERT_OK(Put(Key(j), val));
     }
     Flush();

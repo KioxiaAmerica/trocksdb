@@ -130,7 +130,8 @@ if(latest_ref<fnring.fileno)latest_ref = fnring.fileno;  // scaf
 // We housekeep the end-of-VLogRing information
 // We use release-acquire ordering for the VLogRing file and offset to avoid needing a Mutex in the reader
 // If the circular buffer gets full we have to relocate it, so we use release-acquire
-void VLogRing::VLogRingWrite(
+// result is true (nonzero) if there is an error writing
+bool VLogRing::VLogRingWrite(
 std::string& bytes,   // The bytes to be written, jammed together
 std::vector<VLogRingRefFileOffset>& rcdend,  // The running length of all records up to and including this one
 VLogRingRef& firstdataref,   // result: reference to the first values written
@@ -153,7 +154,7 @@ std::vector<Status>& resultstatus   // place to save error status.  For any file
 
   // If there is nothing to write, abort early.  We must, because 0-length files are not allowed when memory-mapping is turned on
   // This also avoids errors if there are no references
-  if(!bytes.size())return;   // fast exit if no data
+  if(!bytes.size())return false;   // fast exit if no data
 
   // scaf version for single file
 
@@ -219,7 +220,7 @@ std::vector<Status>& resultstatus   // place to save error status.  For any file
     fileendoffsets.push_back(-(VLogRingRefFileOffset)bytes.size());  // flag the offending file
   }
 
-  return;
+  return !iostatus.ok();
 
 // acquire spin lock
 //   allocate data to files, create filelengths return value

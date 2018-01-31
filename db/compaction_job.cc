@@ -797,8 +797,10 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   // and associated with the failing keys.
   // If there is no VLog it means this table type doesn't support indirects, and the iterator will be a passthrough
   unique_ptr<IndirectIterator> value_iter(new IndirectIterator(c_iter,cfd,sub_compact->compaction->output_level(),end,cfd->vlog()!=nullptr));  // keep iterator around till end of function
+  status = value_iter->status();  // initial status indicates errors writing VLog files
 //  use this when make_unique is supported  auto value_iter = std::make_unique<IndirectIterator>(c_iter,cfd,sub_compact->compaction->output_level(),end,cfd->vlog()!=nullptr);  // keep iterator around till end of function
 #else
+  // in the non-indirect version, initial error status on the iterator is never checked.  Bug?
   CompactionIterator *value_iter(c_iter);
 #endif
 

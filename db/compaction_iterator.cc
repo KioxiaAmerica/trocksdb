@@ -249,10 +249,39 @@ void CompactionIterator::NextFromInput() {
         compaction_filter_skip_until_.Clear();
         {
           StopWatchNano timer(env_, true);
+#ifdef INDIRECT_VALUE_SUPPORT
+          // By default we assume the compaction filter understands only direct values.  We must then convert any indirect reference to a direct one.
+          // This could be slow, so if the user has told us by option that they understand indirects, we don't do it.  If the user doesn't
+          // change the value we revert it to the original reference, to avoid unnecassary remapping
+          Slice value_into_filter; std::string string_into_filter;  // workareas for the filter input.  The filter musy copy these values if it returns them
+          CompactionFilter::ValueType type_into_filter = CompactionFilter::ValueType::kValue;
+          bool understandsV3 = false;   // scaf need option here
+          bool translatedindirect = IsTypeIndirect(ikey_.type) && !understandsV3;  // if user can't take indirect refs, we have to resolve them
+          if(translatedindirect){
+            input_->GetVlogForIteratorCF()->VLogGet(value_,&string_into_filter);
+            value_into_filter = string_into_filter;  // convert to Slice
+          } else {
+            value_into_filter = value_;
+            if(IsTypeIndirect(ikey_.type))type_into_filter = CompactionFilter::ValueType::kValueIndirect;
+          }
+          // Use the later function call if the user can accept it
+          if(understandsV3) {
+            filter = compaction_filter_->FilterV3(
+              compaction_->level(), ikey_.user_key,
+              type_into_filter, value_into_filter,
+              &compaction_filter_value_, compaction_filter_skip_until_.rep(), input_->GetVlogForIteratorCF());
+          } else {
+            filter = compaction_filter_->FilterV2(
+              compaction_->level(), ikey_.user_key,
+              type_into_filter, value_into_filter,
+              &compaction_filter_value_, compaction_filter_skip_until_.rep());
+          }
+#else
           filter = compaction_filter_->FilterV2(
               compaction_->level(), ikey_.user_key,
               CompactionFilter::ValueType::kValue, value_,
               &compaction_filter_value_, compaction_filter_skip_until_.rep());
+#endif
           iter_stats_.total_filter_time +=
               env_ != nullptr ? timer.ElapsedNanos() : 0;
         }
@@ -265,6 +294,7 @@ void CompactionIterator::NextFromInput() {
           filter = CompactionFilter::Decision::kKeep;
         }
 
+        // Take appropriate action based on the response from the Compaction Filter.
         if (filter == CompactionFilter::Decision::kRemove) {
           // convert the current key to a delete; key_ is pointing into
           // current_key_ at this point, so updating current_key_ updates key()
@@ -275,12 +305,20 @@ void CompactionIterator::NextFromInput() {
           iter_stats_.num_record_drop_user++;
         } else if (filter == CompactionFilter::Decision::kChangeValue) {
           value_ = compaction_filter_value_;
+#ifdef INDIRECT_VALUE_SUPPORT
+          // The user has changed the value.  Whether it was indirect or not to begin with, it is direct now; set that
+          ikey_.type = kTypeValue;
+          current_key_.UpdateInternalKey(ikey_.sequence, kTypeValue);
+          key_ = current_key_.GetInternalKey();
+#endif
+
         } else if (filter == CompactionFilter::Decision::kRemoveAndSkipUntil) {
           need_skip = true;
           compaction_filter_skip_until_.ConvertFromUserKey(kMaxSequenceNumber,
                                                            kValueTypeForSeek);
           skip_until = compaction_filter_skip_until_.Encode();
         }
+        // otherwise it's a keep, and we leave key and value alone
       }
     } else {
 #ifndef ROCKSDB_LITE

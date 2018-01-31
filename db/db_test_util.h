@@ -710,6 +710,33 @@ class DBTestBase : public testing::Test {
     return std::string(buf);
   }
 
+  // like Key, but give a big Key suitable for keeping constant kv size regardless of indirects
+  std::string KeyBig(int i, size_t valuelen) {
+    std::string retstg;
+    char buf[100];
+    snprintf(buf, sizeof(buf), "key%06d", i);
+    retstg.assign(buf);
+#ifdef INDIRECT_VALUE_SUPPORT  // scaf need option
+    // Extend key with predictable random data to the size appropriate for valuelen
+    uint64_t randval = i;
+    retstg.reserve(valuelen-16);  // avoid multiple reallocations
+    for(size_t j=retstg.size();j<valuelen-16;++j){randval = (16807*randval)%2147483647; retstg.push_back((char)(randval));}
+#endif
+    return retstg;
+  }
+  // like Key, but give a big Key suitable for keeping constant kv size regardless of indirects
+  std::string KeyBig(std::string& k, size_t valuelen) {
+    std::string retstg;
+    retstg.assign(k);
+#ifdef INDIRECT_VALUE_SUPPORT  // scaf need option
+    // Extend key with predictable random data to the size appropriate for valuelen
+    uint64_t randval = 1 + retstg.size()?(uint64_t)retstg.back():0;
+    retstg.reserve(valuelen-16);  // avoid multiple reallocations
+    for(size_t j=retstg.size();j<valuelen-16;++j){randval = (16807*randval)%2147483647; retstg.push_back((char)(randval));}
+#endif
+    return retstg;
+  }
+
   static bool ShouldSkipOptions(int option_config, int skip_mask = kNoSkip);
 
   // Switch to a fresh database with the next option configuration to
@@ -779,8 +806,17 @@ class DBTestBase : public testing::Test {
 
   Status Flush(int cf = 0);
 
-  Status PutBig(const Slice& k, const Slice& v);  // write kv of constant total size regardless of indirect values
+  Status PutBig(const Slice& k, const Slice& v, WriteOptions wo = WriteOptions());  // write kv of constant total size regardless of indirect values
+  Status PutBig(int k, size_t valuelen, const Slice& v); // use valuelen as the implied value length, overriding the actual length.  Key is numeric
   Status PutBig(int cf, const Slice& k, const Slice& v);  // write kv of constant total size regardless of indirect values to column family
+  Status PutBig(int cf, int k, size_t valuelen, const Slice& v); // use valuelen as the implied value length, overriding the actual length.  Key is numeric
+ 
+// return the value that would have been written to make constant kv size.  This is all of v for direct;  1st 16 bytes of v for indirect
+#ifdef INDIRECT_VALUE_SUPPORT  // scaf  need option
+#define ValueBig(s) ((s).substr(0,16))
+#else
+#define ValueBig(s) (s)
+#endif
 
   Status Put(const Slice& k, const Slice& v, WriteOptions wo = WriteOptions());
 
@@ -872,6 +908,7 @@ class DBTestBase : public testing::Test {
 
   // this will generate non-overlapping files since it keeps increasing key_idx
   void GenerateNewFile(Random* rnd, int* key_idx, bool nowait = false);
+  void GenerateNewFileBig(Random* rnd, int* key_idx, bool nowait = false);
 
   void GenerateNewFile(int fd, Random* rnd, int* key_idx, bool nowait = false);
 
