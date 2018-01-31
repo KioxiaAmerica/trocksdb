@@ -684,7 +684,9 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 
   // I/O measurement variables
   PerfLevel prev_perf_level = PerfLevel::kEnableTime;
+#ifndef INDIRECT_VALUE_SUPPORT
   const uint64_t kRecordStatsEvery = 1000;  // not used for INDIRECT_VALUE_SUPPORT - just one record at the end
+#endif
   uint64_t prev_write_nanos = 0;
   uint64_t prev_fsync_nanos = 0;
   uint64_t prev_range_sync_nanos = 0;
