@@ -146,7 +146,7 @@ namespace rocksdb {
     // If this table type doesn't support indirects, revert to the standard compaction iterator
     if(!use_indirects_){ c_iter_->Next(); return; }
     // Here indirects are supported.  If we have returned all the keys, set this one as invalid
-    if(valid_ = (keyno_ < valueclass.size())) {
+    if((valid_ = (keyno_ < valueclass.size()))) {
       // There is another key to return.  Retrieve the key info and parse it
 
       // If there are errors about, we need to make sure we attach the errors to the correct keys.

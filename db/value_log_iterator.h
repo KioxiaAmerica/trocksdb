@@ -57,8 +57,8 @@ private:
   ParsedInternalKey ikey_;  // like key_, but parsed
   std::string npikey;  // string form of ikey_
   bool valid_;  // set when there is another kv to be read
-  ColumnFamilyData* pcfd;  // ColumnFamilyData for this run
   CompactionIterator* c_iter_;  // underlying c_iter_, the source for our values
+  ColumnFamilyData* pcfd;  // ColumnFamilyData for this run
   Slice *end_;   // if given, the key+1 of the end of range
   bool use_indirects_;  // if false, just pass c_iter_ result through
   std::string keys;  // all the keys read from the iterator, jammed together
@@ -74,9 +74,9 @@ private:
   std::vector<Status> outputerrorstatus;  // error status returned when writing the output files
   std::shared_ptr<VLog> current_vlog;
 
-  int keyno_;  // number of keys processed previously
+  size_t keyno_;  // number of keys processed previously
   int passx_;  // number of passthrough references returned previously
-  int diskx_;  // number of disk references returned previously
+  size_t diskx_;  // number of disk references returned previously
   int filex_;  // number of files (as returned by RingWrite) that have been completely returned to the user
   int statusx_;  // number of input error statuses returned to user
   int ostatusx_;  // number of output error statuses returned to user
