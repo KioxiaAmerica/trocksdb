@@ -808,6 +808,7 @@ class DBTestBase : public testing::Test {
 
   Status PutBig(const Slice& k, const Slice& v, WriteOptions wo = WriteOptions());  // write kv of constant total size regardless of indirect values
   Status PutBig(int k, size_t valuelen, const Slice& v); // use valuelen as the implied value length, overriding the actual length.  Key is numeric
+  Status PutBig(int k, const Slice& v, WriteOptions wo = WriteOptions()) {return PutBig(Key(k), v, wo);}
   Status PutBig(int cf, const Slice& k, const Slice& v);  // write kv of constant total size regardless of indirect values to column family
   Status PutBig(int cf, int k, size_t valuelen, const Slice& v); // use valuelen as the implied value length, overriding the actual length.  Key is numeric
  
