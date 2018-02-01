@@ -178,6 +178,9 @@ class CompactionFilter {
         bool rv = FilterMergeOperand(level, key, existing_value);
         return rv ? Decision::kRemove : Decision::kKeep;
       }
+#ifdef INDIRECT_VALUE_SUPPORT
+      case ValueType::kValueIndirect: break;  // will not happen in V2 format
+#endif
     }
     assert(false);
     return Decision::kKeep;

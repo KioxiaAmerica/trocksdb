@@ -156,7 +156,7 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBase2) {
 
   // Put about 28K to L0
   for (int i = 0; i < 70; i++) {
-    ASSERT_OK(Put(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
+    ASSERT_OK(PutBig(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
                   RandomString(&rnd, 380)));
   }
   ASSERT_OK(dbfull()->SetOptions({
@@ -173,7 +173,7 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBase2) {
       {"disable_auto_compactions", "true"},
   }));
   for (int i = 0; i < 70; i++) {
-    ASSERT_OK(Put(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
+    ASSERT_OK(PutBig(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
                   RandomString(&rnd, 380)));
   }
 
@@ -201,7 +201,7 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBase2) {
   }));
   // Write about 40K more
   for (int i = 0; i < 100; i++) {
-    ASSERT_OK(Put(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
+    ASSERT_OK(PutBig(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
                   RandomString(&rnd, 380)));
   }
   ASSERT_OK(dbfull()->SetOptions({
@@ -226,7 +226,7 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBase2) {
   // Write about 650K more.
   // Each file is about 11KB, with 9KB of data.
   for (int i = 0; i < 1300; i++) {
-    ASSERT_OK(Put(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
+    ASSERT_OK(PutBig(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
                   RandomString(&rnd, 380)));
   }
   ASSERT_OK(dbfull()->SetOptions({
@@ -259,7 +259,7 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBase2) {
 
   TEST_SYNC_POINT("DynamicLevelMaxBytesBase2:0");
   for (int i = 0; i < 2; i++) {
-    ASSERT_OK(Put(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
+    ASSERT_OK(PutBig(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
                   RandomString(&rnd, 380)));
   }
   TEST_SYNC_POINT("DynamicLevelMaxBytesBase2:1");
@@ -313,14 +313,14 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesCompactRange) {
 
   // Put about 7K to L0
   for (int i = 0; i < 140; i++) {
-    ASSERT_OK(Put(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
+    ASSERT_OK(PutBig(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
                   RandomString(&rnd, 80)));
   }
   Flush();
   dbfull()->TEST_WaitForCompact();
   if (NumTableFilesAtLevel(0) == 0) {
     // Make sure level 0 is not empty
-    ASSERT_OK(Put(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
+    ASSERT_OK(PutBig(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
                   RandomString(&rnd, 80)));
     Flush();
   }
@@ -385,9 +385,10 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBaseInc) {
   const int total_keys = 3000;
   const int random_part_size = 100;
   for (int i = 0; i < total_keys; i++) {
-    std::string value = RandomString(&rnd, random_part_size);
+    std::string value;
     PutFixed32(&value, static_cast<uint32_t>(i));
-    ASSERT_OK(Put(Key(i), value));
+    value.append(RandomString(&rnd, random_part_size));
+    ASSERT_OK(Put(KeyBig(i, random_part_size), ValueBig(value)));
   }
   Flush();
   dbfull()->TEST_WaitForCompact();
@@ -396,8 +397,8 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBaseInc) {
   ASSERT_EQ(non_trivial, 0);
 
   for (int i = 0; i < total_keys; i++) {
-    std::string value = Get(Key(i));
-    ASSERT_EQ(DecodeFixed32(value.c_str() + random_part_size),
+    std::string value = Get(KeyBig(i, random_part_size));
+    ASSERT_EQ(DecodeFixed32(value.c_str()),
               static_cast<uint32_t>(i));
   }
 

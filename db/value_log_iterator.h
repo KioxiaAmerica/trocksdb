@@ -167,9 +167,9 @@ struct RingFno {
   std::vector<size_t> filereccnts;  // record# of the last kvs in each of the input files we encounter
   size_t outputfileno;  // For AR, the file number of the current kv being returned.  When it changes we call for a new file in the compaction
 
-  int keyno_;  // number of keys processed previously
+  size_t keyno_;  // number of keys processed previously
   int passx_;  // number of passthrough references returned previously
-  int diskx_;  // number of disk references returned previously
+  size_t diskx_;  // number of disk references returned previously
   int filex_;  // number of files (as returned by RingWrite) that have been completely returned to the user
   int statusx_;  // number of input error statuses returned to user
   int ostatusx_;  // number of output error statuses returned to user
