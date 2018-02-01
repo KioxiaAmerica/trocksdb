@@ -718,12 +718,17 @@ class DBTestBase : public testing::Test {
     retstg.assign(buf);
 #ifdef INDIRECT_VALUE_SUPPORT  // scaf need option
     // Extend key with predictable random data to the size appropriate for valuelen
-    uint64_t randval = i;
-    retstg.reserve(valuelen-16);  // avoid multiple reallocations
-    for(size_t j=retstg.size();j<valuelen-16;++j){randval = (16807*randval)%2147483647; retstg.push_back((char)(randval));}
+    if(valuelen>16) {
+      uint64_t randval = i;
+      retstg.reserve(valuelen-16);  // avoid multiple reallocations
+      for(size_t j=retstg.size();j<valuelen-16;++j){randval = (16807*randval)%2147483647; retstg.push_back((char)(randval));}
+    }
 #endif
     return retstg;
   }
+  // This version used for generatng new files.  The tests are exquisitely tuned to the file sizes, so we just copy what was done
+  std::string KeyBigNewFile(int key_idx, int i) { return KeyBig(key_idx, (i==99) ? 1 : 999) ; }
+  
   // like Key, but give a big Key suitable for keeping constant kv size regardless of indirects
   std::string KeyBig(const std::string& k, size_t valuelen) {
     std::string retstg;
@@ -912,6 +917,7 @@ class DBTestBase : public testing::Test {
   void GenerateNewFileBig(Random* rnd, int* key_idx, bool nowait = false);
 
   void GenerateNewFile(int fd, Random* rnd, int* key_idx, bool nowait = false);
+  void GenerateNewFileBig(int fd, Random* rnd, int* key_idx, bool nowait = false);
 
   static const int kNumKeysByGenerateNewRandomFile;
   static const int KNumKeysByGenerateNewFile = 100;

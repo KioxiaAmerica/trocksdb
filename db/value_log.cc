@@ -187,15 +187,28 @@ std::vector<Status>& resultstatus   // place to save error status.  For any file
   {
     unique_ptr<WritableFile> writable_file;
     iostatus = immdbopts_->env->NewWritableFile(fname,&writable_file,envopts_);  // open the file
-    if(iostatus.ok())iostatus = writable_file->Append(Slice(bytes));  // write out the data
+    if(iostatus.ok()){
+      iostatus = writable_file->Append(Slice(bytes));  // write out the data
+      if(!iostatus.ok())
+        printf("Error writing to VLog file ");
+    } else printf("Error opening VLog file ");
+    if(!iostatus.ok())printf("name=\"%s\"",fname.c_str());
 
   // Sync the written data.  We must make sure it is synced before the SSTs referring to it are committed to the manifest.
   // We might as well sync it right now
-    if(iostatus.ok())iostatus = writable_file->Fsync();
+    if(iostatus.ok()){
+      iostatus = writable_file->Fsync();
+      if(!iostatus.ok())
+        printf("Fsync error on VLog file \"%s\"",fname.c_str());
+    }
   }  // this closes the file
 
   // Reopen the file as randomly readable; install the new file into the ring
-  if(iostatus.ok())iostatus = immdbopts_->env->NewRandomAccessFile(fname, &fd_ring[new_ring_slot], envopts_);  // open the file - it must exist
+  if(iostatus.ok()){
+    iostatus = immdbopts_->env->NewRandomAccessFile(fname, &fd_ring[new_ring_slot], envopts_);  // open the file - it must exist
+    if(!iostatus.ok())
+      printf("Error reopening VLog file \"%s\" for random access",fname.c_str());
+  }
   // move the file reference into the ring, and publish it to all threads
 
   // Advance the shadow file pointer to indicate that the file is ready for reading.  Since other threads may be

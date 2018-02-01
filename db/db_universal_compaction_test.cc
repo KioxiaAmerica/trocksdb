@@ -263,12 +263,11 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionTrigger) {
   for (int num = 0; num < options.level0_file_num_compaction_trigger - 1;
        num++) {
     // Write 100KB
-    GenerateNewFile(1, &rnd, &key_idx);
+    GenerateNewFileBig(1, &rnd, &key_idx);
   }
-
   // Generate one more file at level-0, which should trigger level-0
   // compaction.
-  GenerateNewFile(1, &rnd, &key_idx);
+  GenerateNewFileBig(1, &rnd, &key_idx);
   // Suppose each file flushed from mem table has size 1. Now we compact
   // (level0_file_num_compaction_trigger+1)=4 files and should have a big
   // file of size 4.
@@ -285,13 +284,13 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionTrigger) {
   ASSERT_OK(Flush(1));
   for (int num = 0; num < options.level0_file_num_compaction_trigger - 3;
        num++) {
-    GenerateNewFile(1, &rnd, &key_idx);
+    GenerateNewFileBig(1, &rnd, &key_idx);
     ASSERT_EQ(NumSortedRuns(1), num + 3);
   }
 
   // Generate one more file at level-0, which should trigger level-0
   // compaction.
-  GenerateNewFile(1, &rnd, &key_idx);
+  GenerateNewFileBig(1, &rnd, &key_idx);
   // Before compaction, we have 4 files at level 0, with size 4, 0.4, 1, 1.
   // After compaction, we should have 2 files, with size 4, 2.4.
   ASSERT_EQ(NumSortedRuns(1), 2);
@@ -301,13 +300,13 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionTrigger) {
   //   generating new files at level 0.
   for (int num = 0; num < options.level0_file_num_compaction_trigger - 3;
        num++) {
-    GenerateNewFile(1, &rnd, &key_idx);
+    GenerateNewFileBig(1, &rnd, &key_idx);
     ASSERT_EQ(NumSortedRuns(1), num + 3);
   }
 
   // Generate one more file at level-0, which should trigger level-0
   // compaction.
-  GenerateNewFile(1, &rnd, &key_idx);
+  GenerateNewFileBig(1, &rnd, &key_idx);
   // Before compaction, we have 4 files at level 0, with size 4, 2.4, 1, 1.
   // After compaction, we should have 3 files, with size 4, 2.4, 2.
   ASSERT_EQ(NumSortedRuns(1), 3);
@@ -315,7 +314,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionTrigger) {
   // Stage 4:
   //   Now we have 3 files at level 0, with size 4, 2.4, 2. Let's generate a
   //   new file of size 1.
-  GenerateNewFile(1, &rnd, &key_idx);
+  GenerateNewFileBig(1, &rnd, &key_idx);
   dbfull()->TEST_WaitForCompact();
   // Level-0 compaction is triggered, but no file will be picked up.
   ASSERT_EQ(NumSortedRuns(1), 4);
@@ -324,7 +323,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionTrigger) {
   //   Now we have 4 files at level 0, with size 4, 2.4, 2, 1. Let's generate
   //   a new file of size 1.
   filter->expect_full_compaction_.store(true);
-  GenerateNewFile(1, &rnd, &key_idx);
+  GenerateNewFileBig(1, &rnd, &key_idx);
   dbfull()->TEST_WaitForCompact();
   // All files at level 0 will be compacted into a single one.
   ASSERT_EQ(NumSortedRuns(1), 1);
@@ -815,7 +814,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionStopStyleSimilarSize) {
        num++) {
     // Write 100KB (100 values, each 1K)
     for (int i = 0; i < 100; i++) {
-      ASSERT_OK(Put(Key(key_idx), RandomString(&rnd, 990)));
+      ASSERT_OK(PutBig(Key(key_idx), RandomString(&rnd, 990)));
       key_idx++;
     }
     dbfull()->TEST_WaitForFlushMemTable();
@@ -825,7 +824,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionStopStyleSimilarSize) {
   // Generate one more file at level-0, which should trigger level-0
   // compaction.
   for (int i = 0; i < 100; i++) {
-    ASSERT_OK(Put(Key(key_idx), RandomString(&rnd, 990)));
+    ASSERT_OK(PutBig(Key(key_idx), RandomString(&rnd, 990)));
     key_idx++;
   }
   dbfull()->TEST_WaitForCompact();
@@ -846,7 +845,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionStopStyleSimilarSize) {
        num++) {
     // Write 110KB (11 values, each 10K)
     for (int i = 0; i < 100; i++) {
-      ASSERT_OK(Put(Key(key_idx), RandomString(&rnd, 990)));
+      ASSERT_OK(PutBig(Key(key_idx), RandomString(&rnd, 990)));
       key_idx++;
     }
     dbfull()->TEST_WaitForFlushMemTable();
@@ -856,7 +855,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionStopStyleSimilarSize) {
   // Generate one more file at level-0, which should trigger level-0
   // compaction.
   for (int i = 0; i < 100; i++) {
-    ASSERT_OK(Put(Key(key_idx), RandomString(&rnd, 990)));
+    ASSERT_OK(PutBig(Key(key_idx), RandomString(&rnd, 990)));
     key_idx++;
   }
   dbfull()->TEST_WaitForCompact();
@@ -867,7 +866,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionStopStyleSimilarSize) {
   //   Now we have 3 files at level 0, with size 4, 0.4, 2. Generate one
   //   more file at level-0, which should trigger level-0 compaction.
   for (int i = 0; i < 100; i++) {
-    ASSERT_OK(Put(Key(key_idx), RandomString(&rnd, 990)));
+    ASSERT_OK(PutBig(Key(key_idx), RandomString(&rnd, 990)));
     key_idx++;
   }
   dbfull()->TEST_WaitForCompact();
@@ -896,7 +895,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCompressRatio1) {
   for (int num = 0; num < 2; num++) {
     // Write 110KB (11 values, each 10K)
     for (int i = 0; i < 11; i++) {
-      ASSERT_OK(Put(Key(key_idx), CompressibleString(&rnd, 10000)));
+      ASSERT_OK(PutBig(Key(key_idx), CompressibleString(&rnd, 10000)));
       key_idx++;
     }
     dbfull()->TEST_WaitForFlushMemTable();
@@ -908,7 +907,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCompressRatio1) {
   for (int num = 0; num < 2; num++) {
     // Write 110KB (11 values, each 10K)
     for (int i = 0; i < 11; i++) {
-      ASSERT_OK(Put(Key(key_idx), CompressibleString(&rnd, 10000)));
+      ASSERT_OK(PutBig(Key(key_idx), CompressibleString(&rnd, 10000)));
       key_idx++;
     }
     dbfull()->TEST_WaitForFlushMemTable();
@@ -921,7 +920,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCompressRatio1) {
   for (int num = 0; num < 2; num++) {
     // Write 110KB (11 values, each 10K)
     for (int i = 0; i < 11; i++) {
-      ASSERT_OK(Put(Key(key_idx), CompressibleString(&rnd, 10000)));
+      ASSERT_OK(PutBig(Key(key_idx), CompressibleString(&rnd, 10000)));
       key_idx++;
     }
     dbfull()->TEST_WaitForFlushMemTable();
@@ -934,7 +933,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCompressRatio1) {
   for (int num = 0; num < 8; num++) {
     // Write 110KB (11 values, each 10K)
     for (int i = 0; i < 11; i++) {
-      ASSERT_OK(Put(Key(key_idx), CompressibleString(&rnd, 10000)));
+      ASSERT_OK(PutBig(Key(key_idx), CompressibleString(&rnd, 10000)));
       key_idx++;
     }
     dbfull()->TEST_WaitForFlushMemTable();
@@ -964,7 +963,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCompressRatio2) {
   for (int num = 0; num < 14; num++) {
     // Write 120KB (12 values, each 10K)
     for (int i = 0; i < 12; i++) {
-      ASSERT_OK(Put(Key(key_idx), CompressibleString(&rnd, 10000)));
+      ASSERT_OK(PutBig(Key(key_idx), CompressibleString(&rnd, 10000)));
       key_idx++;
     }
     dbfull()->TEST_WaitForFlushMemTable();
@@ -1096,79 +1095,85 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionFourPaths) {
   // First three 110KB files are not going to second path.
   // After that, (100K, 200K)
   for (int num = 0; num < 3; num++) {
-    GenerateNewFile(&rnd, &key_idx);
+    GenerateNewFileBig(&rnd, &key_idx);
   }
 
   // Another 110KB triggers a compaction to 400K file to second path
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[2].path));
 
   // (1, 4)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1,1,4) -> (2, 4)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(0, GetSstFileCount(dbname_));
 
   // (1, 2, 4) -> (3, 4)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(0, GetSstFileCount(dbname_));
 
   // (1, 3, 4) -> (8)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[3].path));
 
   // (1, 8)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[3].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 1, 8) -> (2, 8)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[3].path));
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[1].path));
 
   // (1, 2, 8) -> (3, 8)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[3].path));
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(0, GetSstFileCount(dbname_));
 
   // (1, 3, 8) -> (4, 8)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[3].path));
 
   // (1, 4, 8) -> (5, 8)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[3].path));
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(0, GetSstFileCount(dbname_));
 
+#ifdef INDIRECT_VALUE_SUPPORT
+  const int bigvaluesize = 16;
+#else
+  const int bigvaluesize = 990;
+#endif
   for (int i = 0; i < key_idx; i++) {
-    auto v = Get(Key(i));
+    auto v = Get(KeyBigNewFile(i,i%100));
     ASSERT_NE(v, "NOT_FOUND");
-    ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+    ASSERT_TRUE(v.size() == 1 || v.size() == bigvaluesize);
   }
 
   Reopen(options);
 
   for (int i = 0; i < key_idx; i++) {
-    auto v = Get(Key(i));
+    auto v = Get(KeyBigNewFile(i,i%100));
     ASSERT_NE(v, "NOT_FOUND");
-    ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+    ASSERT_TRUE(v.size() == 1 || v.size() == bigvaluesize);
   }
 
   Destroy(options);
 }
 
 TEST_P(DBTestUniversalCompaction, IncreaseUniversalCompactionNumLevels) {
+  int const valuelen = 10000;
   std::function<void(int)> verify_func = [&](int num_keys_in_db) {
     std::string keys_in_db;
     Iterator* iter = dbfull()->NewIterator(ReadOptions(), handles_[1]);
@@ -1180,7 +1185,7 @@ TEST_P(DBTestUniversalCompaction, IncreaseUniversalCompactionNumLevels) {
 
     std::string expected_keys;
     for (int i = 0; i <= num_keys_in_db; i++) {
-      expected_keys.append(Key(i));
+      expected_keys.append(KeyBig(i,valuelen));
       expected_keys.push_back(',');
     }
 
@@ -1205,7 +1210,7 @@ TEST_P(DBTestUniversalCompaction, IncreaseUniversalCompactionNumLevels) {
 
   for (int i = 0; i <= max_key1; i++) {
     // each value is 10K
-    ASSERT_OK(Put(1, Key(i), RandomString(&rnd, 10000)));
+    ASSERT_OK(PutBig(1, i, valuelen, ValueBig(RandomString(&rnd, 10000))));
     dbfull()->TEST_WaitForFlushMemTable(handles_[1]);
     dbfull()->TEST_WaitForCompact();
   }
@@ -1223,7 +1228,7 @@ TEST_P(DBTestUniversalCompaction, IncreaseUniversalCompactionNumLevels) {
   // Insert more keys
   for (int i = max_key1 + 1; i <= max_key2; i++) {
     // each value is 10K
-    ASSERT_OK(Put(1, Key(i), RandomString(&rnd, 10000)));
+    ASSERT_OK(PutBig(1, i, valuelen, ValueBig(RandomString(&rnd, 10000))));
     dbfull()->TEST_WaitForFlushMemTable(handles_[1]);
     dbfull()->TEST_WaitForCompact();
   }
@@ -1255,7 +1260,7 @@ TEST_P(DBTestUniversalCompaction, IncreaseUniversalCompactionNumLevels) {
   // Insert more keys
   for (int i = max_key2 + 1; i <= max_key3; i++) {
     // each value is 10K
-    ASSERT_OK(Put(1, Key(i), RandomString(&rnd, 10000)));
+    ASSERT_OK(PutBig(1, i, valuelen, ValueBig(RandomString(&rnd, 10000))));
     dbfull()->TEST_WaitForFlushMemTable(handles_[1]);
     dbfull()->TEST_WaitForCompact();
   }
@@ -1296,70 +1301,76 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionSecondPathRatio) {
   // First three 110KB files are not going to second path.
   // After that, (100K, 200K)
   for (int num = 0; num < 3; num++) {
-    GenerateNewFile(&rnd, &key_idx);
+    GenerateNewFileBig(&rnd, &key_idx);
   }
 
   // Another 110KB triggers a compaction to 400K file to second path
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[1].path));
 
   // (1, 4)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1,1,4) -> (2, 4)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 2, 4) -> (3, 4)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(2, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(0, GetSstFileCount(dbname_));
 
   // (1, 3, 4) -> (8)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(0, GetSstFileCount(dbname_));
 
   // (1, 8)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 1, 8) -> (2, 8)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 2, 8) -> (3, 8)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(2, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(0, GetSstFileCount(dbname_));
 
   // (1, 3, 8) -> (4, 8)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(2, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(0, GetSstFileCount(dbname_));
 
   // (1, 4, 8) -> (5, 8)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx);
   ASSERT_EQ(2, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(0, GetSstFileCount(dbname_));
 
+#ifdef INDIRECT_VALUE_SUPPORT
+  const int bigvaluesize = 16;
+#else
+  const int bigvaluesize = 990;
+#endif
+
   for (int i = 0; i < key_idx; i++) {
-    auto v = Get(Key(i));
+    auto v = Get(KeyBigNewFile(i,i%100));
     ASSERT_NE(v, "NOT_FOUND");
-    ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+    ASSERT_TRUE(v.size() == 1 || v.size() == bigvaluesize);
   }
 
   Reopen(options);
 
   for (int i = 0; i < key_idx; i++) {
-    auto v = Get(Key(i));
+    auto v = Get(KeyBigNewFile(i,i%100));
     ASSERT_NE(v, "NOT_FOUND");
-    ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+    ASSERT_TRUE(v.size() == 1 || v.size() == bigvaluesize);
   }
 
   Destroy(options);
@@ -1390,7 +1401,7 @@ TEST_P(DBTestUniversalCompaction, FullCompactionInBottomPriThreadPool) {
     for (int num = 0; num < kNumFilesTrigger; num++) {
       ASSERT_EQ(NumSortedRuns(), num);
       int key_idx = 0;
-      GenerateNewFile(&rnd, &key_idx);
+      GenerateNewFileBig(&rnd, &key_idx);
     }
     dbfull()->TEST_WaitForCompact();
 
@@ -1442,7 +1453,7 @@ TEST_P(DBTestUniversalCompaction, ConcurrentBottomPriLowPriCompactions) {
   for (int i = 0; i < 2; ++i) {
     for (int num = 0; num < kNumFilesTrigger; num++) {
       int key_idx = 0;
-      GenerateNewFile(&rnd, &key_idx, true /* no_wait */);
+      GenerateNewFileBig(&rnd, &key_idx, true /* no_wait */);
       // use no_wait above because that one waits for flush and compaction. We
       // don't want to wait for compaction because the full compaction is
       // intentionally blocked while more files are flushed.
@@ -1490,7 +1501,7 @@ TEST_P(DBTestUniversalCompaction, RecalculateScoreAfterPicking) {
   for (int num = 0; num < kNumFilesTrigger; num++) {
     ASSERT_EQ(NumSortedRuns(), num);
     int key_idx = 0;
-    GenerateNewFile(&rnd, &key_idx);
+    GenerateNewFileBig(&rnd, &key_idx);
   }
   dbfull()->TEST_WaitForCompact();
   // Compacting the first four files was enough to bring the score below one so
