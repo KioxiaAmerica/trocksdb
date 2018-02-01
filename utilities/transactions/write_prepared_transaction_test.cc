@@ -333,7 +333,6 @@ INSTANTIATE_TEST_CASE_P(WritePreparedTransactionTest,
                         WritePreparedTransactionTest,
                         ::testing::Values(std::make_tuple(false, false,
                                                           WRITE_PREPARED)));
-#if 0  // scaf debug
 TEST_P(WritePreparedTransactionTest, CommitMapTest) {
   WritePreparedTxnDB* wp_db = dynamic_cast<WritePreparedTxnDB*>(db);
   assert(wp_db);
@@ -1283,7 +1282,6 @@ TEST_P(WritePreparedTransactionTest, RollbackTest) {
 
 // TODO(myabandeh): move it to transaction_test when it is extended to
 // WROTE_PREPARED.
-#endif
 // Test that the transactional db can handle duplicate keys in the write batch
 TEST_P(WritePreparedTransactionTest, DuplicateKeyTest) {
   for (bool do_prepare : {true, false}) {
