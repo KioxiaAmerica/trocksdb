@@ -175,7 +175,7 @@ include make_config.mk
 CLEAN_FILES += make_config.mk
 
 missing_make_config_paths := $(shell				\
-	grep "\/\S*" -o $(CURDIR)/make_config.mk | 		\
+	grep "./\S*\|/\S*" -o $(CURDIR)/make_config.mk | 	\
 	while read path;					\
 		do [ -e $$path ] || echo $$path; 		\
 	done | sort | uniq)
@@ -518,6 +518,30 @@ PARALLEL_TEST = \
 	transaction_test \
 	write_prepared_transaction_test
 
+#LOCK/CRASH test cases
+LOCKS= \
+	db_properties_test \
+	db_iterator_test \
+	db_dynamic_level_test \
+	db_bloom_filter_test \
+	db_test \
+	db_basic_test \
+	c_test \
+	db_compaction_filter_test \
+	db_compaction_test \
+	db_sst_test \
+	db_universal_compaction_test \
+	fault_injection_test \
+	external_sst_file_test \
+	stringappend_test \
+	ttl_test \
+	backupable_db_test \
+	compaction_job_stats_test \
+	write_prepared_transaction_test \
+	db_merge_operator_test \
+	transaction_test \
+	ldb_test.py
+
 SUBSET := $(TESTS)
 ifdef ROCKSDBTESTS_START
         SUBSET := $(shell echo $(SUBSET) | sed 's/^.*$(ROCKSDBTESTS_START)/$(ROCKSDBTESTS_START)/')
@@ -820,14 +844,16 @@ check: all
 	then                                                            \
 	    $(MAKE) T="$$t" TMPD=$(TMPD) check_0;                       \
 	else                                                            \
-	    for t in $(TESTS); do                                       \
+	    for t in $(filter-out $(LOCKS),$(TESTS)); do                                       \
 	      echo "===== Running $$t"; ./$$t || exit 1; done;          \
 	fi
 	rm -rf $(TMPD)
 ifneq ($(PLATFORM), OS_AIX)
 ifeq ($(filter -DROCKSDB_LITE,$(OPT)),)
+ifeq ($(filter ldb_test.py,$(LOCKS)),)
 	python tools/ldb_test.py
 	sh tools/rocksdb_dump_test.sh
+endif
 endif
 endif
 
