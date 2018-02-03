@@ -219,6 +219,10 @@ std::vector<Status>& resultstatus   // place to save error status.  For any file
     if(atomics.fd_ring_head_fileno_shadow.compare_exchange_strong(expected_fileno,fileno_for_writing,std::memory_order_acq_rel))break;
   };
 
+  // Because the write to the shadow pointer might not happen, we can't use that as a semaphore to Get().  Instead, use a release fence
+  // to publish the stores here to all threads
+  std::atomic_thread_fence(std::memory_order_release);
+
   // fill in the FileRef for the first value, with its length
   firstdataref.FillVLogRingRef(ringno_,fileno_for_writing,0,rcdend[0]);  // scaf offset goes away
 
@@ -269,9 +273,9 @@ Status VLogRing::VLogRingGet(
   RandomAccessFile *selectedfile;
   while(1) {
     if((selectedfile = fd_ring[Ringx(request.Fileno())].get()) != nullptr)break;  // read the file number.  This will usually succeed
-    // Here the file pointer is not valid.  It is possible that we have an unupdated local copy.  To update it, do an acquire on the
-    // shadow pointer, which is updated after the file pointer is modified
-    atomics.fd_ring_head_fileno_shadow.load(std::memory_order_acquire);
+    // Here the file pointer is not valid.  It is possible that we have an unupdated local copy.  To update it, issue an acquire fence
+    // to synchronize to earlier reads
+    std::atomic_thread_fence(std::memory_order_acquire);
   }
 
   Status iostatus = selectedfile->Read(request.Offset(), request.Len(), &resultslice, (char *)response->data());  // read the data

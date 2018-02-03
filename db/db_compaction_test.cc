@@ -1606,7 +1606,7 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionThirdPath) {
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   for (int i = 0; i < key_idx; i++) {
-    auto v = Get(KeyBig(i,990));
+    auto v = Get(KeyBigNewFile(i,i%100));
     ASSERT_NE(v, "NOT_FOUND");
     ASSERT_TRUE(v.size() == 1 || v.size() == largevaluesize);
   }
@@ -1614,7 +1614,7 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionThirdPath) {
   Reopen(options);
 
   for (int i = 0; i < key_idx; i++) {
-    auto v = Get(KeyBig(i,990));
+    auto v = Get(KeyBigNewFile(i,i%100));
     ASSERT_NE(v, "NOT_FOUND");
     ASSERT_TRUE(v.size() == 1 || v.size() == largevaluesize);
   }
