@@ -125,7 +125,7 @@ else  // scaf debug
   // Because the write to the shadow pointer might not happen, we can't use that as a semaphore to Get().  Instead, use a release fence
   // to publish the stores here to all threads
   std::atomic_thread_fence(std::memory_order_release);
-printf("std::atomic_thread_fence(std::memory_order_release)\n");  // scaf debug
+printf("VLogInit: std::atomic_thread_fence(std::memory_order_release)\n");  // scaf debug
 
   
   // install references into queue  scaf
@@ -239,7 +239,7 @@ else  // scaf debug
   // Because the write to the shadow pointer might not happen, we can't use that as a semaphore to Get().  Instead, use a release fence
   // to publish the stores here to all threads
   std::atomic_thread_fence(std::memory_order_release);
-printf("std::atomic_thread_fence(std::memory_order_release)\n");  // scaf debug
+printf("VLogRingWrite: std::atomic_thread_fence(std::memory_order_release)\n");  // scaf debug
 
   // fill in the FileRef for the first value, with its length
   firstdataref.FillVLogRingRef(ringno_,fileno_for_writing,0,rcdend[0]);  // scaf offset goes away
@@ -294,8 +294,8 @@ int retrycount = 0;  // scaf debug
     if((selectedfile = fd_ring[Ringx(request.Fileno())].get()) != nullptr)break;  // read the file number.  This will usually succeed
     // Here the file pointer is not valid.  It is possible that we have an unupdated local copy.  To update it, issue an acquire fence
     // to synchronize to earlier reads
-if(retrycount = 0){  // scaf debug
-  printf("Read from fd_ring[%zd] returned nullptr.  Address of fd_ring is %p\n",Ringx(request.Fileno()),fd_ring.data());  // scaf debug
+if((retrycount%100000) == 0){  // scaf debug
+  printf("Read from fd_ring[%zd] returned nullptr.  Address of fd_ring is %p, retrycount=%d\n",Ringx(request.Fileno()),fd_ring.data(),retrycount);  // scaf debug
 }  // scaf debug
     std::atomic_thread_fence(std::memory_order_acquire);
   }
