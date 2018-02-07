@@ -90,6 +90,12 @@ if(latest_ref<fnring.fileno)latest_ref = fnring.fileno;  // scaf
         if((immdbopts_->env->NewRandomAccessFile(pathfname, &fileptr,envopts_)).ok()){  // open the file if it exists
           // move the file reference into the ring, and publish it to all threads
           fd_ring[Ringx(fnring.fileno)]=std::move(fileptr);
+size_t new_ring_slot = Ringx(fnring.fileno); // scaf debug
+if(fd_ring[new_ring_slot].get()==nullptr)  // scaf debug
+  printf("nullptr written to fd_ring[%zd]!  fd_ring=%p\n",new_ring_slot,fd_ring.data());  // scaf debug
+else  // scaf debug
+  printf("%p written to fd_ring[%zd]  fd_ring=%p\n",fd_ring[new_ring_slot].get(),new_ring_slot,fd_ring.data());  // scaf debug
+
         }   // if error opening file, we can't do anything useful, so leave file unopened, which will give an error if a value in it is referenced
 // scaf error?
       } else {
@@ -116,6 +122,12 @@ if(latest_ref<fnring.fileno)latest_ref = fnring.fileno;  // scaf
   atomics.usecount.store(0,std::memory_order_release);
   atomics.writelock.store(0,std::memory_order_release);
 
+  // Because the write to the shadow pointer might not happen, we can't use that as a semaphore to Get().  Instead, use a release fence
+  // to publish the stores here to all threads
+  std::atomic_thread_fence(std::memory_order_release);
+printf("std::atomic_thread_fence(std::memory_order_release)\n");  // scaf debug
+
+  
   // install references into queue  scaf
 
 }
@@ -208,6 +220,11 @@ std::vector<Status>& resultstatus   // place to save error status.  For any file
     iostatus = immdbopts_->env->NewRandomAccessFile(fname, &fd_ring[new_ring_slot], envopts_);  // open the file - it must exist
     if(!iostatus.ok())
       printf("Error reopening VLog file \"%s\" for random access",fname.c_str());
+if(fd_ring[new_ring_slot].get()==nullptr)  // scaf debug
+  printf("nullptr written to fd_ring[%zd]!  fd_ring=%p\n",new_ring_slot,fd_ring.data());  // scaf debug
+else  // scaf debug
+  printf("%p written to fd_ring[%zd]  fd_ring=%p\n",fd_ring[new_ring_slot].get(),new_ring_slot,fd_ring.data());  // scaf debug
+
   }
   // move the file reference into the ring, and publish it to all threads
 
@@ -222,6 +239,7 @@ std::vector<Status>& resultstatus   // place to save error status.  For any file
   // Because the write to the shadow pointer might not happen, we can't use that as a semaphore to Get().  Instead, use a release fence
   // to publish the stores here to all threads
   std::atomic_thread_fence(std::memory_order_release);
+printf("std::atomic_thread_fence(std::memory_order_release)\n");  // scaf debug
 
   // fill in the FileRef for the first value, with its length
   firstdataref.FillVLogRingRef(ringno_,fileno_for_writing,0,rcdend[0]);  // scaf offset goes away
@@ -271,12 +289,17 @@ Status VLogRing::VLogRingGet(
   // been updated long before we need them.  If the current values indicate invalid references or nonexistent pointers
   // wait a little while and retry, before giving up
   RandomAccessFile *selectedfile;
+int retrycount = 0;  // scaf debug
   while(1) {
     if((selectedfile = fd_ring[Ringx(request.Fileno())].get()) != nullptr)break;  // read the file number.  This will usually succeed
     // Here the file pointer is not valid.  It is possible that we have an unupdated local copy.  To update it, issue an acquire fence
     // to synchronize to earlier reads
+if(retrycount = 0){  // scaf debug
+  printf("Read from fd_ring[%zd] returned nullptr.  Address of fd_ring is %p\n",Ringx(request.Fileno()),fd_ring.data());  // scaf debug
+}  // scaf debug
     std::atomic_thread_fence(std::memory_order_acquire);
   }
+if(retrycount)printf("read from ring succeeded after %d retries\n",retrycount);  // scaf debug
 
   Status iostatus = selectedfile->Read(request.Offset(), request.Len(), &resultslice, (char *)response->data());  // read the data
   // If the result is not in the user's buffer, copy it to there
