@@ -129,7 +129,7 @@ printf("\n");
   // When we are outputting the last kv for the current file, we return 1 to request that the current output file be closed
   // We advance the output pointer until we hit the file containing the current record; then we output 'end' on the last record
   // This DOES NOT handle the case of SSTs with no records (they would need to skip over an empty output file), but those should not occur anyway
-  int OverrideClose() { if(!use_indirects_ || filereccnts.size()==0) return 0; while(keyno_>filereccnts[outputfileno])outputfileno++; return (keyno_==filereccnts[outputfileno])?1:-1; }
+  int OverrideClose() { if(!use_indirects_ || filecumreccnts.size()==0) return 0; while(keyno_>filecumreccnts[outputfileno])outputfileno++; return (keyno_==filecumreccnts[outputfileno])?1:-1; }
 
 private:
   Slice key_;  // the next key to return, if it is Valid()
@@ -164,7 +164,7 @@ struct RingFno {
   std::vector<RingFno> diskfileref;   // where we hold the reference values from the input passthroughs
   RingFno prevringfno;  // set to the ring/file for the key we are returning now.  It is not included in the ref0_ value until
     // the NEXT key is returned (this to match the way the compaction job uses the iterator), at which time it is the previous key to use
-  std::vector<size_t> filereccnts;  // record# of the last kvs in each of the input files we encounter
+  std::vector<size_t> filecumreccnts;  // record# of the last kvs in each of the input files we encounter
   size_t outputfileno;  // For AR, the file number of the current kv being returned.  When it changes we call for a new file in the compaction
 
   size_t keyno_;  // number of keys processed previously

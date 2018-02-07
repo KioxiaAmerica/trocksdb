@@ -28,13 +28,12 @@ extern void ProbDelay() {
 #endif
 
 // given the running-sum of record-lengths rcdend, and the maximum filesize, break the input into chunks of approximately equal size
-// result is given in filereccnts which is the list of record counts per file
-void BreakRecordsIntoFiles(std::vector<size_t>& filereccnts, std::vector<VLogRingRefFileOffset>& rcdend, int64_t maxfilesize){
-  filereccnts.clear(); filereccnts.reserve(32); // clear the result area; reserve more space than we figure to need
+// result is given in filecumreccnts which is the list of record counts per file
+void BreakRecordsIntoFiles(std::vector<size_t>& filecumreccnts, std::vector<VLogRingRefFileOffset>& rcdend, int64_t maxfilesize){
+  filecumreccnts.clear(); filecumreccnts.reserve(32); // clear the result area; reserve more space than we figure to need
   // split the input into file-sized pieces
   // Loop till we have processed all the inputs
   int64_t prevbytes = 0;  // total bytes written to previous files
-  size_t prevrcdx = 0;  // starting position of the next file
   for(size_t rcdx = 0; rcdx<rcdend.size();++rcdx){   // rcdx is the index of the next input record to process
     // Calculate the output filesize, erring on the side of larger files.  In other words, we round down the number
     // of files needed, and get the target filesize from that.  For each calculation we use the number of bytes remaining
@@ -49,10 +48,10 @@ void BreakRecordsIntoFiles(std::vector<size_t>& filereccnts, std::vector<VLogRin
     int64_t targetfileend = prevbytes + (int64_t)(bytesleft/targetfilect);  // min endpoint for this file (min number of bytes plus number of bytes previously output)
     // Allocate records to this file until the minimum fileend is reached.  Use binary search in case there are a lot of small files (questionable decision, since
     // the files would have been added one by one)
-    size_t left = rcdx-1;  // init brackets for search
+    int64_t left = rcdx-1;  // init brackets for search
     // the loop variable rcdx will hold the result of the search, fulfilling its role as pointer to the end of the written block
     rcdx=rcdend.size()-1;
-    while(rcdx!=(left+1)) {
+    while(rcdx!=(left+1)) {  // binary search
       // at top of loop rcdend[left]<targetfileend and rcdend[rcdx]>=targetfileend.  This remains invariant.  Note that left may be before the search region, or even -1
       // Loop terminates when rcdx-left=1; at that point rcdx points to the ending record, i. e. the first record that contains enough data
       // Calculate the middle record position, which is known not to equal an endpoint (since rcdx-left>1)
@@ -61,7 +60,7 @@ void BreakRecordsIntoFiles(std::vector<size_t>& filereccnts, std::vector<VLogRin
       if(rcdend[mid]<targetfileend)left=mid; else rcdx=mid;
     }
     // rcdend[rcdx] has the file length.  Call for the output file.
-    filereccnts.push_back(rcdx-prevrcdx);  // push # records in output file
+    filecumreccnts.push_back(rcdx+1);  // push # records in output file
     prevbytes = rcdend[rcdx];  // update total # bytes written
   }
 }
@@ -399,9 +398,9 @@ std::vector<Status>& resultstatus   // result: place to save error status.  For 
   // This also avoids errors if there are no references
   if(!bytes.size())return;   // fast exit if no data
 
-  std::vector<size_t> filereccnts;  // this will hold the # records in each file
-  BreakRecordsIntoFiles(filereccnts, rcdend, maxfilesize);  // calculate filereccnts
-  fileendoffsets.clear(); fileendoffsets.reserve(filereccnts.size());  //clear output area and give it the correct size
+  std::vector<size_t> filecumreccnts;  // this will hold the # records in each file
+  BreakRecordsIntoFiles(filecumreccnts, rcdend, maxfilesize);  // calculate filecumreccnts
+  fileendoffsets.clear(); fileendoffsets.reserve(filecumreccnts.size());  //clear output area and give it the correct size
 
 
   std::vector<VLogRingFileDeletion> deleted_files;  // files put here will be deleted after we release the lock
@@ -423,13 +422,13 @@ ProbDelay();
 #if DELAYPROB
 ProbDelay();
 #endif 
-    }while(2==(currentarray = ResizeRingIfNecessary(tailfile,headfile,currentarray,filereccnts.size())));  // return of 2 means 'retry required', otherwise new currentarray
+    }while(2==(currentarray = ResizeRingIfNecessary(tailfile,headfile,currentarray,filecumreccnts.size())));  // return of 2 means 'retry required', otherwise new currentarray
 
     // Allocate file#s for this write.
     VLogRingRefFileno fileno_for_writing = headfile+1;
   
     // Move the reservation pointer in the file.  Does not have to be atomic with the read, since we have acquired writelock
-    atomics.fd_ring_head_fileno.store(headfile+filereccnts.size(),std::memory_order_release);
+    atomics.fd_ring_head_fileno.store(headfile+filecumreccnts.size(),std::memory_order_release);
 #if DELAYPROB
 ProbDelay();
 #endif 
@@ -443,7 +442,7 @@ ProbDelay();
       // deletions - while NOT holding the lock - and then count the number of deletions
       ReleaseLock(); deleted_files.reserve(max_simultaneous_deletions); AcquireLock(); // reserve space to save deletions, outside of lock
       // Go get list of files to delete, updating the tail pointer if there are any.  CollectDeletions will reestablish tailptr, arrayx, slotx
-      CollectDeletions(tailfile,headfile+filereccnts.size(),deleted_files);  // find deletions
+      CollectDeletions(tailfile,headfile+filecumreccnts.size(),deleted_files);  // find deletions
     }
 
   ReleaseLock();
@@ -462,17 +461,15 @@ printf("Head pointer set; pointers=%lld %lld\n",atomics.fd_ring_tail_fileno.load
   std::vector<std::unique_ptr<RandomAccessFile>> filepointers;  // pointers to the files, as random-access
 
   size_t startofnextfile = 0;  // starting position of the next file.  Starts at beginning, advances by file-length
-  size_t recdsinprevfiles = 0;   // # records in files already written
 
 #if DEBLEVEL&2
-printf("Writing %zd sequential files, %zd values, %zd bytes\n",filereccnts.size(),rcdend.size(), bytes.size());
+printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.size(),rcdend.size(), bytes.size());
 #endif
 
   // Loop for each file: create it, reopen as random-access
-  for(int i=0;i<filereccnts.size();++i) {
+  for(int i=0;i<filecumreccnts.size();++i) {
     Status iostatus;  // where we save status from the file I/O
-    recdsinprevfiles += filereccnts[i];  // get total # rcds up to and including the new file
-    size_t lenofthisfile = rcdend[recdsinprevfiles-1] - startofnextfile;  // total len up through new file, minus starting position
+    size_t lenofthisfile = rcdend[filecumreccnts[i]-1] - startofnextfile;  // total len up through new file, minus starting position
 
     // Pass aligned buffer when use_direct_io() returns true.   scaf ??? what do we do for direct_io?
     // Create filename for the file to write

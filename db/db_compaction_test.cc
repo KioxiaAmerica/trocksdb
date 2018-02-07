@@ -236,7 +236,7 @@ TEST_F(DBCompactionTest, IndirectTest) {
   int32_t key_size = 10 * 1024 - value_size;
   int32_t value_size_var = 20;
   int32_t key_size_var = 1000;
-  int32_t batch_size = 200000;
+  int32_t batch_size = 20000;
 
   // Add 2 non-overlapping files
   Random rnd(301);

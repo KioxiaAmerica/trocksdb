@@ -1674,10 +1674,22 @@ void VersionStorageInfo::UpdateFilesByCompactionPri(
         int ring; VLogRingRefFileno file0; VLogRingRefFileno nfiles;
         GetVLogReshapingParms(level, &ring, &file0, &nfiles);
         if(file0) {
+          // if there are rings for this level, include the file numbers that will be freed in the computation of which file to compact
+          // We want to give preference to compactions that will free up files near the tail of the VLog, because the fragmentation added
+          // by those compactions will be cleaned up earliest
           std::partial_sort(temp.begin(), temp.begin() + num, temp.end(),
                   [this,ring,file0,nfiles](const Fsize& f1, const Fsize& f2) -> bool {
                     return GetFileVLogCompactionPriority(f1.file,ring,file0,nfiles) > GetFileVLogCompactionPriority(f2.file,ring,file0,nfiles);
                   });
+// scaf note it appears that compactions may get dropped from level 0 into level 2, which leaves the files in level 1 old &, because we don't refigure the overlaps, with way-out-of-date avgnos
+#if 1 // scaf for debug
+printf("level %d ring %d file0=%zd nfiles=%zd.  ",level,ring,file0,nfiles);
+size_t topn = num; if(topn>10)topn=10; printf("Top %zd files: \n",topn);
+for(size_t i=0;i<topn;++i){
+  ParsedFnameRing filering{temp[i].file->avgparentfileno};
+  printf("%2zd: index=%zd avgparent=%zd ring=%d  size=%zd\n",i,temp[i].index,filering.fileno(),filering.ringno(),temp[i].file->compensated_file_size);
+}
+#endif
           break;
         }
         }  // fall through to non-VLog ordering if there are no VLogs

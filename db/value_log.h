@@ -89,7 +89,7 @@ typedef uint64_t VLogRingRefFileno;
 typedef int64_t VLogRingRefFileOffset;   // signed because negative values are used to indicate error
 typedef uint64_t VLogRingRefFileLen;
 
-extern void BreakRecordsIntoFiles(std::vector<size_t>& filereccnts, std::vector<VLogRingRefFileOffset>& rcdend, int64_t maxfilesize);
+extern void BreakRecordsIntoFiles(std::vector<size_t>& filecumreccnts, std::vector<VLogRingRefFileOffset>& rcdend, int64_t maxfilesize);
 
 // Constants (some will be replaced by options)
 

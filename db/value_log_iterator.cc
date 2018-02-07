@@ -116,7 +116,7 @@ printf("\n");
     std::vector<VLogRingRefFileOffset> outputrcdend; outputrcdend.reserve(10000); // each entry here is the running total of the bytecounts that will be sent to the SST from each kv
 
     // For AR, create the list of number of records in each input file.
-    filereccnts.clear(); if(recyciter!=nullptr)filereccnts.resize((const_cast<Compaction *>(compaction))->inputs()->size());
+    filecumreccnts.clear(); if(recyciter!=nullptr)filecumreccnts.resize((const_cast<Compaction *>(compaction))->inputs()->size());
     // Read all the kvs from c_iter and save them.  We start at the first kv
     // We create:
     // diskdata - the compressed, CRCd, values to write to disk.  Stored in key order.
@@ -273,7 +273,7 @@ ProbDelay();
 
       // Associate the valid kv with the file it comes from.  We store the current record # into the file# slot it came from, so
       // that when it's all over each slot contains the record# of the last record (except for empty files which contain 0 as the ending record#)
-      if(recyciter!=nullptr)filereccnts[recyciter->fileindex()] = valueclass.size();
+      if(recyciter!=nullptr)filecumreccnts[recyciter->fileindex()] = valueclass.size();
 
       // We have processed one key from the compaction iterator - get the next one
       c_iter->Next();
@@ -301,8 +301,8 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
     if(outputerrorstatus.empty()) {
       // No error reading keys and writing to disk.
       // If this is NOT Active Recycling, allocate the kvs to SSTs so as to keep files sizes equal
-      if(recyciter==nullptr)BreakRecordsIntoFiles(filereccnts, outputrcdend, compaction->max_output_file_size());  // calculate filereccnts
-      // now filereccnts has the length in kvs of each eventual output file.  For AR, we mimic the input; for compaction, we create new files
+      if(recyciter==nullptr)BreakRecordsIntoFiles(filecumreccnts, outputrcdend, compaction->max_output_file_size());  // calculate filecumreccnts
+      // now filecumreccnts has the length in kvs of each eventual output file.  For AR, we mimic the input; for compaction, we create new files
 
       // set up to read first key
       // set up the variables for the first key

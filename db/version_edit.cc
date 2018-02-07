@@ -207,7 +207,8 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
       }
       if (f.avgparentfileno) {
         PutVarint32(dst, CustomTag::kAvgFileRef);  // write out the record type
-        PutVarint64(dst, f.avgparentfileno);  // write out total field length
+        PutVarint32(dst, VarintLength(f.avgparentfileno));  // write out total field length
+        PutVarint64(dst, f.avgparentfileno);  // write out the data: average file position
       }
 #endif
       TEST_SYNC_POINT_CALLBACK("VersionEdit::EncodeTo:NewFile4:CustomizeFields",
