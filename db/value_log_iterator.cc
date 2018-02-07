@@ -65,7 +65,7 @@ static void reserveatleast(std::vector<NoInitChar>& vec, size_t reservation) {
   IndirectIterator::IndirectIterator(
    CompactionIterator* c_iter,   // the input iterator that feeds us kvs.
    ColumnFamilyData* cfd,  // the column family we are working on
-   const Compaction *compaction,   // variuos info for this compaction
+   const Compaction *compaction,   // various info for this compaction
    Slice *end,  // end+1 key in range, if given
    bool use_indirects,  // if false, just pass c_iter through
    RecyclingIterator *recyciter  // null if not Active Recycling; then, points to the iterator
@@ -113,6 +113,7 @@ printf("Creating iterator for level=%d, earliest_passthrough=",level);
 printf("\n");
 #endif
     addedfrag.clear(); addedfrag.resize(current_vlog->rings_.size());   // init the fragmentation count to 0 for each ring
+    std::vector<VLogRingRefFileOffset> outputrcdend; outputrcdend.reserve(10000); // each entry here is the running total of the bytecounts that will be sent to the SST from each kv
 
     // For AR, create the list of number of records in each input file.
     filereccnts.clear(); if(recyciter!=nullptr)filereccnts.resize((const_cast<Compaction *>(compaction))->inputs()->size());
@@ -128,10 +129,12 @@ printf("\n");
     // They are immediately passed to Builder which must make a copy of the data.
     std::vector<NoInitChar> diskdata;  // where we accumulate the data to write
     std::string indirectbuffer;   // temp area where we read indirect values that need to be remapped
+    size_t totalsstlen=0;  // total length so far that will be written to the SST
     while(c_iter->Valid() && 
            !(recyciter==nullptr && end != nullptr && pcfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0)) {
       // process this kv.  It is valid and the key is not past the specified ending key
       char vclass;   // disposition of this value
+      size_t sstvaluelen;  // length of the value that will be written to the sst for this kv
 
       // If there is error status, save it.  We save only errors
       if(c_iter->status().ok())vclass = vNone;
@@ -154,6 +157,7 @@ printf("\n");
       keys.append(key.data(),key.size());   // save the key...
       keylens.push_back(key.size());    // ... and its length
       Slice &val = (Slice &) c_iter->value();  // read the value
+      sstvaluelen = val.size();  // if value passes through, its length will go to the SST
       if(IsTypeDirect(c_iter->ikey().type) && val.size() > 0 ) {  // scaf compare against min length
         // direct value that should be indirected
         vclass += vIndirectFirstMap;  // indicate the conversion
@@ -165,6 +169,7 @@ printf("\n");
         diskdata.resize(diskdata.size()+val.size());  // advance end pointer past end of new data
         memcpy(bufend,val.data(),val.size());  // move in the new data
         diskrecl.push_back(diskdata.size());   // write running sum of record lengths, i. e. current total size of diskdata
+        sstvaluelen = VLogRingRef::sstrefsize;  // what we write to the SST will be a reference
       } else if(IsTypeIndirect(c_iter->ikey().type)) {  // is indirect ref?
         // value is indirect; does it need to be remapped?
         assert(val.size()==16);  // should be a reference
@@ -174,6 +179,7 @@ printf("\n");
             inputerrorstatus.push_back(Status::Corruption("indirect reference is ill-formed."));
             vclass += vHasError;  // indicate that this key now carries error status...
             val = Slice();   // expunge the errant reference.  This will be treated as a passthrough below
+            sstvaluelen = 0;  // the value now has 0 length.  Non-erroneous indirects keep their length from the file
 // scaf log it?
           }
         } else {
@@ -185,6 +191,7 @@ printf("\n");
               inputerrorstatus.push_back(Status::Corruption("indirect reference is ill-formed."));
               vclass += vHasError;  // indicate that this key now carries error status...
               val = Slice();   // expunge the errant reference.  This will be treated as a passthrough below
+              sstvaluelen = 0;  // the value now has 0 length.  Non-erroneous indirects keep their length from the file
             }
           } else if(ref.Ringno()!=outputringno || ref.Fileno()<earliest_passthrough) {  // file number is too low to pass through
             // indirect value being remapped.  Replace val with the data from disk
@@ -261,6 +268,9 @@ ProbDelay();
       // save the type of record for use in the replay
       valueclass.push_back(vclass);
 
+      // save the total length of the kv that will be written to the SST, so we can plan file sizes
+      outputrcdend.push_back(totalsstlen += key.size()+VarintLength(key.size())+sstvaluelen+VarintLength(sstvaluelen));
+
       // Associate the valid kv with the file it comes from.  We store the current record # into the file# slot it came from, so
       // that when it's all over each slot contains the record# of the last record (except for empty files which contain 0 as the ending record#)
       if(recyciter!=nullptr)filereccnts[recyciter->fileindex()] = valueclass.size();
@@ -289,7 +299,12 @@ ProbDelay();
 printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.size());
 #endif
     if(outputerrorstatus.empty()) {
-      // No error reading: set up to read first key
+      // No error reading keys and writing to disk.
+      // If this is NOT Active Recycling, allocate the kvs to SSTs so as to keep files sizes equal
+      if(recyciter==nullptr)BreakRecordsIntoFiles(filereccnts, outputrcdend, compaction->max_output_file_size());  // calculate filereccnts
+      // now filereccnts has the length in kvs of each eventual output file.  For AR, we mimic the input; for compaction, we create new files
+
+      // set up to read first key
       // set up the variables for the first key
       keyno_ = 0;  // we start on the first key
       keysx_ = 0;   // it is at position 0 in keys[]

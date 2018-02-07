@@ -44,6 +44,10 @@
 #include "options/db_options.h"
 #include "port/port.h"
 #include "rocksdb/env.h"
+#ifdef INDIRECT_VALUE_SUPPORT
+#include <math.h>
+#include "db/value_log.h"
+#endif
 
 namespace rocksdb {
 
@@ -111,6 +115,33 @@ class VersionStorageInfo {
 
 #ifdef INDIRECT_VALUE_SUPPORT
   ColumnFamilyData* GetCfd() { return cfd_; }
+
+  // Return the low file# and range for the ring at this level.  If no ring, return 0 for file#
+  void GetVLogReshapingParms(int level, int *ring, VLogRingRefFileno *file0, VLogRingRefFileno *nfiles) {
+    // if there are no VLog or rings, return 0
+    *file0 = 0;  // init 'no info' return
+    if(cfd_->vlog())cfd_->vlog()->GetVLogReshapingParms(level, ring, file0, nfiles);  // If there is a VLog, ask it
+    return;
+  }
+  // Return the effective filesize for the file, taking position into account
+  // We mark up the sizes of files the closer their children are to the head of the result ring.
+  // Because the VLog SSTs are managed to avoid runt files, they will generally have a small variance in sizes -
+  // maybe 10% of a file.  This means that the markup based on position will usually be decisive, and we will be
+  // compacting the files near the head of the ring almost always.
+  // files that have no average parent position use a position toward the beginning of the tail region.
+  double GetFileVLogCompactionPriority(FileMetaData *f, int ring, VLogRingRefFileno file0, VLogRingRefFileno nfiles){
+    // if there is no ring information, or no position information, leave file size as is, which corresponds to end-of-tail position
+    if(file0 == 0 || f->avgparentfileno == 0)return (double)f->compensated_file_size;
+    ParsedFnameRing avgparent(f->avgparentfileno);  // split ring/file into ring and file
+    if(avgparent.ringno()!=ring || avgparent.fileno()==0)return (double)f->compensated_file_size;  // if no valid file ref, use default
+    // We calculate x=fractional position of result in the result ring (0=head,1=tail).  Then, bias down so that a position at the end of the tail has fraction 0.
+    // Here, the end of the tail is placed at 0.3 of the way from the tail to the head
+    // Then, reshape the curve by using biasedx as an exponent.  The base is chosen to make a certain range fraction of the filespace (0.1 here)
+    // correspond to a doubling of the effective filesize
+    const double base = exp(std::log(2.0)/0.10);  // 0.1 of the log size corresponds to factor of 2 in effective size    scaf use options
+    const double bias = 0.3;  // end of the tail is at 0.3
+    return f->compensated_file_size * std::pow(base , bias-((double)(avgparent.fileno()-file0)/(double)nfiles));  // effective size
+  }
 #endif
 
   // Update num_non_empty_levels_.

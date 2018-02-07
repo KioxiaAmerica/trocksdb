@@ -931,8 +931,8 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
     // If we are Active Recycling, we close exactly when the input file runs out of records.  The override code indicates this:
     // 0=no override, proceed normally, closing based oon size; 1=override, close now; -1=override, don't close
     int overrideclose = value_iter->OverrideClose();
-if((sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling) ^ (overrideclose!=0))
-  printf("overrideclose value %d invalid\n",overrideclose);  // scaf
+// scaf we will have to be more subtle... if a file is closed because of ShouldStopBefore, we need to change the overrideclose result to avoid runts
+// scaf we need to subsume the logic for ShouldStopBefore into the OverrideClose calc
 #else
 #define overrideclose 0
 #endif
@@ -947,17 +947,16 @@ if((sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRec
     // and 0.6MB instead of 1MB and 0.2MB)
     bool output_file_ended = false;
     Status input_status;
-    if (overrideclose>0 || (!overrideclose && sub_compact->compaction->output_level() != 0 &&
+    if (sub_compact->compaction->output_level() != 0 && (overrideclose>0 || (!overrideclose && 
         sub_compact->current_output_file_size >=
-            sub_compact->compaction->max_output_file_size())) {
+            sub_compact->compaction->max_output_file_size()))) {
       // (1) this key terminates the file. For historical reasons, the iterator
       // status before advancing will be given to FinishCompactionOutputFile().
       input_status = input->status();
       output_file_ended = true;
     }
     value_iter->Next();
-    if (!overrideclose && !output_file_ended && value_iter->Valid() &&
-        sub_compact->compaction->output_level() != 0 &&
+    if (sub_compact->compaction->output_level() != 0 && !overrideclose && !output_file_ended && value_iter->Valid() &&
         sub_compact->ShouldStopBefore(
           value_iter->key(), sub_compact->current_output_file_size) &&
         sub_compact->builder != nullptr) {

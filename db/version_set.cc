@@ -1668,6 +1668,20 @@ void VersionStorageInfo::UpdateFilesByCompactionPri(
     }
     switch (compaction_pri) {
       case kByCompensatedSize:
+#ifdef INDIRECT_VALUE_SUPPORT
+        {
+        // see if the current CF has VLogs, and get the scope of the result ring if so
+        int ring; VLogRingRefFileno file0; VLogRingRefFileno nfiles;
+        GetVLogReshapingParms(level, &ring, &file0, &nfiles);
+        if(file0) {
+          std::partial_sort(temp.begin(), temp.begin() + num, temp.end(),
+                  [this,ring,file0,nfiles](const Fsize& f1, const Fsize& f2) -> bool {
+                    return GetFileVLogCompactionPriority(f1.file,ring,file0,nfiles) > GetFileVLogCompactionPriority(f2.file,ring,file0,nfiles);
+                  });
+          break;
+        }
+        }  // fall through to non-VLog ordering if there are no VLogs
+#endif
         std::partial_sort(temp.begin(), temp.begin() + num, temp.end(),
                           CompareCompensatedSizeDescending);
         break;

@@ -89,6 +89,8 @@ typedef uint64_t VLogRingRefFileno;
 typedef int64_t VLogRingRefFileOffset;   // signed because negative values are used to indicate error
 typedef uint64_t VLogRingRefFileLen;
 
+extern void BreakRecordsIntoFiles(std::vector<size_t>& filereccnts, std::vector<VLogRingRefFileOffset>& rcdend, int64_t maxfilesize);
+
 // Constants (some will be replaced by options)
 
 static const std::string kRocksDbVLogFileExt = "vlg";   // extension for vlog files is vlgxxx when xxx is CF name
@@ -188,6 +190,8 @@ void SetLen(VLogRingRefFileLen l) { len = l; }
 // Create Filenumber from RingRef
 uint64_t FileNumber() {return (fileno<<2)+ringno;}
 
+static int const sstrefsize {16};  // the size of an indirect reference in the SST
+
 private:
 VLogRingRefFileno fileno;
 VLogRingRefFileOffset offset;
@@ -195,7 +199,7 @@ VLogRingRefFileLen len;
 int ringno;
 union {
   uint64_t intform[2];   // internal form
-  char extform[16];   // external form
+  char extform[sstrefsize];   // external form
 } workarea;
 void MakeWorkarea() {
   assert(offset<=((1LL<<40)-1));  // offset and length should be 5 bytes max
@@ -654,6 +658,23 @@ public:
 
   // Return the VLogRing for the given level
   VLogRing *VLogRingFromNo(int ringno) { return rings_[ringno].get(); }
+
+  // Get info about the file-range that this level feeds into.  We use this to pick compactions
+  // in the level we are going to compact.  Results are the ring#, starting value, and range for the ring this level empties into
+  // If there are no rings, leave inputs alone.  *file0 has already been set to 0 to indicate that case
+  void GetVLogReshapingParms(int level, int *ring, VLogRingRefFileno *file0, VLogRingRefFileno *nfiles) {
+    *ring = VLogRingNoForLevelOutput(level+1);  // level for the compaction-result files
+    if(*ring>=0) {  // level exists
+      // return first file# and range.  We don't have to worry about locking to get a consistent view - approximate values are OK
+      VLogRingRefFileno f0 = rings_[*ring]->atomics.fd_ring_queued_fileno;
+      VLogRingRefFileno fn = rings_[*ring]->atomics.fd_ring_head_fileno;
+      if(fn>f0){  // ring can be empty.  In that case tail is > head and calculations go bad.
+        *file0 = f0;  // first file that could have a reference
+        *nfiles = fn-f0+1;  // number of files
+      }
+    }
+    return;
+  }
 
   // Install a new SST into the ring, with the given earliest-VLog reference
   // This routine is called whenever a file is added to a column family, which means either
