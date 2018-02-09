@@ -229,7 +229,6 @@ VLogRing(
   const ImmutableDBOptions *immdbopts,   // The current Env
   EnvOptions& file_options  // options to use for all VLog files
 );
-  ~VLogRing(){ printf("VLogRing deleted\n");}  // scaf
 
   // Ensure the ring is not copyable
   VLogRing(VLogRing const&) = delete;
@@ -332,7 +331,6 @@ public:
     // the info for the column family
     ColumnFamilyData *cfd
   );
-  ~VLog(){ printf("VLog deleted\n");}  // scaf
 
   // No copying
   VLog(VLog const&) = delete;

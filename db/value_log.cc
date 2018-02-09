@@ -67,12 +67,8 @@ ringexpansion = 16384;  // scaf
   // For each file in this ring, open it (if its number is valid) or delete it (if not)
   for(auto pathfname : filenames) {
     // Isolate the filename from the path as required by the subroutine
-#ifdef OS_LINUX
-    size_t index = pathfname.find_last_of('/');  // index of '/'
-#else
-    size_t index = pathfname.find_last_of('\\');  // index of '\'
-#endif
-    std::string fname = pathfname.substr(index+1);  // get the part AFTER the last '/' or '\'
+    size_t slashx = pathfname.find_last_of("/\\");  // last occurrence of either delimiter \ or /, or -1 if not found
+    std::string fname = pathfname.substr(slashx+1);  // get the part AFTER the last '/' or '\'; if not found, substr(0) which is the whole name
 
     // Extract the file number (which includes the ring) from the filename
     uint64_t number;  // return value, giving file number
@@ -90,11 +86,6 @@ if(latest_ref<fnring.fileno)latest_ref = fnring.fileno;  // scaf
         if((immdbopts_->env->NewRandomAccessFile(pathfname, &fileptr,envopts_)).ok()){  // open the file if it exists
           // move the file reference into the ring, and publish it to all threads
           fd_ring[Ringx(fnring.fileno)]=std::move(fileptr);
-size_t new_ring_slot = Ringx(fnring.fileno); // scaf debug
-if(fd_ring[new_ring_slot].get()==nullptr)  // scaf debug
-  printf("nullptr written to fd_ring[%zd]!  fd_ring=%p\n",new_ring_slot,fd_ring.data());  // scaf debug
-else  // scaf debug
-  printf("%p written to fd_ring[%zd]  fd_ring=%p\n",fd_ring[new_ring_slot].get(),new_ring_slot,fd_ring.data());  // scaf debug
 
         }   // if error opening file, we can't do anything useful, so leave file unopened, which will give an error if a value in it is referenced
 // scaf error?
@@ -125,7 +116,6 @@ else  // scaf debug
   // Because the write to the shadow pointer might not happen, we can't use that as a semaphore to Get().  Instead, use a release fence
   // to publish the stores here to all threads
   std::atomic_thread_fence(std::memory_order_release);
-printf("VLogInit: std::atomic_thread_fence(std::memory_order_release)\n");  // scaf debug
 
   
   // install references into queue  scaf
@@ -220,10 +210,6 @@ std::vector<Status>& resultstatus   // place to save error status.  For any file
     iostatus = immdbopts_->env->NewRandomAccessFile(fname, &fd_ring[new_ring_slot], envopts_);  // open the file - it must exist
     if(!iostatus.ok())
       printf("Error reopening VLog file \"%s\" for random access",fname.c_str());
-if(fd_ring[new_ring_slot].get()==nullptr)  // scaf debug
-  printf("nullptr written to fd_ring[%zd]!  fd_ring=%p\n",new_ring_slot,fd_ring.data());  // scaf debug
-else  // scaf debug
-  printf("%p written to fd_ring[%zd]  fd_ring=%p\n",fd_ring[new_ring_slot].get(),new_ring_slot,fd_ring.data());  // scaf debug
 
   }
   // move the file reference into the ring, and publish it to all threads
@@ -239,7 +225,6 @@ else  // scaf debug
   // Because the write to the shadow pointer might not happen, we can't use that as a semaphore to Get().  Instead, use a release fence
   // to publish the stores here to all threads
   std::atomic_thread_fence(std::memory_order_release);
-printf("VLogRingWrite: std::atomic_thread_fence(std::memory_order_release)\n");  // scaf debug
 
   // fill in the FileRef for the first value, with its length
   firstdataref.FillVLogRingRef(ringno_,fileno_for_writing,0,rcdend[0]);  // scaf offset goes away
