@@ -67,12 +67,12 @@ ringexpansion = 16384;  // scaf
   // For each file in this ring, open it (if its number is valid) or delete it (if not)
   for(auto pathfname : filenames) {
     // Isolate the filename from the path as required by the subroutine
-    size_t fslashx = pathfname.find_last_of('/');  // index of '/'
-    if(fslashx==pathfname.size())fslashx = -1;  // if no '/', start at beginning
-    size_t bslashx = pathfname.find_last_of('\\');  // index of '\'
-    if(bslashx==pathfname.size())bslashx = -1;  // if no '\', start at beginning
-    if(fslashx<bslashx)fslashx=bslashx;  // fslashx is now the larger index
-    std::string fname = pathfname.substr(fslashx+1);  // get the part AFTER the last '/' or '\'
+#ifdef OS_LINUX
+    size_t index = pathfname.find_last_of('/');  // index of '/'
+#else
+    size_t index = pathfname.find_last_of('\\');  // index of '\'
+#endif
+    std::string fname = pathfname.substr(index+1);  // get the part AFTER the last '/' or '\'
 
     // Extract the file number (which includes the ring) from the filename
     uint64_t number;  // return value, giving file number
