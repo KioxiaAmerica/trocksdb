@@ -143,8 +143,7 @@ private:
   Slice *end_;   // if given, the key+1 of the end of range
   bool use_indirects_;  // if false, just pass c_iter_ result through
   std::string keys;  // all the keys read from the iterator, jammed together
-  std::vector<size_t> keylens;   // length of each string in keys
-  size_t keysx_;   // position in keys[] where the next key starts
+  std::vector<size_t> keylens;   // cumulative length of each string in keys
   std::string passthroughdata;  // data that is passed through unchanged
   std::vector<VLogRingRefFileOffset> passthroughrecl;  // record lengths (NOT running total) of records in passthroughdata
   std::vector<char> valueclass;   // one entry per key.  bit 0 means 'value is a passthrough'; bit 1 means 'value is being converted from direct to indirect'

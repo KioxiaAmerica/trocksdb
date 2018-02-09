@@ -89,7 +89,19 @@ typedef uint64_t VLogRingRefFileno;
 typedef int64_t VLogRingRefFileOffset;   // signed because negative values are used to indicate error
 typedef uint64_t VLogRingRefFileLen;
 
-extern void BreakRecordsIntoFiles(std::vector<size_t>& filecumreccnts, std::vector<VLogRingRefFileOffset>& rcdend, int64_t maxfilesize);
+// routine to split a bunch of records into file-sized pieces.  Used for allocating records to SSTs and values to VLog files.  For SSt allocation,
+// there is extra grandparent information, perhaps
+extern void BreakRecordsIntoFiles(
+  std::vector<size_t>& filecumreccnts,  // (result) running total of input records assigned to a file
+  std::vector<VLogRingRefFileOffset>& rcdend,  // running total of input record lengths
+  int64_t maxfilesize,   // max size of an individual output file
+    // the rest of the input arguments are used only if we are limiting the size of an output file based on grandparent size
+  const std::vector<FileMetaData*> *grandparents,  // (optional) grandparent files that overlap with the key-range
+  const std::string *keys,  // (optional) the keys associated with the input records, run together
+  const std::vector<size_t> *keylens, // (optional) the cumulative lengths of the keys
+  const InternalKeyComparator *icmp,  // (optional) comparison function for this CF
+  uint64_t maxcompsize  // (optional)  the maximum size of a compaction, including the file being created here and any grandchildren that overlap with it
+);
 
 // Constants (some will be replaced by options)
 

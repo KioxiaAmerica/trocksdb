@@ -1649,6 +1649,7 @@ void VersionStorageInfo::UpdateFilesByCompactionPri(
     return;
   }
   // No need to sort the highest level because it is never compacted.
+printf("files by level:"); for (int level = 0; level < num_levels(); level++)printf(" %zd",files_[level].size()); printf("\n");  // scaf debug 
   for (int level = 0; level < num_levels() - 1; level++) {
     const std::vector<FileMetaData*>& files = files_[level];
     auto& files_by_compaction_pri = files_by_compaction_pri_[level];
@@ -1684,11 +1685,12 @@ void VersionStorageInfo::UpdateFilesByCompactionPri(
 // scaf note it appears that compactions may get dropped from level 0 into level 2, which leaves the files in level 1 old &, because we don't refigure the overlaps, with way-out-of-date avgnos
 #if 1 // scaf for debug
 printf("level %d ring %d file0=%zd nfiles=%zd.  ",level,ring,file0,nfiles);
-size_t topn = num; if(topn>10)topn=10; printf("Top %zd files: \n",topn);
+size_t topn = num; if(topn>3)topn=3; printf("Top %zd files:",topn);
 for(size_t i=0;i<topn;++i){
   ParsedFnameRing filering{temp[i].file->avgparentfileno};
-  printf("%2zd: index=%zd avgparent=%zd ring=%d  size=%zd\n",i,temp[i].index,filering.fileno(),filering.ringno(),temp[i].file->compensated_file_size);
+  printf(" %2zd: index=%zd avgparent=%zd ring=%d  size=%zd comppri=%15e  ",i,temp[i].index,filering.fileno(),filering.ringno(),temp[i].file->compensated_file_size, GetFileVLogCompactionPriority(temp[i].file,ring,file0,nfiles));
 }
+printf("\n");
 #endif
           break;
         }

@@ -1394,7 +1394,7 @@ Status CompactionJob::InstallCompactionResults(
             int nolaps = 0; double totalolaps = 0.0;  // number of overlaps, and index for each
             // look for overlaps in each level, advancing the file pointers for each level independently, and accumulating overlap totals
             for(int checklevel=0; checklevel<overlapping_files.size();++checklevel){
-              auto ofiles = overlapping_files[checklevel];  // the overlapping files for the current level
+              auto& ofiles = overlapping_files[checklevel];  // the overlapping files for the current level
               // skip over files that do not go past the min key for curroutx
               while(curroverlapx[checklevel]<ofiles.size() &&
                   user_cmp->Compare(*const_cast<SubcompactionState&>(sub_compact).outputs[curroutx].meta.smallest.rep(), *ofiles[curroverlapx[checklevel]]->largest.rep()) > 0)++curroverlapx[checklevel];

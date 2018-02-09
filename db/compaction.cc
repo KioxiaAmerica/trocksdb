@@ -191,7 +191,10 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
   if (is_manual_compaction_) {
     compaction_reason_ = CompactionReason::kManualCompaction;
   }
-
+#if 1  // scaf debug
+  if(compaction_reason_ == CompactionReason::kActiveRecycling)printf("Starting AR compaction\n");
+  else printf("Starting compaction into level %d\n",output_level_);
+#endif
 #ifdef INDIRECT_VALUE_SUPPORT
   // if we are Active Recycling, we don't need LevelFilesBrief or boundary keys.  And, we make
   // no guarantee that the levels are in order.  So just  return before all that.
@@ -254,7 +257,7 @@ bool Compaction::IsTrivialMove() const {
   // If we are building a VLog for this CF, we must avoid trivial moves.  Compaction is the place where values get written to the VLog,
   // and if we allow trivial moves we will end up with a full database with no VLogs.  We might have to revisit this for the case of
   // bulk-loading the database
-  return false;  // scaf check option
+  return false;  // scaf check option.  Allow trivial moves for running tests
   // Don't allow a trivial move if we are doing Active Recycling, since the essence of the compaction is to pass over the inputs
   if(compaction_reason_ == CompactionReason::kActiveRecycling)return false;
 #endif

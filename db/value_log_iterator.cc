@@ -155,7 +155,7 @@ printf("\n");
       // into an area that won't get overwritten.  To avoid lots of memory allocation we jam all the keys into one vector,
       // and keep a vector of lengths
       keys.append(key.data(),key.size());   // save the key...
-      keylens.push_back(key.size());    // ... and its length
+      keylens.push_back(keys.size());    // ... and its cumulative length
       Slice &val = (Slice &) c_iter->value();  // read the value
       sstvaluelen = val.size();  // if value passes through, its length will go to the SST
       if(IsTypeDirect(c_iter->ikey().type) && val.size() > 0 ) {  // scaf compare against min length
@@ -300,14 +300,16 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
 #endif
     if(outputerrorstatus.empty()) {
       // No error reading keys and writing to disk.
-      // If this is NOT Active Recycling, allocate the kvs to SSTs so as to keep files sizes equal
-      if(recyciter==nullptr)BreakRecordsIntoFiles(filecumreccnts, outputrcdend, compaction->max_output_file_size());  // calculate filecumreccnts
+      if(recyciter==nullptr) {      // If this is NOT Active Recycling, allocate the kvs to SSTs so as to keep files sizes equal.
+        BreakRecordsIntoFiles(filecumreccnts, outputrcdend, compaction->max_output_file_size(),
+          &compaction->grandparents(), &keys, &keylens, &compaction->column_family_data()->internal_comparator(),
+          compaction->max_compaction_bytes());  // calculate filecumreccnts, including use of grandparent info
+      }
       // now filecumreccnts has the length in kvs of each eventual output file.  For AR, we mimic the input; for compaction, we create new files
 
       // set up to read first key
       // set up the variables for the first key
       keyno_ = 0;  // we start on the first key
-      keysx_ = 0;   // it is at position 0 in keys[]
       passx_ = 0;  // initialize data pointers to start of region
       diskx_ = 0;
       nextpassthroughref = 0;  // init offset of first passthrough record
@@ -358,8 +360,8 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
         vclass -= vHasError;  // remove error flag, leaving the value type
       }
 
-      ParseInternalKey(Slice(keys.data()+keysx_,keylens[keyno_]),&ikey_);  // Fill in the parsed result area
-      keysx_ += keylens[keyno_];  // advance keysx_ to point to start of next key, for next time
+      size_t keyx = keyno_ ? keylens[keyno_-1] : 0;  // starting position of previous key
+      ParseInternalKey(Slice(keys.data()+keyx,keylens[keyno_] - keyx),&ikey_);  // Fill in the parsed result area
 
       // Include the previous key's file/ring in the current result (because the compaction job calls Next() before closing
       // the current output file)

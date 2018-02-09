@@ -29,12 +29,24 @@ extern void ProbDelay() {
 
 // given the running-sum of record-lengths rcdend, and the maximum filesize, break the input into chunks of approximately equal size
 // result is given in filecumreccnts which is the list of record counts per file
-void BreakRecordsIntoFiles(std::vector<size_t>& filecumreccnts, std::vector<VLogRingRefFileOffset>& rcdend, int64_t maxfilesize){
+extern void BreakRecordsIntoFiles(
+  std::vector<size_t>& filecumreccnts,  // (result) running total of input records assigned to a file
+  std::vector<VLogRingRefFileOffset>& rcdend,  // running total of input record lengths
+  int64_t maxfilesize,   // max size of an individual output file
+    // the rest of the input arguments are used only if we are limiting the size of an output file based on grandparent size
+  const std::vector<FileMetaData*> *grandparents,  // (optional) grandparent files that overlap with the key-range
+  const std::string *keys,  // (optional) the keys associated with the input records, run together
+  const std::vector<size_t> *keylens, // (optional) the cumulative lengths of the keys
+  const InternalKeyComparator *icmp,  // (optional) comparison function for this CF
+  uint64_t maxcompsize  // (optional)  the maximum size of a compaction, including the file being created here and any grandchildren that overlap with it
+  ) {
   filecumreccnts.clear(); filecumreccnts.reserve(32); // clear the result area; reserve more space than we figure to need
   // split the input into file-sized pieces
   // Loop till we have processed all the inputs
   int64_t prevbytes = 0;  // total bytes written to previous files
+  size_t grandparentx = 0;  // index of the next grandparent file.  We advance after we are sure the current file can no longer contribute
   for(size_t rcdx = 0; rcdx<rcdend.size();++rcdx){   // rcdx is the index of the next input record to process
+    size_t firstrcdinfile = rcdx;  // remember the starting rcd# for this file
     // Calculate the output filesize, erring on the side of larger files.  In other words, we round down the number
     // of files needed, and get the target filesize from that.  For each calculation we use the number of bytes remaining
     // in the input, so that if owing to breakage a file gets too long, we will keep trying to prorate the remaining bytes
@@ -59,8 +71,52 @@ void BreakRecordsIntoFiles(std::vector<size_t>& filecumreccnts, std::vector<VLog
       // update one or the other input pointer
       if(rcdend[mid]<targetfileend)left=mid; else rcdx=mid;
     }
-    // rcdend[rcdx] has the file length.  Call for the output file.
-    filecumreccnts.push_back(rcdx+1);  // push # records in output file
+    // rcdend[rcdx] has the file length.  There is always at least one record per file.  If we are limiting the grandparent size, do that now
+    if(grandparents!=nullptr) {
+      // We are using the grandparents to limit the total size of this file PLUS its overlapping parents.
+      // Because the number of grandparents averages the fanout, we will just scan forward through the grandparents, accumulating files
+      // that overlap the current file.  The normal case is that we process grandparent files till we get past the last key in the output file;
+      // in that case we output all the keys in the output file.  If the total size of the grandparent files exceeds the limit, we stop
+      // with the last grandparent file that doesn't exceed the size limit, and discard trailing keys in the output file we get a key that
+      // does not require the next file as well.
+
+      // get first and last key of putative output file
+      size_t key0x = firstrcdinfile ? (*keylens)[firstrcdinfile-1] : 0;  // start of first internal key in rcd
+      Slice key0 = ExtractUserKey((*keys).substr(key0x, (*keylens)[firstrcdinfile]-key0x));  // first key in new output file
+      Slice keyn = ExtractUserKey((*keys).substr((*keylens)[rcdx-1], (*keylens)[rcdx]-(*keylens)[rcdx-1]));  // last key in new output file
+      // skip over grandparent files that are entirely before the current output file
+      while(grandparentx<(*grandparents).size() && icmp->user_comparator()->Compare((*grandparents)[grandparentx]->largest.user_key(),key0)<0)++grandparentx;  // skip is grandparent all before output
+      // initialize the total compaction size to the size of the output file
+      size_t compactionsize = rcdend[rcdx]-prevbytes;  // length of the records in the putative output
+      // accumulate size of grandparents that overlap the putative output file.  We know the current grandparent file, if it exists, ends after the first key in the putative output
+      for(;grandparentx<(*grandparents).size();++grandparentx) {
+        Slice nextstartkey = (*grandparents)[grandparentx]->smallest.user_key();  //  starting key of next grandparent file
+        // if the next grandparent starts after the last key in the putative output, we have processed all overlaps and can quit
+        if(icmp->user_comparator()->Compare(nextstartkey,keyn)>0)break;  // stop if grandparent all after output
+        // here the files overlap.  Add the size of the grandparent file to the total size of the compaction
+        compactionsize += (*grandparents)[grandparentx]->fd.GetFileSize();   // add the actual filesize
+        // if the new grandparent doesn't make the compaction too big, continue looking at the next one
+        if(compactionsize <= maxcompsize)continue;
+        // Here the compaction has become too big.  We will NOT be able to include the new gradparent.  That means we must discard keys from the end of the putative
+        // output until it no longer overlaps with the file we couldn't include.  We will use a binary search to do this, because there may be a lot of keys.
+        // As above we start left at its lowest possible value, rcdx at its highest possible value (which equals its starting value)
+        int64_t left = firstrcdinfile-1;  // init brackets for search
+        // the loop variable rcdx will hold the result of the search, fulfilling its role as pointer to the end of the written block
+        while(rcdx!=(left+1)) {  // binary search
+          // at top of loop rcdend[left]<targetfileend and rcdend[rcdx]>=targetfileend.  This remains invariant.  Note that left may be before the search region, or even -1
+          // Loop terminates when rcdx-left=1; at that point rcdx points to the ending record, i. e. the first record that contains enough data
+          // Calculate the middle record position, which is known not to equal an endpoint (since rcdx-left>1)
+          size_t mid = left + ((rcdx-left)>>1);   // index of middle value
+          // update one or the other input pointer
+          size_t keymidx = mid ? (*keylens)[mid-1] : 0;  // start of middle internal key
+          Slice keymid = ExtractUserKey((*keys).substr(keymidx, (*keylens)[mid]-keymidx));  // last key in new output file
+          if(icmp->user_comparator()->Compare(nextstartkey,keymid)>0)left=mid; else rcdx=mid;
+        }
+        break;  // rcdx has been set
+      }
+    }
+    // rcdx is the index of the last record in the new file
+    filecumreccnts.push_back(rcdx+1);  // push cumulative # records in output file
     prevbytes = rcdend[rcdx];  // update total # bytes written
   }
 }
@@ -399,7 +455,8 @@ std::vector<Status>& resultstatus   // result: place to save error status.  For 
   if(!bytes.size())return;   // fast exit if no data
 
   std::vector<size_t> filecumreccnts;  // this will hold the # records in each file
-  BreakRecordsIntoFiles(filecumreccnts, rcdend, maxfilesize);  // calculate filecumreccnts
+
+  BreakRecordsIntoFiles(filecumreccnts, rcdend, maxfilesize,   nullptr,nullptr,nullptr,nullptr,0);  // calculate filecumreccnts.  SST grandparent info not used
   fileendoffsets.clear(); fileendoffsets.reserve(filecumreccnts.size());  //clear output area and give it the correct size
 
 
