@@ -283,6 +283,7 @@ if((retrycount%100000) == 0){  // scaf debug
   printf("Read from fd_ring[%zd] returned nullptr.  Address of fd_ring is %p, retrycount=%d\n",Ringx(request.Fileno()),fd_ring.data(),retrycount);  // scaf debug
 }  // scaf debug
     std::atomic_thread_fence(std::memory_order_acquire);
+    retrycount++;
   }
 if(retrycount)printf("read from ring succeeded after %d retries\n",retrycount);  // scaf debug
 
