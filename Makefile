@@ -520,27 +520,8 @@ PARALLEL_TEST = \
 
 #LOCK/CRASH test cases
 LOCKS= \
-	db_properties_test \
-	db_iterator_test \
-	db_dynamic_level_test \
-	db_bloom_filter_test \
-	db_test \
-	db_basic_test \
-	c_test \
-	db_compaction_filter_test \
-	db_compaction_test \
-	db_sst_test \
-	db_universal_compaction_test \
-	fault_injection_test \
-	external_sst_file_test \
-	stringappend_test \
-	ttl_test \
 	backupable_db_test \
 	compaction_job_stats_test \
-	write_prepared_transaction_test \
-	db_merge_operator_test \
-	transaction_test \
-	ldb_test.py
 
 SUBSET := $(TESTS)
 ifdef ROCKSDBTESTS_START
