@@ -519,9 +519,19 @@ PARALLEL_TEST = \
 	write_prepared_transaction_test
 
 #LOCK/CRASH test cases
+#backupable_db_test		[unit] trocks
+#compaction_job_stats_test	[unit] trocks
+#corruption_test		[asan] trocks
+#db_properties_test		[unit] noflags
+ifdef INDIRECT_VALUE_SUPPORT
 LOCKS= \
 	backupable_db_test \
 	compaction_job_stats_test \
+	corruption_test 
+else
+LOCKS= \
+	db_properties_test 
+endif
 
 SUBSET := $(TESTS)
 ifdef ROCKSDBTESTS_START
@@ -1531,6 +1541,7 @@ install: install-static
 # Jni stuff
 # ---------------------------------------------------------------------------
 
+JAVA_HOME = /usr/lib/jvm/java-8-openjdk-amd64/
 JAVA_INCLUDE = -I$(JAVA_HOME)/include/ -I$(JAVA_HOME)/include/linux
 ifeq ($(PLATFORM), OS_SOLARIS)
 	ARCH := $(shell isainfo -b)
