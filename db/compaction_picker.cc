@@ -1252,6 +1252,14 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
   }
   // Files have been picked for compaction
 #endif
+#if 1 // scaf debug
+printf("Compaction picked:");
+size_t nfiles = 0;
+  for(auto cfiles : compaction_inputs_){printf(" L%d: %zd",cfiles.level,cfiles.files.size()); nfiles += cfiles.files.size();}
+printf("\n");
+if(nfiles > 20)
+  printf("**************************************************** huge compaction\n");
+#endif
   // Form a compaction object containing the files we picked.
   Compaction* c = GetCompaction();
 
@@ -1408,6 +1416,13 @@ bool LevelCompactionBuilder::PickIntraL0Compaction() {
   start_level_inputs_.clear();
   const std::vector<FileMetaData*>& level_files =
       vstorage_->LevelFiles(0 /* level */);
+#ifdef INDIRECT_VALUE_SUPPORT
+// scaf need real option for this
+  // If we expect to be permanently in throttled mode, intraL0 compactions only waste time and make the
+  // eventual reckoning worse.
+  if(mutable_cf_options_.level0_slowdown_writes_trigger>0 &&
+      2*mutable_cf_options_.level0_slowdown_writes_trigger < mutable_cf_options_.level0_stop_writes_trigger)return false;
+#endif
   if (level_files.size() <
           static_cast<size_t>(
               mutable_cf_options_.level0_file_num_compaction_trigger + 2) ||

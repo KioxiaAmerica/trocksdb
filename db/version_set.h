@@ -131,15 +131,21 @@ class VersionStorageInfo {
   // files that have no average parent position use a position toward the beginning of the tail region.
   double GetFileVLogCompactionPriority(FileMetaData *f, int ring, VLogRingRefFileno file0, VLogRingRefFileno nfiles){
     // if there is no ring information, or no position information, leave file size as is, which corresponds to end-of-tail position
-    if(file0 == 0 || f->avgparentfileno == 0)return (double)f->compensated_file_size;
+    if(file0 == 0)return (double)f->compensated_file_size;  // no file info, use 
+    // get the file number to use: avgparentfileno if given, otherwise ref_0 for the ring.  If none, leave filesize as is
     ParsedFnameRing avgparent(f->avgparentfileno);  // split ring/file into ring and file
+    if(avgparent.fileno()==0) {
+      // replace fileno of 0 with indirect_ref_0 in the current ring.  If nonexistent or 0, leave size unmodified
+      if(ring >= f->indirect_ref_0.size() || f->indirect_ref_0[ring]==0)return (double)f->compensated_file_size;   // if no ref, keep use size
+      avgparent = ParsedFnameRing(ring,f->indirect_ref_0[ring]);  // make up a ring ref with the current info for this file
+    }
     if(avgparent.ringno()!=ring || avgparent.fileno()==0)return (double)f->compensated_file_size;  // if no valid file ref, use default
     // We calculate x=fractional position of result in the result ring (0=head,1=tail).  Then, bias down so that a position at the end of the tail has fraction 0.
     // Here, the end of the tail is placed at 0.3 of the way from the tail to the head
     // Then, reshape the curve by using biasedx as an exponent.  The base is chosen to make a certain range fraction of the filespace (0.1 here)
     // correspond to a doubling of the effective filesize
     const double base = exp(std::log(2.0)/0.10);  // 0.1 of the log size corresponds to factor of 2 in effective size    scaf use options
-    const double bias = 0.3;  // end of the tail is at 0.3
+    const double bias = 0.3;  // end of the tail is at 0.3    scaf use options
     return f->compensated_file_size * std::pow(base , bias-((double)(std::max(0LL,(int64_t)avgparent.fileno()-(int64_t)file0))/(double)nfiles));  // effective size.  fileno may be obsolete and low, so clamp it to file0
   }
 #endif

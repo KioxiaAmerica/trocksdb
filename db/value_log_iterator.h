@@ -142,9 +142,9 @@ private:
   CompactionIterator* c_iter_;  // underlying c_iter_, the source for our values
   Slice *end_;   // if given, the key+1 of the end of range
   bool use_indirects_;  // if false, just pass c_iter_ result through
-  std::string keys;  // all the keys read from the iterator, jammed together
+  std::vector<NoInitChar> keys;  // all the keys read from the iterator, jammed together
   std::vector<size_t> keylens;   // cumulative length of each string in keys
-  std::string passthroughdata;  // data that is passed through unchanged
+  std::vector<NoInitChar> passthroughdata;  // data that is passed through unchanged
   std::vector<VLogRingRefFileOffset> passthroughrecl;  // record lengths (NOT running total) of records in passthroughdata
   std::vector<char> valueclass;   // one entry per key.  bit 0 means 'value is a passthrough'; bit 1 means 'value is being converted from direct to indirect'
   std::vector<VLogRingRefFileOffset> diskrecl;  // running total of record lengths in diskdata

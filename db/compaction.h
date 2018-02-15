@@ -40,6 +40,8 @@ class VLogRing;
 // A Compaction encapsulates information about a compaction.
 class Compaction {
  public:
+static int compactionnoshared; // scaf debug
+int compactionno;  // scaf debug
   Compaction(VersionStorageInfo* input_version,
              const ImmutableCFOptions& immutable_cf_options,
              const MutableCFOptions& mutable_cf_options,

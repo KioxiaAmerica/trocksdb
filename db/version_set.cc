@@ -1442,9 +1442,17 @@ void VersionStorageInfo::ComputeCompactionScore(
           // Level-based involves L0->L0 compactions that can lead to oversized
           // L0 files. Take into account size as well to avoid later giant
           // compactions to the base level.
-          score = std::max(
-              score, static_cast<double>(total_size) /
-                     mutable_cf_options.max_bytes_for_level_base);
+          double projectedl0score = static_cast<double>(total_size) /
+                     mutable_cf_options.max_bytes_for_level_base;
+          score = std::max(score, projectedl0score);
+#ifdef INDIRECT_VALUE_SUPPORT
+          // When the host Write stream outruns the compactions, score starts to grow,
+          // and can grow very large.  When it gets too big, it makes all the other compaction scores
+          // meaningless, and the levels do not assume reasonable proportions.  When the L0 score is X, L1 grows
+          // to X times normal size before getting any compactions.  To prevent that from
+          // happening, we put a limit on X.
+          score = std::min(score,2.0);  // scaf need option.  Is this a good idea?
+#endif
         }
       }
     } else {
@@ -1683,7 +1691,7 @@ printf("files by level:"); for (int level = 0; level < num_levels(); level++)pri
                     return GetFileVLogCompactionPriority(f1.file,ring,file0,nfiles) > GetFileVLogCompactionPriority(f2.file,ring,file0,nfiles);
                   });
 // scaf note it appears that compactions may get dropped from level 0 into level 2, which leaves the files in level 1 old &, because we don't refigure the overlaps, with way-out-of-date avgnos
-#if 1 // scaf for debug
+#if 0 // scaf for debug
 printf("level %d ring %d file0=%zd nfiles=%zd.  ",level,ring,file0,nfiles);
 size_t topn = num; if(topn>3)topn=3; printf("Top %zd files:",topn);
 for(size_t i=0;i<topn;++i){

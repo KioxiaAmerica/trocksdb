@@ -227,6 +227,8 @@ TEST_F(DBCompactionTest, IndirectTest) {
   options.write_buffer_size = 10 * 1024 * 1024;
   options.num_levels = 4;
   options.level0_file_num_compaction_trigger = 3;
+  options.level0_slowdown_writes_trigger = 5;
+  options.level0_stop_writes_trigger = 11;
   options.max_background_compactions = 3;
   options.max_bytes_for_level_base = 1 * (1LL<<20);
   options.max_bytes_for_level_multiplier = 10;
@@ -272,7 +274,10 @@ TEST_F(DBCompactionTest, IndirectTest) {
   }
   ASSERT_OK(Flush());
   for (int32_t i = 300; i < 300+batch_size; i++) {
-    values[i] = RandomString(&rnd, value_size + rnd.Next()%value_size_var);
+    std::string vstg =  RandomString(&rnd, value_size);
+    // append compressible suffix
+    vstg.append(rnd.Next()%value_size_var,'a');
+    values[i] = vstg;
   }
 
 

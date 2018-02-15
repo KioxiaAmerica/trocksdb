@@ -25,6 +25,8 @@
 #include "rocksdb/env.h"
 #include "rocksdb/transaction_log.h"
 #include "db/version_builder.h"
+#include "util/crc32c.h"
+#include "table/format.h"
 
 
 #if DELAYPROB
@@ -56,6 +58,8 @@ class NoInitChar {
 public:
   char data;
   NoInitChar(){};
+  NoInitChar(const char& c) : data(c) { }
+
 };
 
 // The Value Log is the place where values are stored separate from their keys.  Values are written to the Value Log
@@ -97,11 +101,19 @@ extern void BreakRecordsIntoFiles(
   int64_t maxfilesize,   // max size of an individual output file
     // the rest of the input arguments are used only if we are limiting the size of an output file based on grandparent size
   const std::vector<FileMetaData*> *grandparents,  // (optional) grandparent files that overlap with the key-range
-  const std::string *keys,  // (optional) the keys associated with the input records, run together
+  const std::vector<NoInitChar> *keys,  // (optional) the keys associated with the input records, run together
   const std::vector<size_t> *keylens, // (optional) the cumulative lengths of the keys
   const InternalKeyComparator *icmp,  // (optional) comparison function for this CF
   uint64_t maxcompsize  // (optional)  the maximum size of a compaction, including the file being created here and any grandchildren that overlap with it
 );
+
+// compress a data block according to the options, then put it into output-record format including CRC.
+// If there is an error, it just returns the input data.  result is the compression type used
+extern CompressionType CompressForVLog(const std::string& raw,  // input to be compressed
+                    CompressionType type,   // compression algorithm selection
+                    const CompressionOptions& compression_options,  // algorithm-dependent parameters to the compression
+                    const std::string& compression_dict,  // initial compressions dictionary, empty if none
+                    std::string* compressed_output);  // result: the compressed string
 
 // Constants (some will be replaced by options)
 
@@ -119,6 +131,7 @@ static const int max_simultaneous_deletions = 1000;  // maximum number of files 
    // space for them before we acquire the lock
 static const double vlog_remapping_fraction = 0.5;  // References to the oldest VLog files - this fraction of them - will be remapped if encountered during compaction
 static const int maxfilesize = 100000;  // scaf largest file to write out
+static const int kVLogCompressionVersionFormat = 2;  // compressed-data format we use
 
 // ParsedFnameRing contains filenumber and ringnumber for a file.  We use it to split the compositie filename/ring into its parts
 
@@ -165,7 +178,7 @@ VLogRingRef(const char *opaqueref) {  // creating ref from OpaqueRef array
   fileno = ((workarea.intform[0]&(-(1LL<<40)))>>(40-(64-42))) + ((workarea.intform[1]&(-(1LL<<42)))>>(42-0));  // move ff from bit 42 to bit 0; FFF from 40 to 22
 }
 VLogRingRef(std::string& opaqueref) {  // creating ref from OpaqueRef
-  assert(16==opaqueref.size());   // make sure size of ref is right
+  assert(VLogRingRef::sstrefsize==opaqueref.size());   // make sure size of ref is right
   VLogRingRef(opaqueref.data());  // make ref from data array
 }
 
@@ -492,6 +505,8 @@ VLogRing(
 #if DEBLEVEL&0x400
   ~VLogRing() { printf("Destroying VLogRing %p\n",this); }
 #endif
+  // return a file number near the head of the ring, to use if no other reference is available
+  VLogRingRefFileno nearhead() { VLogRingRefFileno h = atomics.fd_ring_head_fileno; VLogRingRefFileno t = atomics.fd_ring_tail_fileno; return t + (15*(h-t))/16;}  // read head first so that we don't overrun it is case of async mod
 
   // See how many files we need to hold the
   // valid files, plus some room for expansion (here, the larger of a fraction of the number of valid files
@@ -554,7 +569,7 @@ std::vector<Status>& resultstatus   // place to save error status.  For any file
 // Returns the bytes.  ?? Should this return to user area to avoid copying?
 Status VLogRingGet(
   VLogRingRef& request,  // the values to read
-  std::string *response   // the data pointed to by the reference
+  std::string& response   // the data pointed to by the reference
 )
 ;
 
@@ -659,7 +674,7 @@ public:
   // Returns the bytes.  ?? Should this return to user area to avoid copying?
   Status VLogGet(
     const Slice& reference,  // the reference
-    std::string *result   // where the result is built
+    std::string& result   // where the result is built
   )
   // extract the ring# from the reference
   // Call VLogRingGet in the selected ring

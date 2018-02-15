@@ -202,7 +202,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       auto newstring = std::make_shared<std::string>();
       iter->resolved_indirect_values.emplace_back(newstring);  // add a new empty string for upcoming read
       // resolve the value in the new string.
-      vlog->VLogGet(val,iter->resolved_indirect_values.back().get());   // turn the reference into a value, in the string
+      vlog->VLogGet(val,*iter->resolved_indirect_values.back().get());   // turn the reference into a value, in the string
       val = Slice(*iter->resolved_indirect_values.back());  // create a slice for the resolved value
       ikey.type = ikey.type==kTypeIndirectMerge ? kTypeMerge : kTypeValue;   // the types we give to the merge filter are always direct, for backward compatibility
       ikeystring = InternalKey(ikey).Encode().ToString();  // save string form where it won't be freed till we've used it

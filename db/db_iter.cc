@@ -242,7 +242,7 @@ class DBIter final: public Iterator {
         auto newstring = std::make_shared<std::string>();
         (const_cast<std::vector<std::shared_ptr<std::string>>*>(&resolved_indirect_values))->emplace_back(newstring);  // add a new empty string for upcoming read
         // resolve the value in the new string.
-        iter_->GetVlogForIteratorCF()->VLogGet(val,(const_cast<std::vector<shared_ptr<std::string>>*>(&resolved_indirect_values))->back().get());   // turn the reference into a value, in the string
+        iter_->GetVlogForIteratorCF()->VLogGet(val,*(const_cast<std::vector<shared_ptr<std::string>>*>(&resolved_indirect_values))->back().get());   // turn the reference into a value, in the string
         *(IndirectState*)&indirect_state = kISResolved;  // change state so we don't resolve again
       }
       // In any case, the key is now the last string in the read buffers.

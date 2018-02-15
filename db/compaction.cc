@@ -139,6 +139,8 @@ bool Compaction::IsFullCompaction(
   return num_files_in_compaction == total_num_files;
 }
 
+int Compaction::compactionnoshared = 0; // scaf debug
+
 Compaction::Compaction(VersionStorageInfo* vstorage,
                        const ImmutableCFOptions& _immutable_cf_options,
                        const MutableCFOptions& _mutable_cf_options,
@@ -192,8 +194,9 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
     compaction_reason_ = CompactionReason::kManualCompaction;
   }
 #if 1  // scaf debug
+  compactionno = Compaction::compactionnoshared++;
   if(compaction_reason_ == CompactionReason::kActiveRecycling)printf("Starting AR compaction\n");
-  else printf("Starting compaction into level %d\n",output_level_);
+  else printf("Starting compaction number %d into level %d\n",compactionno,output_level_);
 #endif
 #ifdef INDIRECT_VALUE_SUPPORT
   // if we are Active Recycling, we don't need LevelFilesBrief or boundary keys.  And, we make
@@ -222,6 +225,7 @@ Compaction::~Compaction() {
 #if DEBLEVEL&16
 printf("~Compaction()\n");
 #endif
+printf("completing compaction number %d\n",compactionno);  // scaf debug
   if (input_version_ != nullptr) {
     input_version_->Unref();
   }

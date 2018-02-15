@@ -114,6 +114,8 @@ class Slice {
   // Compare two slices and returns the first byte where they differ
   size_t difference_offset(const Slice& b) const;
 
+  Slice& operator=(const Slice& assignand) { data_ = assignand.data_; size_ = assignand.size_; return *this; }
+
  // private: make these public for rocksdbjni access
   const char* data_;
   size_t size_;

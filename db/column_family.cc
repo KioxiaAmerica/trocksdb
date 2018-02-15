@@ -843,8 +843,8 @@ void ColumnFamilyData::CheckForActiveRecycle(std::vector<CompactionInputFiles>& 
     // See if this ring needs to be recycled: if it is large enough and its fragmentation is high enough
     if(vlog_info[i].size*0.1>=vlog_info[i].frag)continue;  // scaf use option; also check for min # files.  If there is not enough fragmentation, don't AR
     // Fetch the files to be recycled and return them
-    compaction_inputs.reserve(40);  // scaf 40   handle quite a few files at once.  The capacity of the ring tells the max # result SSTs
-    vlog_->rings()[i]->VLogRingFindLaggingSsts(5,10,compaction_inputs,lastfileno);  // scaf 20  find out what to recycle
+    compaction_inputs.reserve(15);  // scaf const   handle quite a few files at once.  The capacity of the ring tells the max # result SSTs
+    vlog_->rings()[i]->VLogRingFindLaggingSsts(5,10,compaction_inputs,lastfileno);  // scaf const  find out what to recycle  min 5 vlog files, min 7 SSTs
     ringno = i;  // tell the caller which ring to use
     if(compaction_inputs.size()!=0)break;  // if we found an AR, stop looking
   }

@@ -15,6 +15,7 @@
 #include "db/version_set.h"
 #include "options/cf_options.h"
 #include "rocksdb/status.h"
+#include "util/compression.h"
 #include<chrono>
 #include<thread>
 
@@ -27,6 +28,63 @@ extern void ProbDelay() {
 }
 #endif
 
+// compress a data block according to the options, then put it into output-record format including CRC.
+// If there is an error, it just returns the input data
+extern CompressionType CompressForVLog(const std::string& raw,
+                    CompressionType type,
+                    const CompressionOptions& compression_options,
+                    const std::string& compression_dict,
+                    std::string* compressed_output) {
+  bool compressok;  // true is compression succeeded
+
+  // Will return compressed block contents if (1) the compression method is
+  // supported in this platform and (2) the compression rate is "good enough".
+  switch (type) {
+    case kSnappyCompression:
+      compressok = Snappy_Compress(compression_options, raw.data(), raw.size(),
+                          compressed_output);
+      break;  // fall back to no compression.
+    case kZlibCompression:
+      compressok = Zlib_Compress(compression_options,kVLogCompressionVersionFormat,
+              raw.data(), raw.size(), compressed_output, compression_dict);
+      break;  // fall back to no compression.
+    case kBZip2Compression:
+      compressok = BZip2_Compress(compression_options,kVLogCompressionVersionFormat,
+              raw.data(), raw.size(), compressed_output);
+      break;  // fall back to no compression.
+    case kLZ4Compression:
+      compressok = LZ4_Compress(
+              compression_options,kVLogCompressionVersionFormat,
+              raw.data(), raw.size(), compressed_output, compression_dict); 
+      break;  // fall back to no compression.
+    case kLZ4HCCompression:
+      compressok = LZ4HC_Compress(
+              compression_options,kVLogCompressionVersionFormat,
+              raw.data(), raw.size(), compressed_output, compression_dict);
+      break;     // fall back to no compression.
+    case kXpressCompression:
+      compressok = XPRESS_Compress(raw.data(), raw.size(),
+          compressed_output);
+      break;
+    case kZSTD:
+    case kZSTDNotFinalCompression:
+      compressok = ZSTD_Compress(compression_options, raw.data(), raw.size(),
+                        compressed_output, compression_dict);
+      break;     // fall back to no compression.
+    default: compressok = false; break;  // Do not recognize this compression type
+  }
+  // Here if compressok is set, the data has been compressed into compressed_output.
+
+  if(!compressok){
+  // Compression method is not supported, or not good compression ratio, so just
+  // fall back to uncompressed form.
+    (*compressed_output).assign(raw);  // copy the input to the output
+    type = kNoCompression;
+  }
+  return type;
+}
+
+
 // given the running-sum of record-lengths rcdend, and the maximum filesize, break the input into chunks of approximately equal size
 // result is given in filecumreccnts which is the list of record counts per file
 extern void BreakRecordsIntoFiles(
@@ -35,7 +93,7 @@ extern void BreakRecordsIntoFiles(
   int64_t maxfilesize,   // max size of an individual output file
     // the rest of the input arguments are used only if we are limiting the size of an output file based on grandparent size
   const std::vector<FileMetaData*> *grandparents,  // (optional) grandparent files that overlap with the key-range
-  const std::string *keys,  // (optional) the keys associated with the input records, run together
+  const std::vector<NoInitChar> *keys,  // (optional) the keys associated with the input records, run together
   const std::vector<size_t> *keylens, // (optional) the cumulative lengths of the keys
   const InternalKeyComparator *icmp,  // (optional) comparison function for this CF
   uint64_t maxcompsize  // (optional)  the maximum size of a compaction, including the file being created here and any grandchildren that overlap with it
@@ -72,7 +130,7 @@ extern void BreakRecordsIntoFiles(
       if(rcdend[mid]<targetfileend)left=mid; else rcdx=mid;
     }
     // rcdend[rcdx] has the file length.  There is always at least one record per file.  If we are limiting the grandparent size, do that now
-    if(grandparents!=nullptr) {
+    if(grandparents!=nullptr && (*grandparents).size()) {
       // We are using the grandparents to limit the total size of this file PLUS its overlapping parents.
       // Because the number of grandparents averages the fanout, we will just scan forward through the grandparents, accumulating files
       // that overlap the current file.  The normal case is that we process grandparent files till we get past the last key in the output file;
@@ -82,22 +140,25 @@ extern void BreakRecordsIntoFiles(
 
       // get first and last key of putative output file
       size_t key0x = firstrcdinfile ? (*keylens)[firstrcdinfile-1] : 0;  // start of first internal key in rcd
-      Slice key0 = ExtractUserKey((*keys).substr(key0x, (*keylens)[firstrcdinfile]-key0x));  // first key in new output file
-      Slice keyn = ExtractUserKey((*keys).substr((*keylens)[rcdx-1], (*keylens)[rcdx]-(*keylens)[rcdx-1]));  // last key in new output file
+      Slice key0((char *)(*keys).data()+key0x, (*keylens)[firstrcdinfile]-key0x);  // first key in new output file.
+      Slice keyn((char *)(*keys).data()+(*keylens)[rcdx-1], (*keylens)[rcdx]-(*keylens)[rcdx-1]);  // first key in new output file.
       // skip over grandparent files that are entirely before the current output file
-      while(grandparentx<(*grandparents).size() && icmp->user_comparator()->Compare((*grandparents)[grandparentx]->largest.user_key(),key0)<0)++grandparentx;  // skip is grandparent all before output
+      while(grandparentx<(*grandparents).size() && icmp->user_comparator()->Compare((*grandparents)[grandparentx]->largest.user_key(),ExtractUserKey(key0))<0)++grandparentx;  // skip is grandparent all before output
       // initialize the total compaction size to the size of the output file
       size_t compactionsize = rcdend[rcdx]-prevbytes;  // length of the records in the putative output
       // accumulate size of grandparents that overlap the putative output file.  We know the current grandparent file, if it exists, ends after the first key in the putative output
       for(;grandparentx<(*grandparents).size();++grandparentx) {
-        Slice nextstartkey = (*grandparents)[grandparentx]->smallest.user_key();  //  starting key of next grandparent file
+        Slice nextstartkey = (*grandparents)[grandparentx]->smallest.user_key();  //  starting key of next grandparent file.  Slice OK because nothing to be freed
         // if the next grandparent starts after the last key in the putative output, we have processed all overlaps and can quit
-        if(icmp->user_comparator()->Compare(nextstartkey,keyn)>0)break;  // stop if grandparent all after output
-        // here the files overlap.  Add the size of the grandparent file to the total size of the compaction
-        compactionsize += (*grandparents)[grandparentx]->fd.GetFileSize();   // add the actual filesize
+        if(icmp->user_comparator()->Compare(nextstartkey,ExtractUserKey(keyn))>0)break;  // stop if grandparent all after output
+        // here the files overlap.  Add the size of the grandparent file to the total size of the compaction.  Because we buffer all the kvs for a compaction,
+        // it is proper for us to limit the size AFTER decompression; so we use the total key+value size
+        compactionsize += ((*grandparents)[grandparentx]->raw_key_size && (*grandparents)[grandparentx]->raw_value_size) ?  // if size is 0, it means we couldn't initialize the true size
+            (*grandparents)[grandparentx]->raw_key_size+(*grandparents)[grandparentx]->raw_value_size    // if neither 0, use initialized size
+            : (uint64_t)(1.2*maxfilesize);   // if size is 0, assume a biggish file.  1.2 is a handwave
         // if the new grandparent doesn't make the compaction too big, continue looking at the next one
         if(compactionsize <= maxcompsize)continue;
-        // Here the compaction has become too big.  We will NOT be able to include the new gradparent.  That means we must discard keys from the end of the putative
+        // Here the compaction has become too big.  We will NOT be able to include the new grandparent.  That means we must discard keys from the end of the putative
         // output until it no longer overlaps with the file we couldn't include.  We will use a binary search to do this, because there may be a lot of keys.
         // As above we start left at its lowest possible value, rcdx at its highest possible value (which equals its starting value)
         int64_t left = firstrcdinfile-1;  // init brackets for search
@@ -109,8 +170,8 @@ extern void BreakRecordsIntoFiles(
           size_t mid = left + ((rcdx-left)>>1);   // index of middle value
           // update one or the other input pointer
           size_t keymidx = mid ? (*keylens)[mid-1] : 0;  // start of middle internal key
-          Slice keymid = ExtractUserKey((*keys).substr(keymidx, (*keylens)[mid]-keymidx));  // last key in new output file
-          if(icmp->user_comparator()->Compare(nextstartkey,keymid)>0)left=mid; else rcdx=mid;
+          Slice keymid((char *)(*keys).data()+keymidx, (*keylens)[mid]-keymidx);  // last key in new output file.
+          if(icmp->user_comparator()->Compare(nextstartkey,ExtractUserKey(keymid))>0)left=mid; else rcdx=mid;
         }
         break;  // rcdx has been set
       }
@@ -124,12 +185,7 @@ extern void BreakRecordsIntoFiles(
 // Convert a filename, which is known to be a valid vlg filename, to the ring and filenumber in this VLog
 static ParsedFnameRing VlogFnametoRingFname(std::string pathfname) {
     // Isolate the filename from the path as required by the subroutine
-    size_t fslashx = pathfname.find_last_of('/');  // index of '/'
-    if(fslashx==pathfname.size())fslashx = -1;  // if no /, start at beginning
-    size_t bslashx = pathfname.find_last_of('\\');  // index of '\'
-    if(bslashx==pathfname.size())bslashx = -1;  // if no \, start at beginning
-    if(fslashx<bslashx)fslashx=bslashx;  // fslashx is now the larger index
-    std::string fname = pathfname.substr(fslashx+1);  // get the part AFTER the last /\
+    std::string fname = pathfname.substr(pathfname.find_last_of("/\\")+1);  // get the part AFTER the last '/' or '\'; if not found, substr(0) which is the whole name
 
     // Extract the file number (which includes the ring) from the filename
     uint64_t number;  // return value, giving file number
@@ -618,10 +674,10 @@ ProbDelay();
 // Returns the bytes.  ?? Should this return to user area to avoid copying?
 Status VLogRing::VLogRingGet(
   VLogRingRef& request,  // the values to read
-  std::string *response   // return value - the data pointed to by the reference
+  std::string& response   // return value - the data pointed to by the reference
 )
 {
-  response->resize(request.Len());  // allocate area for return
+  response.resize(request.Len());  // allocate area for return
   Slice resultslice;  // place to get back pointer to data, which may be different from scratch (if cached)
   // Read the reference.  Make sure we have the most recent copy of the ring information, and the most recent
   // copy of the file pointer.
@@ -710,13 +766,13 @@ ProbDelay();
   }
 
   // Read the reference, unless there is a permanent error, in which case set the error message
-  Status iostatus = selectedfile!=nullptr ? selectedfile->Read(request.Offset(), request.Len(), &resultslice, (char *)response->data())
+  Status iostatus = selectedfile!=nullptr ? selectedfile->Read(request.Offset(), request.Len(), &resultslice, (char *)response.data())
                                           : Status::Corruption("Indirect reference to nonexistent file")
                                           ;
   // If the result is not in the user's buffer, copy it to there
   if(iostatus.ok()){
-    if(response->data()!=resultslice.data())response->assign(resultslice.data(),resultslice.size());  // no error: copy data only if not already in user's buffer
-  }else{response->clear();}  // error: return empty string
+    if(response.data()!=resultslice.data())response.assign(resultslice.data(),resultslice.size());  // no error: copy data only if not already in user's buffer
+  }else{response.clear();}  // error: return empty string
 // scaf decompress and check CRC
   return iostatus;
 }
@@ -1089,20 +1145,46 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
 // Returns the bytes.  ?? Should this return to user area to avoid copying?
 Status VLog::VLogGet(
   const Slice& reference,  // the reference
-  std::string *result   // where the result is built
+  std::string& result   // where the result is built    scaf should make this a reference
 )
 {
-  assert(reference.size()==16);  // should be a reference
-  if(reference.size()!=16){return Status::Corruption("indirect reference is ill-formed.");}
+  Status s;
+  assert(reference.size()==VLogRingRef::sstrefsize);  // should be a reference
+  if(reference.size()!=VLogRingRef::sstrefsize){return Status::Corruption("indirect reference is ill-formed.");}
   VLogRingRef ref = VLogRingRef(reference.data());   // analyze the reference
 
   // Because of the OS kludge that doesn't allow zero-length files to be memory-mapped, we have to check to make
   // sure that the reference doesn't have 0 length: because the 0-length reference might be contained in a
   // (nonexistent) 0-length file, and we'd better not try to read it
-  if(!ref.Len()){ result->clear(); return Status(); }   // length 0; return empty string, no error
+  if(!ref.Len()){ result.clear(); return Status(); }   // length 0; return empty string, no error
 
   // Vector to the appropriate ring to do the read
-  return rings_[ref.Ringno()]->VLogRingGet(ref,result);
+  std::string ringresult;  // place where ring value will be read
+  if(!(s = rings_[ref.Ringno()]->VLogRingGet(ref,ringresult)).ok())return s;  // read the data; if error reading, return the error
+
+  // check the CRC
+  // CRC the type/data and compare the CRC to the value in the record
+  if(ringresult.size()<(1+4)){return Status::Corruption("indirect reference is too short.");}
+  uint32_t crcint = crc32c::Value(ringresult.data(),ringresult.size()-4);  // take CRC of the header byte/data
+  // this code uses a byte-oriented format for transportability.  This code must match the IndirectIterator that writes the data file
+  for(int i = 0;i<4;++i){if(ringresult[ringresult.size()-4+i]!=(char)crcint)return Status::Corruption("indirect reference CRC mismatch."); crcint>>=8;}
+
+   // extract the compression type and decompress the data
+  unsigned char ctype = ringresult[0];
+  if(ctype==CompressionType::kNoCompression) {
+    // data is uncompressed; move it to the user's area
+    result.assign(&ringresult[1],ringresult.size()-(1+4));   // data starts at offset 1, and doesn't include 1-byte header or 4-byte trailer 
+  } else {
+    BlockContents contents;
+// scaf this moves the data twice, which we could avoid if we rewrite the subroutine
+    s = UncompressBlockContentsForCompressionType(
+        &ringresult[1], ringresult.size()-(1+4), &contents,
+          kVLogCompressionVersionFormat, Slice(), (CompressionType)ctype,
+        *(cfd_->ioptions()));
+    result.assign(contents.data.data(),contents.data.size());  // move data to user's buffer
+  }
+  return s;
+
 }
 
   void VLog::VLogSstInstall(

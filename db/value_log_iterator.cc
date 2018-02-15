@@ -51,10 +51,18 @@ namespace rocksdb {
 // because it reserves the minimum requested, which leads to quadratic performance
 static void reserveatleast(std::vector<NoInitChar>& vec, size_t reservation) {
   if(vec.size()+reservation <= vec.capacity()) return;  // return fast if no need to expand
-  size_t newcap = vec.capacity() & -0x40;   // keep size a nice boundary
-  if(newcap < 2*maxfilesize)newcap = 2*maxfilesize;  // always at least 1MB - less will be rare & unimportant
-  while(newcap < vec.size()+reservation)newcap = (size_t)(newcap*1.5) & -0x40;  // grow in large jumps until big enough
+  size_t newcap = vec.capacity() & -0x40;   // keep capacity a nice boundary
+  if(newcap<1024)newcap=1024;   // start with a minimum above 0 so it can grow by multiplication
+  while(newcap < vec.size()+reservation)newcap = (size_t)(newcap*2.0) & -0x40;  // grow in large jumps until big enough
   vec.reserve(newcap);
+}
+
+// Append the addend to end of charvec, by reserving enough space and then copying in the data
+static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend) {
+  reserveatleast(charvec,addend.size());  // make sure there is room for the new data
+  char *bufend = (char *)charvec.data()+charvec.size();   // address of place to put new data
+  charvec.resize(charvec.size()+addend.size());  // advance end pointer past end of new data
+  memcpy(bufend,addend.data(),addend.size());  // move in the new data
 }
 
 
@@ -115,6 +123,11 @@ printf("\n");
     addedfrag.clear(); addedfrag.resize(current_vlog->rings_.size());   // init the fragmentation count to 0 for each ring
     std::vector<VLogRingRefFileOffset> outputrcdend; outputrcdend.reserve(10000); // each entry here is the running total of the bytecounts that will be sent to the SST from each kv
 
+    // Get the compression information to use for this file
+    CompressionType compressiontype(kSnappyCompression);  // scaf need option
+    CompressionOptions compressionopts{};  // scaf need option
+    std::string compressiondict;  // scaf need initial dict
+
     // For AR, create the list of number of records in each input file.
     filecumreccnts.clear(); if(recyciter!=nullptr)filecumreccnts.resize((const_cast<Compaction *>(compaction))->inputs()->size());
     // Read all the kvs from c_iter and save them.  We start at the first kv
@@ -124,11 +137,17 @@ printf("\n");
     // keys - the keys read from c_iter read as a Slice but converted to string
     // passthroughdata - values from c_iter that should be passed through (Slice)
     // valueclass - bit 0 means 'value is a passthrough'; bit 1 means 'value is being converted from direct to indirect', bit 2='Error'
-    //
+
     // The Slices are references to pinned tables.  We copy them into our buffers.
     // They are immediately passed to Builder which must make a copy of the data.
     std::vector<NoInitChar> diskdata;  // where we accumulate the data to write
     std::string indirectbuffer;   // temp area where we read indirect values that need to be remapped
+
+    // initialize the vectors to reduce later reallocation and copying
+    keys.reserve((uint64_t)(1.2*compaction->max_compaction_bytes())); diskdata.reserve(100000000);  // scaf size the diskdata better, depending on level
+    passthroughrecl.reserve(10000); passthroughdata.reserve(10000*VLogRingRef::sstrefsize);  // reserve space for passthrough data and lengths
+    diskrecl.reserve(10000); keylens.reserve(10000); valueclass.reserve(10000);  // scaf const  number of keys in an ordinary compaction
+
     size_t totalsstlen=0;  // total length so far that will be written to the SST
     while(c_iter->Valid() && 
            !(recyciter==nullptr && end != nullptr && pcfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0)) {
@@ -154,27 +173,37 @@ printf("\n");
       // Because the compaction_iterator builds all its return keys in the same buffer, we have to move the key
       // into an area that won't get overwritten.  To avoid lots of memory allocation we jam all the keys into one vector,
       // and keep a vector of lengths
-      keys.append(key.data(),key.size());   // save the key...
+ 
+// obsolete       keys.append(key.data(),key.size());   // save the key...
+      appendtovector(keys,key);  // collect new data into the written-to-disk area
       keylens.push_back(keys.size());    // ... and its cumulative length
       Slice &val = (Slice &) c_iter->value();  // read the value
       sstvaluelen = val.size();  // if value passes through, its length will go to the SST
       if(IsTypeDirect(c_iter->ikey().type) && val.size() > 0 ) {  // scaf compare against min length
         // direct value that should be indirected
         vclass += vIndirectFirstMap;  // indicate the conversion
-        // compress the data scaf
-        // CRC the data  scaf
+        std::string compresseddata;  // place the compressed string will go
+        // Compress the data.  This will never fail; if there is an error, we just get uncompressed data
+        CompressionType ctype = CompressForVLog(std::string(val.data(),val.size()),compressiontype,compressionopts,compressiondict,&compresseddata);
+        // Move the compression type and the compressed data into the output area, jammed together
+        size_t ctypeindex = diskdata.size();  // offset to the new record
+        reserveatleast(diskdata,1+4+compresseddata.size());  // make sure there's room for header+CRC
+        diskdata.push_back((char)ctype);
+        appendtovector(diskdata,compresseddata);  // collect new data into the written-to-disk area
+        // CRC the type/data and move the CRC to the output record
+        uint32_t crcint = crc32c::Value((char *)diskdata.data()+ctypeindex,diskdata.size()-ctypeindex);  // take CRC
+        // Append the CRC to the type/data, giving final record format of type/data/CRC.  We don't use a structure for this for fear
+        // of compiler/architecture variations.  Instead, we treat everything as bytes.  We put the CRC out littlendian here
+        for(int i = 0;i<4;++i){diskdata.push_back((char)crcint); crcint>>=8;}
 
-        reserveatleast(diskdata,val.size());  // make sure there is room for the new data
-        char *bufend = (char *)diskdata.data()+diskdata.size();   // address of place to put new data
-        diskdata.resize(diskdata.size()+val.size());  // advance end pointer past end of new data
-        memcpy(bufend,val.data(),val.size());  // move in the new data
+        // We have built the compressed/CRCd record.  save its length
         diskrecl.push_back(diskdata.size());   // write running sum of record lengths, i. e. current total size of diskdata
         sstvaluelen = VLogRingRef::sstrefsize;  // what we write to the SST will be a reference
       } else if(IsTypeIndirect(c_iter->ikey().type)) {  // is indirect ref?
         // value is indirect; does it need to be remapped?
-        assert(val.size()==16);  // should be a reference
+        assert(val.size()==VLogRingRef::sstrefsize);  // should be a reference
         // If the reference is ill-formed, create an error if there wasn't one already on the key
-        if(val.size()!=16){
+        if(val.size()!=VLogRingRef::sstrefsize){
           if(vclass<vHasError){   // Don't create an error for this key if it carries one already
             inputerrorstatus.push_back(Status::Corruption("indirect reference is ill-formed."));
             vclass += vHasError;  // indicate that this key now carries error status...
@@ -246,8 +275,9 @@ ProbDelay();
             vclass += vPassthroughIndirect;  // indirect data passes through...
             diskfileref.push_back(RingFno{ref.Ringno(),ref.Fileno()});   // ... and we save the ring/file of the reference
             // As described below, we must copy the data that is going to be passed through
-            passthroughdata.append(val.data(),val.size());    // copy the data
-            passthroughrecl.push_back(val.size());
+// obsolete            passthroughdata.append(val.data(),val.size());    // copy the data
+            appendtovector(passthroughdata,val);  // copy the reference as data to be passed back to compaction but not written to disk
+            passthroughrecl.push_back(val.size());  // save its length too
             // of all the data referenced in the VLog, this is the only data that DOES NOT turn into fragmentation.  Anything else - deletions or remapping -
             // does produce fragmentation.  We subtract the passthrough data from the frag count.  Later, we will add in the total number of bytes referenced to get
             // the total fragmentation added.
@@ -262,13 +292,15 @@ ProbDelay();
         // anything returned from a merge uses buffers in the compaction_iterator that are overwritten after each merge.
         // Since most passthrough data is short (otherwise why use indirects?), this is probably not a big problem; the
         // solution would be to keep all merge results valid for the life of the compaction_iterator.
-        passthroughdata.append(val.data(),val.size());    // copy the data
+        appendtovector(passthroughdata,val);  // copy the data
+// obsolete        passthroughdata.append(val.data(),val.size());    // copy the data
         passthroughrecl.push_back(val.size());
       }
       // save the type of record for use in the replay
       valueclass.push_back(vclass);
 
       // save the total length of the kv that will be written to the SST, so we can plan file sizes
+// scaf emulate differential key encoding to figure this length
       outputrcdend.push_back(totalsstlen += key.size()+VarintLength(key.size())+sstvaluelen+VarintLength(sstvaluelen));
 
       // Associate the valid kv with the file it comes from.  We store the current record # into the file# slot it came from, so
@@ -361,7 +393,7 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
       }
 
       size_t keyx = keyno_ ? keylens[keyno_-1] : 0;  // starting position of previous key
-      ParseInternalKey(Slice(keys.data()+keyx,keylens[keyno_] - keyx),&ikey_);  // Fill in the parsed result area
+      ParseInternalKey(Slice((char *)keys.data()+keyx,keylens[keyno_] - keyx),&ikey_);  // Fill in the parsed result area
 
       // Include the previous key's file/ring in the current result (because the compaction job calls Next() before closing
       // the current output file)
@@ -377,7 +409,7 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
         // fall through to...
       case vPassthroughDirect:
        // passthrough, either kind.  Fill in the slice from the buffered data, and advance pointers to next record
-        value_.install(passthroughdata.data() + nextpassthroughref,passthroughrecl[passx_++]);  // nextpassthroughref is current data offset
+        value_.install((char *)passthroughdata.data() + nextpassthroughref,passthroughrecl[passx_++]);  // nextpassthroughref is current data offset
         nextpassthroughref += value_.size_;  // advance data offset for next time
         break;
       case vIndirectFirstMap:
