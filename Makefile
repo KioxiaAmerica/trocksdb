@@ -830,12 +830,12 @@ watch-log:
 check: all
 	$(MAKE) gen_parallel_tests
 	$(AM_V_GEN)if test "$(J)" != 1                                  \
-	    && (build_tools/gnu_parallel --gnu --help 2>/dev/null) |                    \
+	    && (build_tools/gnu_parallel --gnu --help 2>/dev/null) |    \
 	        grep -q 'GNU Parallel';                                 \
 	then                                                            \
 	    $(MAKE) T="$$t" TMPD=$(TMPD) check_0;                       \
 	else                                                            \
-	    for t in $(filter-out $(LOCKS),$(TESTS)); do                                       \
+	    for t in $(filter-out $(LOCKS),$(TESTS)); do                \
 	      echo "===== Running $$t"; ./$$t || exit 1; done;          \
 	fi
 	rm -rf $(TMPD)
@@ -1182,6 +1182,9 @@ external_sst_file_basic_test: db/external_sst_file_basic_test.o db/db_test_util.
 
 external_sst_file_test: db/external_sst_file_test.o db/db_test_util.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
+ifdef INDIRECT_VALUE_SUPPORT
+	if [ `ulimit -n` -lt 500000 ]; then echo "ulimit is too low. Please run 'ulimit -S -n 500000' before running tests."; exit 1; fi
+endif
 
 db_tailing_iter_test: db/db_tailing_iter_test.o db/db_test_util.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
