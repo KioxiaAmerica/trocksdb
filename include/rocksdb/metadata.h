@@ -34,6 +34,16 @@ struct ColumnFamilyMetaData {
   std::string name;
   // The metadata of all levels in this column family.
   std::vector<LevelMetaData> levels;
+#ifdef INDIRECT_VALUE_SUPPORT
+  // all these stats are as of the next restart, i. e. they don't include files that have been removed
+  // from the main version but are still hanging around to satify an iterator
+  // the number of files in each VLog ring
+  std::vector<uint64_t> vlog_filecount;
+  // the number of bytes allocated in each VLog ring
+  std::vector<uint64_t> vlog_totalsize;
+  // the amount of fragmentation in each ring, i. e. bytes in VLogs 
+  std::vector<uint64_t> vlog_totalfrag;
+#endif
 };
 
 // The metadata that describes a level.
@@ -110,6 +120,7 @@ struct SstFileMetaData {
 #ifdef INDIRECT_VALUE_SUPPORT   // declare the fields added to SstFileMetaData
   std::vector<uint64_t> indirect_ref_0;  // for each ring, file# of the oldest value referred to in this SST.  Set to HIGH-VALUE (~0>>1) if there are no indirect references
      // set to 0 to mean 'indirect value omitted'
+
 #endif
 };
 

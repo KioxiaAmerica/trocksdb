@@ -132,6 +132,10 @@ static const int max_simultaneous_deletions = 1000;  // maximum number of files 
 static const double vlog_remapping_fraction = 0.5;  // References to the oldest VLog files - this fraction of them - will be remapped if encountered during compaction
 static const int maxfilesize = 100000;  // scaf largest file to write out
 static const int kVLogCompressionVersionFormat = 2;  // compressed-data format we use
+static const double kVLogRecycleThreshold = 0.25;  // scaf use option   fragmentation fraction at which we start AR
+static const int kVLogRecycleMinSsts = 5;  // scaf use option   min # SSTs to include in AR
+static const int kVLogRecycleMaxSsts = 15;  // scaf use option   max # SSTs for AR
+static const int kVLogRecycleMinVLogFileFreed = 7;  // scaf use option   min # files to free with an AR run
 
 // ParsedFnameRing contains filenumber and ringnumber for a file.  We use it to split the compositie filename/ring into its parts
 
@@ -505,6 +509,8 @@ VLogRing(
 #if DEBLEVEL&0x400
   ~VLogRing() { printf("Destroying VLogRing %p\n",this); }
 #endif
+  Status initialstatus;  // used to report the status of the creation of the object
+
   // return a file number near the head of the ring, to use if no other reference is available
   VLogRingRefFileno nearhead() { VLogRingRefFileno h = atomics.fd_ring_head_fileno; VLogRingRefFileno t = atomics.fd_ring_tail_fileno; return t + (15*(h-t))/16;}  // read head first so that we don't overrun it is case of async mod
 
@@ -624,6 +630,7 @@ private:
   ColumnFamilyData *cfd_;
   std::vector<FileMetaData *> waiting_sst_queues;  // queue headers when SSTs are queued awaiting init.  One per possible ring
   std::atomic<uint32_t> writelock;  // 0 normally, 1 when the ring headers are being modified
+  const ImmutableDBOptions *immdbopts_;  // options at time of creation
 
   // Acquire write lock on the VLog.  Won't happen often, and only for a short time
 // scaf  should use timed_mutex, provided that generates PAUSE instr

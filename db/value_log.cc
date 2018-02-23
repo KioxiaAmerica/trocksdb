@@ -141,9 +141,9 @@ extern void BreakRecordsIntoFiles(
       // get first and last key of putative output file
       size_t key0x = firstrcdinfile ? (*keylens)[firstrcdinfile-1] : 0;  // start of first internal key in rcd
       Slice key0((char *)(*keys).data()+key0x, (*keylens)[firstrcdinfile]-key0x);  // first key in new output file.
-      Slice keyn((char *)(*keys).data()+(*keylens)[rcdx-1], (*keylens)[rcdx]-(*keylens)[rcdx-1]);  // first key in new output file.
+      Slice keyn((char *)(*keys).data()+(*keylens)[rcdx-1], (*keylens)[rcdx]-(*keylens)[rcdx-1]);  // last key in new output file.
       // skip over grandparent files that are entirely before the current output file
-      while(grandparentx<(*grandparents).size() && icmp->user_comparator()->Compare((*grandparents)[grandparentx]->largest.user_key(),ExtractUserKey(key0))<0)++grandparentx;  // skip is grandparent all before output
+      while(grandparentx<(*grandparents).size() && icmp->user_comparator()->Compare((*grandparents)[grandparentx]->largest.user_key(),ExtractUserKey(key0))<0)++grandparentx;  // skip if grandparent all before output
       // initialize the total compaction size to the size of the output file
       size_t compactionsize = rcdend[rcdx]-prevbytes;  // length of the records in the putative output
       // accumulate size of grandparents that overlap the putative output file.  We know the current grandparent file, if it exists, ends after the first key in the putative output
@@ -161,11 +161,11 @@ extern void BreakRecordsIntoFiles(
         // Here the compaction has become too big.  We will NOT be able to include the new grandparent.  That means we must discard keys from the end of the putative
         // output until it no longer overlaps with the file we couldn't include.  We will use a binary search to do this, because there may be a lot of keys.
         // As above we start left at its lowest possible value, rcdx at its highest possible value (which equals its starting value)
-        int64_t left = firstrcdinfile-1;  // init brackets for search
+        int64_t left = firstrcdinfile;  // init brackets for search.  The ending value of left will be the LAST record, and there must be at least 1 record in the file, so 
         // the loop variable rcdx will hold the result of the search, fulfilling its role as pointer to the end of the written block
         while(rcdx!=(left+1)) {  // binary search
           // at top of loop rcdend[left]<targetfileend and rcdend[rcdx]>=targetfileend.  This remains invariant.  Note that left may be before the search region, or even -1
-          // Loop terminates when rcdx-left=1; at that point rcdx points to the ending record, i. e. the first record that contains enough data
+          // Loop terminates when rcdx-left=1; at that point rcdx points to the ending+1 record, i. e. the first record that contains a key too high
           // Calculate the middle record position, which is known not to equal an endpoint (since rcdx-left>1)
           size_t mid = left + ((rcdx-left)>>1);   // index of middle value
           // update one or the other input pointer
@@ -173,6 +173,7 @@ extern void BreakRecordsIntoFiles(
           Slice keymid((char *)(*keys).data()+keymidx, (*keylens)[mid]-keymidx);  // last key in new output file.
           if(icmp->user_comparator()->Compare(nextstartkey,ExtractUserKey(keymid))>0)left=mid; else rcdx=mid;
         }
+        rcdx = left;  // back up to the last admissible key
         break;  // rcdx has been set
       }
     }
@@ -287,7 +288,8 @@ VLogRing::VLogRing(
     ringno_(ringno),
     cfd_(cfd),
     immdbopts_(immdbopts),
-    envopts_(file_options)  // must copy into heap storage here
+    envopts_(file_options),  // must copy into heap storage here
+    initialstatus(Status{})
 {
 #if DEBLEVEL&1
 printf("VLogRing cfd_=%p\n",cfd_);
@@ -317,21 +319,27 @@ printf("VLogRing cfd_=%p\n",cfd_);
       if(cfd_->vloginfo()[ringno_].ContainsFileno(fnring.fileno_)) {
         // the file is valid according to the manifest.  Open it
         std::unique_ptr<RandomAccessFile> fileptr;  // pointer to the opened file
-        immdbopts_->env->NewRandomAccessFile(filenames[i], &fileptr,envopts_);  // open the file if it exists
+        Status s = immdbopts_->env->NewRandomAccessFile(filenames[i], &fileptr,envopts_);  // open the file if it exists
           // move the file reference into the ring, and publish it to all threads
         fd_ring[0][Ringx(fd_ring[0],fnring.fileno_)]=std::move(VLogRingFile(fileptr,filesizes[i]));
 #if DEBLEVEL&2
 printf("Opening file %s\n",filenames[i].c_str());
 #endif
+        if(!s.ok()) {
+          ROCKS_LOG_ERROR(immdbopts_->info_log,
+                        "Error opening VLog file %s",filenames[i].c_str());
+          initialstatus = Status::Corruption("VLog file cannot be opened");
+        }
         // if error opening file, we can't do anything useful, so leave file unopened, which will give an error if a value in it is referenced
-// scaf error?
       } else {
 #if DEBLEVEL&2
 printf("Deleting file %s\n",filenames[i].c_str());
 #endif
         // The file is not referenced.  We must have crashed while deleting it, or before it was referenced.  Delete it now
-        immdbopts_->env->DeleteFile(filenames[i]);   // ignore error - what could we do?
-  // should log? scaf
+        if(!immdbopts_->env->DeleteFile(filenames[i]).ok()){
+          ROCKS_LOG_WARN(immdbopts_->info_log,
+                        "Unreferenced VLog file %s deleted",filenames[i].c_str());
+        }
       }
     }
   }
@@ -366,9 +374,10 @@ printf("Deleting file %s\n",filenames[i].c_str());
 #if DEBLEVEL&2
 printf("Deleting file: %s\n",filename.c_str());
 #endif
-
-    immdbopts->env->DeleteFile(filename);  // delete the file
-// scaf ignore error - what could we do?
+    if(!immdbopts->env->DeleteFile(filename).ok()){
+      ROCKS_LOG_WARN(immdbopts->info_log,
+                    "Error trying to delete VLog file %s",filename.c_str());
+    }
   }
 
 // See how many files need to be deleted.  Result is a vector of them, with the ring entries for the old files cleared.
@@ -520,7 +529,7 @@ std::vector<Status>& resultstatus   // result: place to save error status.  For 
   AcquireLock();
     VLogRingRefFileno headfile, tailfile; uint64_t currentarray;
 
-    // Check for resizing the ring.  When we come out of this loop the value of heasfile, tailfile, currentarray will
+    // Check for resizing the ring.  When we come out of this loop the value of headfile, tailfile, currentarray will
     // be up to date, and we will still have the lock (though it may have been given up for a while)
     do{
       tailfile = atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);
@@ -586,6 +595,7 @@ printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.si
 
     // Pass aligned buffer when use_direct_io() returns true.   scaf ??? what do we do for direct_io?
     // Create filename for the file to write
+// scaf can't we get by with just one pathname?
     pathnames.push_back(VLogFileName(immdbopts_->db_paths,
       VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber(), (uint32_t)immdbopts_->db_paths.size()-1, cfd_->GetName()));
 
@@ -593,23 +603,45 @@ printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.si
     {
       unique_ptr<WritableFile> writable_file;
       iostatus = immdbopts_->env->NewWritableFile(pathnames.back(),&writable_file,envopts_);  // open the file
+      if(!iostatus.ok()) {
+        ROCKS_LOG_ERROR(immdbopts_->info_log,
+          "Error opening VLog file %s for write",pathnames.back().c_str());
+      }
 #if DEBLEVEL&2
 printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
 #endif
-      if(iostatus.ok())iostatus = writable_file->Append(Slice((char *)bytes.data()+startofnextfile,lenofthisfile));  // write out the data
-      startofnextfile += lenofthisfile;  // advance write pointer to position for next file
+
+      if(iostatus.ok()) {
+        iostatus = writable_file->Append(Slice((char *)bytes.data()+startofnextfile,lenofthisfile));  // write out the data
+        if(!iostatus.ok()) {
+          ROCKS_LOG_ERROR(immdbopts_->info_log,
+            "Error writing to VLog file %s",pathnames.back().c_str());
+        }
+      }
 
       // Sync the written data.  We must make sure it is synced before the SSTs referring to it are committed to the manifest.
       // We might as well sync it right now
-      if(iostatus.ok())iostatus = writable_file->Fsync();  // scaf shuould fsync once for all files?
+      if(iostatus.ok()) {
+        iostatus = writable_file->Fsync();  // scaf should fsync once for all files?
+        if(!iostatus.ok()) {
+          ROCKS_LOG_ERROR(immdbopts_->info_log,
+            "Error Fsyncing VLog file %s",pathnames.back().c_str());
+        }
+      }
+
     }  // this closes the writable_file
 
     // Reopen the file as randomly readable
     std::unique_ptr<RandomAccessFile> fp;  // the open file
-    if(iostatus.ok()){
-      immdbopts_->env->NewRandomAccessFile(pathnames.back(), &fp, envopts_);
-      if(fp.get()==nullptr)iostatus = Status::IOError("unable to reopen file.");
+
+    if(iostatus.ok()) {
+      iostatus = immdbopts_->env->NewRandomAccessFile(pathnames.back(), &fp, envopts_);
+      if(!iostatus.ok()) {
+        ROCKS_LOG_ERROR(immdbopts_->info_log,
+          "Error reopening VLog file %s for reading",pathnames.back().c_str());
+      }
     }
+
     filepointers.push_back(std::move(fp));  // push one fp, even if null, for every file slot
 
     // if there was an I/O error on the file, return the error, localized to the file by a negative offset in the return area.
@@ -619,7 +651,9 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
       resultstatus.push_back(iostatus);  // save the error details
       reportedlen = -reportedlen;  // flag the offending file
     }
+
     fileendoffsets.push_back(reportedlen);
+    startofnextfile += lenofthisfile;  // advance write pointer to position for next file
   }
 
   // Files are written and reopened.  Transfer them to the fd_ring under lock.
@@ -740,8 +774,9 @@ ProbDelay();
     // be atomic on any modern CPU anyway
     selectedfile = (*fdring)[Ringx(*fdring,request.Fileno())].filepointer.get();  // fetch the filepointer, unconditionally
 
-    // If the loaded pointer is valid and nonnull, go use it
-    if(request.Fileno()<=headfile && request.Fileno()>=tailfile && selectedfile!=nullptr)break;  // could use conditional assignment, but we hope these branches are predicted right
+    // If the loaded pointer is valid and nonnull, go use it.  If invalid, set retrystate to so signify
+    if(request.Fileno()>headfile || request.Fileno()<tailfile){ retrystate=-1; break;}   // detect invalid filenumber request
+    if(selectedfile!=nullptr)break;  //  normal exit: reference found
 
     // Here we did not resolve the file correctly.  The possible causes, in order of severity, are:
     // 1. The head pointer that we fetched was stale and the reference is to a later file.  Since there is no guarantee that the load-for-acquire fetched the
@@ -764,16 +799,33 @@ ProbDelay();
 
     ++retrystate;  // count the number of retries
   }
+  Status iostatus;   // where we accumulate errors.  initialized to OK
 
-  // Read the reference, unless there is a permanent error, in which case set the error message
-  Status iostatus = selectedfile!=nullptr ? selectedfile->Read(request.Offset(), request.Len(), &resultslice, (char *)response.data())
-                                          : Status::Corruption("Indirect reference to nonexistent file")
-                                          ;
-  // If the result is not in the user's buffer, copy it to there
-  if(iostatus.ok()){
-    if(response.data()!=resultslice.data())response.assign(resultslice.data(),resultslice.size());  // no error: copy data only if not already in user's buffer
-  }else{response.clear();}  // error: return empty string
-// scaf decompress and check CRC
+  if(selectedfile==nullptr){
+    // error fetching the file pointer
+    if(retrystate<0){
+      // file number not between head and tail 
+      ROCKS_LOG_ERROR(immdbopts_->info_log,
+        "Invalid file number %zd in reference in ring %d",request.Fileno(),ringno_);
+      iostatus = Status::Corruption("Indirect reference to file out of bounds");
+    } else {
+      // file not opened in fdring
+      ROCKS_LOG_ERROR(immdbopts_->info_log,
+        "Reference to file number %zd in ring %d, but file was not opened",request.Fileno(),ringno_);
+      iostatus = Status::Corruption("Indirect reference to unopened file");
+      response.clear();   // error, return empty string
+    } 
+  } else {  // no error on file pointer, resolve the reference
+    iostatus = selectedfile->Read(request.Offset(), request.Len(), &resultslice, (char *)response.data());  // Read the reference
+    if(!iostatus.ok()) {
+      ROCKS_LOG_ERROR(immdbopts_->info_log,
+        "Error reading reference from file number %zd in ring %d",request.Fileno(),ringno_);
+      response.clear();   // error, return empty string
+    } else {
+      // normal path.  if the data was read into the user's buffer, leave it there; otherwise copy it in
+      if(response.data()!=resultslice.data())response.assign(resultslice.data(),resultslice.size());
+    }
+  }
   return iostatus;
 }
 
@@ -1094,6 +1146,7 @@ Status VLog::VLogInit(
 #if DEBLEVEL&1
 printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
 #endif
+  immdbopts_ = immdbopts;  // save the options
   // Save the ring starting levels
     starting_level_for_ring_.push_back(0);  // scaf
 
@@ -1128,6 +1181,9 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
       existing_vlog_sizes_for_cf /* filesizes */, 
       immdbopts /* immdbopts */, file_options)));
 
+    // if there was an error creating the ring, abort
+    if(!rings_.back()->initialstatus.ok())return rings_.back()->initialstatus;
+
     // Traverse the sst waiting queue, taking each SST off and installing it into the queue according to its reference.
     // Each call will lock the ring, but the ones after the first should be processed very quickly because the lock
     // will still be held by this core
@@ -1136,7 +1192,6 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
        // remove new block from chain before installing it into the ring
   }
 
-// status? scaf
   return Status();
 }
 
@@ -1148,26 +1203,41 @@ Status VLog::VLogGet(
   std::string& result   // where the result is built    scaf should make this a reference
 )
 {
-  Status s;
+  Status s;  // return status, initialized to ok
   assert(reference.size()==VLogRingRef::sstrefsize);  // should be a reference
-  if(reference.size()!=VLogRingRef::sstrefsize){return Status::Corruption("indirect reference is ill-formed.");}
+  if(reference.size()!=VLogRingRef::sstrefsize){
+    ROCKS_LOG_ERROR(immdbopts_->info_log,
+      "Indirect reference is not %d bytes long",VLogRingRef::sstrefsize);
+    return s = Status::Corruption("indirect reference is ill-formed.");
+  }
   VLogRingRef ref = VLogRingRef(reference.data());   // analyze the reference
 
   // Because of the OS kludge that doesn't allow zero-length files to be memory-mapped, we have to check to make
   // sure that the reference doesn't have 0 length: because the 0-length reference might be contained in a
   // (nonexistent) 0-length file, and we'd better not try to read it
-  if(!ref.Len()){ result.clear(); return Status(); }   // length 0; return empty string, no error
+  if(!ref.Len()){ result.clear(); return s; }   // length 0; return empty string, no error
 
   // Vector to the appropriate ring to do the read
   std::string ringresult;  // place where ring value will be read
-  if(!(s = rings_[ref.Ringno()]->VLogRingGet(ref,ringresult)).ok())return s;  // read the data; if error reading, return the error
+  if(!(s = rings_[ref.Ringno()]->VLogRingGet(ref,ringresult)).ok())return s;  // read the data; if error reading, return the error.  Was logged in the ring
 
   // check the CRC
   // CRC the type/data and compare the CRC to the value in the record
-  if(ringresult.size()<(1+4)){return Status::Corruption("indirect reference is too short.");}
+  if(ringresult.size()<(1+4)){
+      ROCKS_LOG_ERROR(immdbopts_->info_log,
+        "Reference too short in file %zd in ring %d",ref.Fileno(),ref.Ringno());
+    return s = Status::Corruption("indirect reference is too short.");
+  }
   uint32_t crcint = crc32c::Value(ringresult.data(),ringresult.size()-4);  // take CRC of the header byte/data
   // this code uses a byte-oriented format for transportability.  This code must match the IndirectIterator that writes the data file
-  for(int i = 0;i<4;++i){if(ringresult[ringresult.size()-4+i]!=(char)crcint)return Status::Corruption("indirect reference CRC mismatch."); crcint>>=8;}
+  for(int i = 0;i<4;++i){
+    if(ringresult[ringresult.size()-4+i]!=(char)crcint) {
+      ROCKS_LOG_ERROR(immdbopts_->info_log,
+        "CRC error reading from file number %zd in ring %d",ref.Fileno(),ref.Ringno());
+      return s = Status::Corruption("indirect reference CRC mismatch.");
+    }
+    crcint>>=8;  // move to next byte
+  }
 
    // extract the compression type and decompress the data
   unsigned char ctype = ringresult[0];
@@ -1177,10 +1247,14 @@ Status VLog::VLogGet(
   } else {
     BlockContents contents;
 // scaf this moves the data twice, which we could avoid if we rewrite the subroutine
-    s = UncompressBlockContentsForCompressionType(
+    if(!(s = UncompressBlockContentsForCompressionType(
         &ringresult[1], ringresult.size()-(1+4), &contents,
           kVLogCompressionVersionFormat, Slice(), (CompressionType)ctype,
-        *(cfd_->ioptions()));
+        *(cfd_->ioptions()))).ok()){
+      ROCKS_LOG_ERROR(immdbopts_->info_log,
+        "Decompression error reading from file number %zd in ring %d",ref.Fileno(),ref.Ringno());
+      return s;
+    }
     result.assign(contents.data.data(),contents.data.size());  // move data to user's buffer
   }
   return s;

@@ -29,6 +29,13 @@ void CompactionJobStats::Reset() {
   total_input_raw_key_bytes = 0;
   total_input_raw_value_bytes = 0;
 
+#ifdef INDIRECT_VALUE_SUPPORT
+  vlog_bytes_written_comp = 0;
+  vlog_bytes_written_raw = 0;
+  vlog_bytes_remapped = 0;
+  vlog_files_created = 0;
+#endif
+
   num_input_deletion_records = 0;
   num_expired_deletion_records = 0;
 
@@ -60,6 +67,13 @@ void CompactionJobStats::Add(const CompactionJobStats& stats) {
 
   total_input_raw_key_bytes += stats.total_input_raw_key_bytes;
   total_input_raw_value_bytes += stats.total_input_raw_value_bytes;
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  vlog_bytes_written_comp += stats.vlog_bytes_written_comp;
+  vlog_bytes_written_raw += stats.vlog_bytes_written_raw;
+  vlog_bytes_remapped += stats.vlog_bytes_remapped;
+  vlog_files_created += stats.vlog_files_created;
+#endif
 
   num_input_deletion_records += stats.num_input_deletion_records;
   num_expired_deletion_records += stats.num_expired_deletion_records;

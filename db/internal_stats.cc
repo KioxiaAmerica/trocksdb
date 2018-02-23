@@ -47,6 +47,12 @@ const std::map<LevelStatType, LevelStat> InternalStats::compaction_level_stats =
         {LevelStatType::AVG_SEC, LevelStat{"AvgSec", "Avg(sec)"}},
         {LevelStatType::KEY_IN, LevelStat{"KeyIn", "KeyIn"}},
         {LevelStatType::KEY_DROP, LevelStat{"KeyDrop", "KeyDrop"}},
+#ifdef INDIRECT_VALUE_SUPPORT
+        {LevelStatType::W_VLOG_GB, LevelStat{"WVLogCmpGB", "WVCmp(GB)"}},
+        {LevelStatType::W_VLOGUNCOMP_GB, LevelStat{"WVLogRawGB", "WVRaw(GB)"}},
+        {LevelStatType::W_VLOGREMAP_GB, LevelStat{"WVLogRemapGB", "WVRemap(GB)"}},
+        {LevelStatType::W_VLOGFILES, LevelStat{"WVFiles", "WVFiles"}},
+#endif
 };
 
 namespace {
@@ -62,7 +68,11 @@ void PrintLevelStatsHeader(char* buf, size_t len, const std::string& cf_name) {
   };
   int line_size = snprintf(
       buf + written_size, len - written_size,
-      "Level    %s   %s     %s %s  %s %s %s %s %s %s %s %s %s %s %s %s %s\n",
+      "Level    %s   %s     %s %s  %s %s %s %s %s %s %s %s %s %s %s %s %s"
+#ifdef INDIRECT_VALUE_SUPPORT
+        " %s %s %s %s"
+#endif
+      "\n",
       // Note that we skip COMPACTED_FILES and merge it with Files column
       hdr(LevelStatType::NUM_FILES), hdr(LevelStatType::SIZE_BYTES),
       hdr(LevelStatType::SCORE), hdr(LevelStatType::READ_GB),
@@ -72,7 +82,11 @@ void PrintLevelStatsHeader(char* buf, size_t len, const std::string& cf_name) {
       hdr(LevelStatType::READ_MBPS), hdr(LevelStatType::WRITE_MBPS),
       hdr(LevelStatType::COMP_SEC), hdr(LevelStatType::COMP_COUNT),
       hdr(LevelStatType::AVG_SEC), hdr(LevelStatType::KEY_IN),
-      hdr(LevelStatType::KEY_DROP));
+      hdr(LevelStatType::KEY_DROP)
+#ifdef INDIRECT_VALUE_SUPPORT
+      ,hdr(LevelStatType::W_VLOG_GB), hdr(LevelStatType::W_VLOGUNCOMP_GB), hdr(LevelStatType::W_VLOGREMAP_GB), hdr(LevelStatType::W_VLOGFILES)
+#endif
+      );
 
   written_size += line_size;
   snprintf(buf + written_size, len - written_size, "%s\n",
@@ -112,6 +126,16 @@ void PrepareLevelStats(std::map<LevelStatType, double>* level_stats,
       static_cast<double>(stats.num_input_records);
   (*level_stats)[LevelStatType::KEY_DROP] =
       static_cast<double>(stats.num_dropped_records);
+#ifdef INDIRECT_VALUE_SUPPORT
+  (*level_stats)[LevelStatType::W_VLOG_GB] =
+      stats.vlog_bytes_written_comp / kGB;
+  (*level_stats)[LevelStatType::W_VLOGUNCOMP_GB] =
+      stats.vlog_bytes_written_raw / kGB;
+  (*level_stats)[LevelStatType::W_VLOGREMAP_GB] =
+      stats.vlog_bytes_remapped / kGB;
+  (*level_stats)[LevelStatType::W_VLOGFILES] =
+      static_cast<double>(stats.vlog_files_created);
+#endif
 }
 
 void PrintLevelStats(char* buf, size_t len, const std::string& name,
@@ -134,7 +158,14 @@ void PrintLevelStats(char* buf, size_t len, const std::string& name,
            "%9d "      /*  Comp(cnt) */
            "%8.3f "    /*  Avg(sec) */
            "%7s "      /*  KeyIn */
-           "%6s\n",    /*  KeyDrop */
+           "%6s"       /*  KeyDrop */
+#ifdef INDIRECT_VALUE_SUPPORT
+           " %9.1f"     /* WVCmp(GB) */
+           " %9.1f"     /* WVRaw(GB) */
+           " %11.1f"     /* WVRemap(GB) */
+           " %8d"       /* WVFiles */
+#endif
+           "\n",
            name.c_str(),
            static_cast<int>(stat_value.at(LevelStatType::NUM_FILES)),
            static_cast<int>(stat_value.at(LevelStatType::COMPACTED_FILES)),
@@ -159,7 +190,14 @@ void PrintLevelStats(char* buf, size_t len, const std::string& name,
                .c_str(),
            NumberToHumanString(static_cast<std::int64_t>(
                                    stat_value.at(LevelStatType::KEY_DROP)))
-               .c_str());
+               .c_str()
+#ifdef INDIRECT_VALUE_SUPPORT
+           ,stat_value.at(LevelStatType::W_VLOG_GB)
+           ,stat_value.at(LevelStatType::W_VLOGUNCOMP_GB)
+           ,stat_value.at(LevelStatType::W_VLOGREMAP_GB)
+           ,static_cast<int>(stat_value.at(LevelStatType::W_VLOGFILES))
+#endif
+           );
 }
 
 void PrintLevelStats(char* buf, size_t len, const std::string& name,
@@ -200,6 +238,9 @@ static const std::string cfstats_no_file_histogram =
 static const std::string cf_file_histogram = "cf-file-histogram";
 static const std::string dbstats = "dbstats";
 static const std::string levelstats = "levelstats";
+#ifdef INDIRECT_VALUE_SUPPORT
+static const std::string vlogringstats = "vlogringstats";
+#endif
 static const std::string num_immutable_mem_table = "num-immutable-mem-table";
 static const std::string num_immutable_mem_table_flushed =
     "num-immutable-mem-table-flushed";
@@ -257,6 +298,9 @@ const std::string DB::Properties::kCFFileHistogram =
     rocksdb_prefix + cf_file_histogram;
 const std::string DB::Properties::kDBStats = rocksdb_prefix + dbstats;
 const std::string DB::Properties::kLevelStats = rocksdb_prefix + levelstats;
+#ifdef INDIRECT_VALUE_SUPPORT
+const std::string DB::Properties::kVLogRingStats = rocksdb_prefix + vlogringstats;
+#endif
 const std::string DB::Properties::kNumImmutableMemTable =
                       rocksdb_prefix + num_immutable_mem_table;
 const std::string DB::Properties::kNumImmutableMemTableFlushed =
@@ -326,6 +370,10 @@ const std::unordered_map<std::string, DBPropertyInfo>
           nullptr}},
         {DB::Properties::kLevelStats,
          {false, &InternalStats::HandleLevelStats, nullptr, nullptr}},
+#ifdef INDIRECT_VALUE_SUPPORT
+        {DB::Properties::kVLogRingStats,
+         {false, &InternalStats::HandleVLogRingStats, nullptr, nullptr}},
+#endif
         {DB::Properties::kStats,
          {false, &InternalStats::HandleStats, nullptr, nullptr}},
         {DB::Properties::kCFStats,
@@ -503,6 +551,30 @@ bool InternalStats::HandleLevelStats(std::string* value, Slice suffix) {
   }
   return true;
 }
+
+#ifdef INDIRECT_VALUE_SUPPORT
+bool InternalStats::HandleVLogRingStats(std::string* value, Slice suffix) {
+  char buf[1000];
+  std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
+  const auto* vstorage = cfd_->current()->storage_info();
+  snprintf(buf, sizeof(buf),
+           "Ring Files Size(MB) Frag(%%)\n"
+           "---------------------------\n");
+  value->append(buf);
+
+  for(int i = 0;i<vli.size();++i) {  // for each ring...
+    // number of files per ring
+    uint64_t nfiles = 0;
+    uint64_t prevend = vli[i].valid_files.size()>1 && vli[i].valid_files[0]==0 ? vli[i].valid_files[0] : 0;  // end of previous interval, starting with 0 or delete interval.  The first file is file 1
+    for(int j=0;j<vli[i].valid_files.size();j+=2)nfiles += vli[i].valid_files[j+1] - std::max(prevend+1,vli[i].valid_files[j]) + 1; // interval is (start,end)
+    // the number of bytes allocated in each VLog ring
+    // the amount of fragmentation in each ring, i. e. bytes in VLogs 
+    snprintf(buf, sizeof(buf), "%3d %7zd %8.0f %8.0f\n", i, nfiles, vli[i].size / kMB, (vli[i].frag*100.0)/(vli[i].size+1));
+    value->append(buf);
+  }
+  return true;
+}
+#endif
 
 bool InternalStats::HandleStats(std::string* value, Slice suffix) {
   if (!HandleCFStats(value, suffix)) {

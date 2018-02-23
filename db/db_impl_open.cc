@@ -953,6 +953,7 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
 #ifdef INDIRECT_VALUE_SUPPORT
   // Called after versions have been initialized, to create and populate VLogs
 Status DBImpl::OpenVLogs(const DBOptions& db_options) {
+   Status s;  // return status, init to good return
   // Initialize the rings for each column family, now that we know that the VLog stats have been filled in from the manifest
   // First, get the list of all the files in the last path of the database (that's where all the .vlg files go)
   std::vector<std::string> existing_files;  // all the files in the last level
@@ -985,11 +986,11 @@ Status DBImpl::OpenVLogs(const DBOptions& db_options) {
 
   // Get the options to use for the VLog files   scaf perhaps we need to modify these based on column options
   EnvOptions vlog_options(db_options);
-  // for each column family that supports VLogs, init the VLogs
+  // for each column family that supports VLogs, init the VLogs.  Abort if there is an error
   for (auto cfd : *versions_->GetColumnFamilySet()){
-    if(cfd->vlog()!=nullptr)cfd->vlog()->VLogInit(existing_vlog_files,existing_vlog_sizes,&immutable_db_options_,vlog_options);
+    if(cfd->vlog()!=nullptr)if(!(s = cfd->vlog()->VLogInit(existing_vlog_files,existing_vlog_sizes,&immutable_db_options_,vlog_options)).ok())return s;  // if error, it has been logged
   }
-  return Status();  // scaf should check for errors
+  return s;  // scaf should check for errors
 }
 #endif
 
@@ -1140,7 +1141,10 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     }
   }
 #ifdef INDIRECT_VALUE_SUPPORT   // fill in the rings for each column family
-  impl->OpenVLogs(db_options);  // scaf check status?   Init the VLogs for the CFs that were opened
+  if(!impl->OpenVLogs(db_options).ok()){  //  Init the VLogs for the CFs that were opened
+    s = Status::Corruption(
+        "The VLog files could not be opened");
+  }
 #endif
   TEST_SYNC_POINT("DBImpl::Open:Opened");
   Status persist_options_status;

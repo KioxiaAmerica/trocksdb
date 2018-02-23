@@ -771,6 +771,22 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
         level, level_size, std::move(files));
     cf_meta->size += level_size;
   }
+#ifdef INDIRECT_VALUE_SUPPORT
+  // If there are rings, collect the stats for them
+  std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
+  cf_meta->vlog_filecount.clear();  cf_meta->vlog_totalsize.clear(); cf_meta->vlog_totalfrag.clear();
+  for(int i = 0;i<vli.size();++i) {  // for each ring...
+    // number of files per ring
+    uint64_t nfiles = 0;
+    uint64_t prevend = vli[i].valid_files.size()>1 && vli[i].valid_files[0]==0 ? vli[i].valid_files[0] : 0;  // end of previous interval, starting with 0 or delete interval.  The first file is file 1
+    for(int j=0;j<vli[i].valid_files.size();j+=2)nfiles += vli[i].valid_files[j+1] - std::max(prevend+1,vli[i].valid_files[j]) + 1; // interval is (start,end)
+    cf_meta->vlog_filecount.push_back(nfiles);
+    // the number of bytes allocated in each VLog ring
+    cf_meta->vlog_totalsize.push_back(vli[i].size);
+    // the amount of fragmentation in each ring, i. e. bytes in VLogs 
+    cf_meta->vlog_totalfrag.push_back(vli[i].frag);
+  }
+#endif
 }
 
 

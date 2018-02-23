@@ -143,6 +143,11 @@ printf("\n");
     std::vector<NoInitChar> diskdata;  // where we accumulate the data to write
     std::string indirectbuffer;   // temp area where we read indirect values that need to be remapped
 
+    // init stats we will keep
+    remappeddatalen = 0;  // number of bytes that were read & rewritten to a new VLog position
+    bytesintocompression = 0;  // number of bytes split off to go to VLog
+
+
     // initialize the vectors to reduce later reallocation and copying
     keys.reserve((uint64_t)(1.2*compaction->max_compaction_bytes())); diskdata.reserve(100000000);  // scaf size the diskdata better, depending on level
     passthroughrecl.reserve(10000); passthroughdata.reserve(10000*VLogRingRef::sstrefsize);  // reserve space for passthrough data and lengths
@@ -182,6 +187,7 @@ printf("\n");
       if(IsTypeDirect(c_iter->ikey().type) && val.size() > 0 ) {  // scaf compare against min length
         // direct value that should be indirected
         vclass += vIndirectFirstMap;  // indicate the conversion
+        bytesintocompression += val.size();  // count length into compression
         std::string compresseddata;  // place the compressed string will go
         // Compress the data.  This will never fail; if there is an error, we just get uncompressed data
         CompressionType ctype = CompressForVLog(std::string(val.data(),val.size()),compressiontype,compressionopts,compressiondict,&compresseddata);
@@ -204,6 +210,8 @@ printf("\n");
         assert(val.size()==VLogRingRef::sstrefsize);  // should be a reference
         // If the reference is ill-formed, create an error if there wasn't one already on the key
         if(val.size()!=VLogRingRef::sstrefsize){
+          ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+            "During compaction: indirect reference has length that is not %d",VLogRingRef::sstrefsize);
           if(vclass<vHasError){   // Don't create an error for this key if it carries one already
             inputerrorstatus.push_back(Status::Corruption("indirect reference is ill-formed."));
             vclass += vHasError;  // indicate that this key now carries error status...
@@ -216,6 +224,8 @@ printf("\n");
           VLogRingRef ref(val.data());   // analyze the reference
           assert(ref.Ringno()<addedfrag.size());  // should be a reference
           if(ref.Ringno()>=addedfrag.size()) {  // If ring does not exist for this CF, that's an error
+            ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+              "During compaction: reference is to ring %d, but there are only %zd rings",ref.Ringno(),addedfrag.size());
             if(vclass<vHasError){   // Don't create an error for this key if it carries one already
               inputerrorstatus.push_back(Status::Corruption("indirect reference is ill-formed."));
               vclass += vHasError;  // indicate that this key now carries error status...
@@ -233,6 +243,7 @@ printf("\n");
             // point to the fdring to use for reading indirect values.  Whatever value is current now will be sufficient to translate any indirect that we find
             // in this compaction; however, the ring may be resized while we are using it, so we have to look out for that.  We could set this at the beginning
             // and change only on a change of ring, but we don't take the trouble
+            remappeddatalen += ref.Len();  // add to count of remapped bytes
 #if DELAYPROB
 ProbDelay();
 #endif 
@@ -256,10 +267,14 @@ ProbDelay();
                 fileptr = (*fdring)[current_vlog->rings_[ref.Ringno()]->Ringx(*fdring,ref.Fileno())].filepointer.get();
               current_vlog->rings_[ref.Ringno()]->ReleaseLock();
             }
-            if(fileptr && fileptr->Read(ref.Offset(), ref.Len(), &val, bufend).ok()){  // read the data
+            if(fileptr!=nullptr && fileptr->Read(ref.Offset(), ref.Len(), &val, bufend).ok()){  // read the data
               // Here the data was read with no error.  It was probably read straight into the buffer, but in case not, move it there
               if(bufend!=val.data())memcpy(bufend,val.data(),val.size());
             } else {
+              if(fileptr==nullptr)ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+                "During compaction: reference to file %zd in ring %d, but that file is not open",ref.Fileno(),ref.Ringno());
+              else ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+                "During compaction: error reading indirect reference to file %zd in ring %d",ref.Fileno(),ref.Ringno());  // LOG_ERROR requires constant string
               // Here there was an error reading from the file.  Report the error, and reset the data to empty
               if(vclass<vHasError){   // Don't create an error for this key if it carries one already
                 inputerrorstatus.push_back(Status::IOError("error reading indirect reference."));
@@ -356,10 +371,15 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
       Next();   // first Next() gets the first key; subsequent ones return later keys
     } else {
       // If there is an error(s) writing to the VLog, we don't have any way to give them all.  Until such an
-      // interface is created, we will just give initial error status, which will abort the compaction 
+      // interface is created, we will just give initial error status, which will abort the compaction
+      // The error log was written when the inital error was found
       status_ = Status::Corruption("error writing to VLog");
     }
   }
+
+
+
+
 
   // set up key_ etc. with the data for the next valid key, whose index in our tables is keyno_
   // We copy all these into temp variables, because the user is allowed to call key() and value() repeatedly and

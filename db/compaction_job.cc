@@ -117,6 +117,17 @@ struct CompactionJob::SubcompactionState {
   uint64_t overlapped_bytes = 0;
   // A flag determine whether the key has been seen in ShouldStopBefore()
   bool seen_key = false;
+#ifdef INDIRECT_VALUE_SUPPORT
+  // number of bytes written to VLog after compression
+  uint64_t vlog_bytes_written_comp;
+  // number of bytes written to VLog before compression
+  uint64_t vlog_bytes_written_raw;
+  // number of bytes moved from one VLog to another
+  uint64_t vlog_bytes_remapped;
+  // number of VLog files created
+  uint64_t vlog_files_created;
+#endif
+
   std::string compression_dict;
 
   SubcompactionState(Compaction* c, Slice* _start, Slice* _end,
@@ -134,6 +145,12 @@ struct CompactionJob::SubcompactionState {
         grandparent_index(0),
         overlapped_bytes(0),
         seen_key(false),
+#ifdef INDIRECT_VALUE_SUPPORT
+       vlog_bytes_written_comp(0),
+       vlog_bytes_written_raw(0),
+       vlog_bytes_remapped(0),
+       vlog_files_created(0),
+#endif
         compression_dict() {
     assert(compaction != nullptr);
   }
@@ -157,6 +174,12 @@ struct CompactionJob::SubcompactionState {
     grandparent_index = std::move(o.grandparent_index);
     overlapped_bytes = std::move(o.overlapped_bytes);
     seen_key = std::move(o.seen_key);
+#ifdef INDIRECT_VALUE_SUPPORT
+     vlog_bytes_written_comp = std::move(o.vlog_bytes_written_comp);
+     vlog_bytes_written_raw = std::move(o.vlog_bytes_written_raw);
+     vlog_bytes_remapped = std::move(o.vlog_bytes_remapped);
+     vlog_files_created = std::move(o.vlog_files_created);
+#endif
     compression_dict = std::move(o.compression_dict);
     return *this;
   }
@@ -212,6 +235,17 @@ struct CompactionJob::CompactionState {
   uint64_t total_bytes;
   uint64_t num_input_records;
   uint64_t num_output_records;
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  // number of bytes written to VLog after compression
+  uint64_t vlog_bytes_written_comp;
+  // number of bytes written to VLog before compression
+  uint64_t vlog_bytes_written_raw;
+  // number of bytes moved from one VLog to another
+  uint64_t vlog_bytes_remapped;
+  // number of VLog files created
+  uint64_t vlog_files_created;
+#endif
 
   explicit CompactionState(Compaction* c)
       : compaction(c),
@@ -614,12 +648,36 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
         stats.bytes_written / static_cast<double>(stats.micros);
   }
 
+#ifdef INDIRECT_VALUE_SUPPORT
   ROCKS_LOG_BUFFER(
       log_buffer_,
       "[%s] compacted to: %s, MB/sec: %.1f rd, %.1f wr, level %d, "
       "files in(%d, %d) out(%d) "
       "MB in(%.1f, %.1f) out(%.1f), read-write-amplify(%.1f) "
-      "write-amplify(%.1f) %s, records in: %d, records dropped: %d\n",
+      "write-amplify(%.1f) %s, records in: %d, records dropped: %d"
+      "VLog writes (MB): %.1f (out), %.1f (new), %.1f (copy), %d files " 
+      "\n",
+      cfd->GetName().c_str(), vstorage->LevelSummary(&tmp), bytes_read_per_sec,
+      bytes_written_per_sec, compact_->compaction->output_level(),
+      stats.num_input_files_in_non_output_levels,
+      stats.num_input_files_in_output_level, stats.num_output_files,
+      stats.bytes_read_non_output_levels / 1048576.0,
+      stats.bytes_read_output_level / 1048576.0,
+      stats.bytes_written / 1048576.0, read_write_amp, write_amp,
+      status.ToString().c_str(), stats.num_input_records,
+      stats.vlog_bytes_written_comp / 1048576.0,
+      stats.vlog_bytes_written_raw / 1048576.0,
+      stats.vlog_bytes_remapped / 1048576.0,
+      stats.vlog_files_created,
+      stats.num_dropped_records);
+#else
+  ROCKS_LOG_BUFFER(
+      log_buffer_,
+      "[%s] compacted to: %s, MB/sec: %.1f rd, %.1f wr, level %d, "
+      "files in(%d, %d) out(%d) "
+      "MB in(%.1f, %.1f) out(%.1f), read-write-amplify(%.1f) "
+      "write-amplify(%.1f) %s, records in: %d, records dropped: %d"
+      "\n",
       cfd->GetName().c_str(), vstorage->LevelSummary(&tmp), bytes_read_per_sec,
       bytes_written_per_sec, compact_->compaction->output_level(),
       stats.num_input_files_in_non_output_levels,
@@ -629,6 +687,7 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
       stats.bytes_written / 1048576.0, read_write_amp, write_amp,
       status.ToString().c_str(), stats.num_input_records,
       stats.num_dropped_records);
+#endif
 
   UpdateCompactionJobStats(stats);
 
@@ -1011,7 +1070,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
       c_iter_stats.num_single_del_fallthru;
   sub_compact->compaction_job_stats.num_single_del_mismatch =
       c_iter_stats.num_single_del_mismatch;
-  sub_compact->compaction_job_stats.total_input_raw_key_bytes +=
+  sub_compact->compaction_job_stats.total_input_raw_key_bytes +=  // why +=?
       c_iter_stats.total_input_raw_key_bytes;
   sub_compact->compaction_job_stats.total_input_raw_value_bytes +=
       c_iter_stats.total_input_raw_value_bytes;
@@ -1083,7 +1142,12 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
 
 #ifdef INDIRECT_VALUE_SUPPORT
   // Now that we have processed all the I/O, collect the VLog-related changes and incorporate them into the edit.
-  value_iter->getedit((const_cast<Compaction*>(sub_compact->compaction))->edit()->VLogAdditions());
+// scaf bug: this needs to be done under lock.  Also, the VLogAdditions for all the subcompactions must be rolled together and the edit applied once
+// scaf is this ever tested with subcompactions??
+  value_iter->getedit((const_cast<Compaction*>(sub_compact->compaction))->edit()->VLogAdditions(), 
+    sub_compact->compaction_job_stats.vlog_bytes_written_comp, sub_compact->compaction_job_stats.vlog_bytes_written_raw, sub_compact->compaction_job_stats.vlog_bytes_remapped,
+    sub_compact->compaction_job_stats.vlog_files_created);
+
 #endif
 if(sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling)
   printf("Active Recycling finished kv processing\n");  // scaf
@@ -1407,6 +1471,7 @@ Status CompactionJob::InstallCompactionResults(
           const Comparator* user_cmp = compaction->column_family_data()->user_comparator();  // the comparator for this CF
 
           // Traverse the files, accumulating the ring-ref_0s for the output files
+// scaf should go back to average value, but omitting files that overlap on the ends(?) since they are subject to change.  Or maybe count just 1 end?
           std::vector<int> curroverlapx(overlapping_files.size(),0);  // running pointer into files - one for each level we are keeping
           for(int curroutx = 0; curroutx<sub_compact.outputs.size();++curroutx) {
             // we are looking for overlaps with curroutx.  Count the numbers of files and the index of each

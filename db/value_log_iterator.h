@@ -109,8 +109,13 @@ printf("\n");
     return;
   }
 
-  // return the restart edit block, to be installed into the edit list for the compaction
-  void getedit(std::vector<VLogRingRestartInfo>& result) {
+  // return the restart edit block, to be installed into the edit list for the compaction; and other stats from the compaction
+  void getedit(std::vector<VLogRingRestartInfo>& result,
+    uint64_t& vlog_bytes_written_comp,   // bytes written after compression, including comp header & CRC
+    uint64_t& vlog_bytes_written_raw,  // bytes written before compression
+    uint64_t& vlog_bytes_remapped,  // bytes copied from one VLog file to its successor
+    uint64_t& vlog_files_created     // # vlog files created
+  ) {
 // scaf must handle the case where there was no diskref & thus no diskdatalen
     result.clear();  // init result to empty (i. e. no changes)
     if(!use_indirects_) return;  // return null value if no indirects
@@ -123,6 +128,11 @@ printf("\n");
     }
     // account for fragmentation, added to any ring we read from
     for(int i=0;i<result.size();++i)result[i].frag = addedfrag[i];   // copy our internal calculation
+    // return other compaction stats
+    vlog_bytes_written_comp = diskdatalen;   // total written after compression & CRC
+    vlog_bytes_written_raw = bytesintocompression;  // total size of values that are compressed & written
+    vlog_bytes_remapped = remappeddatalen; // total size of values that are compressed & written
+    vlog_files_created = fileendoffsets.size();   // number of files created
   }
 
   // Indicate whether the current key/value is the last key/value in its file.  0=we don't know, 1=yes, -1=no
@@ -175,6 +185,8 @@ struct RingFno {
   int passthroughrefx_;  // number of passthrough indirects returned to user
   VLogRingRefFileOffset nextpassthroughref;  // index of next passthrough byte to return
   size_t diskdatalen;  // number of bytes written to disk
+  size_t remappeddatalen;  // number of bytes that were read & rewritten to a new VLog position
+  size_t bytesintocompression;  // number of bytes split off to go to VLog
 
 enum valtype : int { vNone=0, vIndirectRemapped=1, vPassthroughDirect=2, vIndirectFirstMap=3, vPassthroughIndirect=4, vHasError=8 };
 
