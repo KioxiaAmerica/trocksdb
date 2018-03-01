@@ -221,7 +221,7 @@ TEST_P(DBCompactionTestWithParam, CompactionDeletionTrigger) {
 }
 #ifdef INDIRECT_VALUE_SUPPORT
 static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
-
+#if 0  // turn on for long r/w test
 TEST_F(DBCompactionTest, IndirectTest) {
   Options options = CurrentOptions();
   options.write_buffer_size = 10 * 1024 * 1024;
@@ -384,7 +384,7 @@ for(int32_t k=0;k<10;++k) {
   size_t new_num_files = CountFiles();
   ASSERT_GT(old_num_files, new_num_files);
 }
-
+#endif
 #endif
 
 TEST_F(DBCompactionTest, SkipStatsUpdateTest) {
