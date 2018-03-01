@@ -1252,7 +1252,7 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
   }
   // Files have been picked for compaction
 #endif
-#if 1 // scaf debug
+#if 0 // scaf debug
 printf("Compaction picked:");
 size_t nfiles = 0;
   for(auto cfiles : compaction_inputs_){printf(" L%d: %zd",cfiles.level,cfiles.files.size()); nfiles += cfiles.files.size();}

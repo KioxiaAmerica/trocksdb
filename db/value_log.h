@@ -130,6 +130,7 @@ static const int deletion_deadband = 10;  // scaf should be 1000 for multi-VLog 
 static const int max_simultaneous_deletions = 1000;  // maximum number of files we can delete in one go.  The limitation is that we have to reserve
    // space for them before we acquire the lock
 static const double vlog_remapping_fraction = 0.5;  // References to the oldest VLog files - this fraction of them - will be remapped if encountered during compaction
+static const double vlog_remapping_fraction_ar = 0.25;  // References to the oldest VLog files - this fraction of them - will be remapped if encountered during active recycling
 static const int maxfilesize = 100000;  // scaf largest file to write out
 static const int kVLogCompressionVersionFormat = 2;  // compressed-data format we use
 static const double kVLogRecycleThreshold = 0.25;  // scaf use option   fragmentation fraction at which we start AR

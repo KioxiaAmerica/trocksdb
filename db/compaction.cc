@@ -193,7 +193,7 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
   if (is_manual_compaction_) {
     compaction_reason_ = CompactionReason::kManualCompaction;
   }
-#if 1  // scaf debug
+#if 0  // scaf debug
   compactionno = Compaction::compactionnoshared++;
   if(compaction_reason_ == CompactionReason::kActiveRecycling)printf("Starting AR compaction\n");
   else printf("Starting compaction number %d into level %d\n",compactionno,output_level_);

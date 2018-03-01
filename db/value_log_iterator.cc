@@ -109,13 +109,12 @@ printf("Creating iterator for level=%d, earliest_passthrough=",level);
     // result in an empty file just ADDS to fragmentation.  For normal compaction, we copy a fixed fraction of the ring
     VLogRingRefFileno earliest_passthrough;  // the lowest file# that will remain unmapped in the output ring.  All other rings pass through
     VLogRingRefFileno head = current_vlog->rings_[outputringno]->atomics.fd_ring_head_fileno.load(std::memory_order_acquire);  // last file with data
-    if(recyciter!=nullptr)earliest_passthrough = compaction->lastfileno()+4;   // AR   scaf constant, which is max # data files per compaction
-    else {
-      VLogRingRefFileno tail = current_vlog->rings_[outputringno]->atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // first file with live refs
-      if(head>tail)head-=tail; else head=0;  // change 'head' to head-tail.  It would be possible for tail to pass head, on an
+    VLogRingRefFileno tail = current_vlog->rings_[outputringno]->atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // first file with live refs
+    if(head>tail)head-=tail; else head=0;  // change 'head' to head-tail.  It would be possible for tail to pass head, on an
            // empty ring.  What happens then doesn't matter, but to keep things polite we check for it rather than overflowing the unsigned subtraction.
-      earliest_passthrough = (VLogRingRefFileno)(tail + vlog_remapping_fraction * head);  // calc file# before which we remap
-    }
+    earliest_passthrough = (VLogRingRefFileno)(tail + ((recyciter==nullptr) ? vlog_remapping_fraction_ar : vlog_remapping_fraction) * head);  // calc file# before which we remap
+    // For Active Recycling, since the aim is to free old files, we make sure we remap everything in the files we are going to delete.  More than that is a tuning parameter.
+    if(recyciter!=nullptr)earliest_passthrough = std::max(earliest_passthrough,compaction->lastfileno()+4);   // AR   scaf constant, which is max # data files per compaction
 #if DEBLEVEL&4
     for(int i=0;i<earliest_passthrough.size();++i)printf("%lld ",earliest_passthrough[i]);
 printf("\n");
