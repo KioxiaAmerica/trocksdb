@@ -303,20 +303,12 @@ void CompactionIterator::NextFromInput() {
           // By default we assume the compaction filter understands only direct values.  We must then convert any indirect reference to a direct one.
           // This could be slow, so if the user has told us by option that they understand indirects, we don't do it.  If the user doesn't
           // change the value we revert it to the original reference, to avoid unnecassary remapping
-<<<<<<< HEAD
-          Slice value_into_filter; std::string string_into_filter;  // workareas for the filter input.  The filter must copy these values if it returns them
-=======
-          Slice value_into_filter; std::string string_into_filter;  // workareas for the filter input.  The filter musy copy these values if it returns them
->>>>>>> indirectdisknodelete
           CompactionFilter::ValueType type_into_filter = CompactionFilter::ValueType::kValue;
+          Slice value_into_filter; std::string string_into_filter;  // workareas for the filter input.  The filter must copy these values if it returns them          CompactionFilter::ValueType type_into_filter = CompactionFilter::ValueType::kValue;
           bool understandsV3 = false;   // scaf need option here
           bool translatedindirect = IsTypeIndirect(ikey_.type) && !understandsV3;  // if user can't take indirect refs, we have to resolve them
           if(translatedindirect){
-<<<<<<< HEAD
             input_->GetVlogForIteratorCF()->VLogGet(value_,string_into_filter);
-=======
-            input_->GetVlogForIteratorCF()->VLogGet(value_,&string_into_filter);
->>>>>>> indirectdisknodelete
             value_into_filter = string_into_filter;  // convert to Slice
           } else {
             value_into_filter = value_;
@@ -369,10 +361,6 @@ void CompactionIterator::NextFromInput() {
           current_key_.UpdateInternalKey(ikey_.sequence, kTypeValue);
           key_ = current_key_.GetInternalKey();
 #endif
-<<<<<<< HEAD
-=======
-
->>>>>>> indirectdisknodelete
         } else if (filter == CompactionFilter::Decision::kRemoveAndSkipUntil) {
           need_skip = true;
           compaction_filter_skip_until_.ConvertFromUserKey(kMaxSequenceNumber,

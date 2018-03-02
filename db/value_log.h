@@ -560,8 +560,7 @@ uint64_t ResizeRingIfNecessary(VLogRingRefFileno tailfile, VLogRingRefFileno hea
 // The result is a VLogRingRef for the first (of possibly several sequential) file, and a vector indicating the
 // number of bytes written to each file
 // We housekeep the end-of-VLogRing information
-// result is true if there are errors
-bool VLogRingWrite(
+void VLogRingWrite(
 std::vector<NoInitChar>& bytes,   // The bytes to be written, jammed together
 std::vector<VLogRingRefFileOffset>& rcdend,  // The running length of all records up to and including this one
 VLogRingRef& firstdataref,   // result: reference to the first value written

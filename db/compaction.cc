@@ -225,7 +225,9 @@ Compaction::~Compaction() {
 #if DEBLEVEL&16
 printf("~Compaction()\n");
 #endif
+#if 0  // scaf debug
 printf("completing compaction number %d\n",compactionno);  // scaf debug
+#endif
   if (input_version_ != nullptr) {
     input_version_->Unref();
   }
