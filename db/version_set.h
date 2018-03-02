@@ -146,7 +146,7 @@ class VersionStorageInfo {
     // correspond to a doubling of the effective filesize
     const double base = exp(std::log(2.0)/0.10);  // 0.1 of the log size corresponds to factor of 2 in effective size    scaf use options
     const double bias = 0.3;  // end of the tail is at 0.3    scaf use options
-    return f->compensated_file_size * std::pow(base , bias-((double)(std::max(0LL,(int64_t)avgparent.fileno()-(int64_t)file0))/(double)nfiles));  // effective size.  fileno may be obsolete and low, so clamp it to file0
+    return f->compensated_file_size * std::pow(base , bias-((double)(std::max((int64_t)0,(int64_t)avgparent.fileno()-(int64_t)file0))/(double)nfiles));  // effective size.  fileno may be obsolete and low, so clamp it to file0
   }
 #endif
 

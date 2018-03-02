@@ -329,7 +329,7 @@ public:
   std::unique_ptr<RandomAccessFile> filepointer;  // the open file
 
   // Constructor
-  VLogRingFileDeletion::VLogRingFileDeletion(VLogRingRefFileno fileno_, VLogRingFile& f) : fileno(fileno_), filepointer(std::move(f.filepointer)) {}
+  VLogRingFileDeletion(VLogRingRefFileno fileno_, VLogRingFile& f) : fileno(fileno_), filepointer(std::move(f.filepointer)) {}
 
   // Delete the file.  Close it as random-access, then delete it
   void DeleteFile(VLogRing& v,   // the current ring

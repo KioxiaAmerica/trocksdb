@@ -56,6 +56,8 @@
 
 namespace rocksdb {
 
+void DetectVLogDeletions(ColumnFamilyData *, std::vector<VLogRingRestartInfo> *);
+
 namespace {
 
 // Find File in LevelFilesBrief data structure

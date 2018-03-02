@@ -488,7 +488,8 @@ void CompactionIterator::NextFromInput() {
             // Already called input_->Next() once.  Call it a second time to
             // skip past the second key.
 #ifdef INDIRECT_VALUE_SUPPORT
-            CountIndirectRefs(next_ikey.type,input_->value());  // check the discarded value for indirect refs
+            Slice s = input_->value();
+            CountIndirectRefs(next_ikey.type,s);  // check the discarded value for indirect refs
 #endif
             input_->Next();
           } else {
