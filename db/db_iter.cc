@@ -389,8 +389,6 @@ class DBIter final: public Iterator {
   RangeDelAggregator range_del_agg_;
   LocalStatistics local_stats_;
   PinnedIteratorsManager pinned_iters_mgr_;
-  bool allow_blob_;
-  bool is_blob_;
 #ifdef INDIRECT_VALUE_SUPPORT
 // State machine for translating indirects
 // When we first encounter a key, we note whether it needs resolving.  If so
@@ -424,6 +422,8 @@ enum IndirectState : unsigned char {
   // a capacity of 16, which will probably be enough for any normal use.
   std::vector<std::shared_ptr<std::string>> resolved_indirect_values;
 #endif
+  bool allow_blob_;
+  bool is_blob_;
 
   // No copying allowed
   DBIter(const DBIter&);

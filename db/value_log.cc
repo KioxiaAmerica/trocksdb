@@ -495,7 +495,8 @@ ProbDelay();
 // We housekeep the end-of-VLogRing information
 // We use release-acquire ordering for the VLogRing file and offset to avoid needing a Mutex in the reader
 // If the circular buffer gets full we have to relocate it, so we use release-acquire
-void VLogRing::VLogRingWrite(
+// result is true (nonzero) if there is an error writing
+bool VLogRing::VLogRingWrite(
 std::vector<NoInitChar>& bytes,   // The bytes to be written, jammed together
 std::vector<VLogRingRefFileOffset>& rcdend,  // The running length of all records up to and including this one
 VLogRingRef& firstdataref,   // result: reference to the first value written
@@ -517,7 +518,7 @@ std::vector<Status>& resultstatus   // result: place to save error status.  For 
   resultstatus.clear();  // init no errors returned
   // If there is nothing to write, abort early.  We must, because 0-length files are not allowed when memory-mapping is turned on
   // This also avoids errors if there are no references
-  if(!bytes.size())return;   // fast exit if no data
+  if(!bytes.size())return false;   // fast exit if no data
 
   std::vector<size_t> filecumreccnts;  // this will hold the # records in each file
 
@@ -749,6 +750,7 @@ Status VLogRing::VLogRingGet(
 
   // loop until we have resolved the pointer:
   int retrystate = 0;   // number of times we have retried
+int retrycount = 0;  // scaf debug
   while(1) {
     // acquire the head pointer
     VLogRingRefFileno headfile = atomics.fd_ring_head_fileno.load(std::memory_order_acquire);
@@ -1177,9 +1179,13 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
   // For each ring, allocate & initialize the ring, and save the resulting object address
   for(int i = 0; i<cfd_->vloginfo().size(); ++i) {
     // Create the ring and save it
-    rings_.push_back(std::move(std::make_unique<VLogRing>(i /* ring# */, cfd_ /* ColumnFamilyData */, existing_vlog_files_for_cf /* filenames */,
+// use these 3 lines when make_unique is supported    rings_.push_back(std::move(std::make_unique<VLogRing>(i /* ring# */, cfd_ /* ColumnFamilyData */, existing_vlog_files_for_cf /* filenames */,
+//      (VLogRingRefFileno)early_refs[i] /* earliest_ref */, (VLogRingRefFileno)cfd_->GetRingEnds()[i]/* latest_ref */,
+//      immdbopts /* immdbopts */, file_options)));
+    unique_ptr<VLogRing> vptr(new VLogRing(i /* ring# */, cfd_ /* ColumnFamilyData */, existing_vlog_files_for_cf /* filenames */,
       existing_vlog_sizes_for_cf /* filesizes */, 
-      immdbopts /* immdbopts */, file_options)));
+      immdbopts /* immdbopts */, file_options));
+    rings_.push_back(std::move(vptr));
 
     // if there was an error creating the ring, abort
     if(!rings_.back()->initialstatus.ok())return rings_.back()->initialstatus;

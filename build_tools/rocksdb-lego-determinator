@@ -70,7 +70,8 @@ if [ -z $RATIO ]; then
 fi
 
 if [ -z $PARALLEL_J ]; then
-  PARALLEL_J="J=$(expr $(nproc) / ${RATIO})"
+  #PARALLEL_J="J=$(expr $(nproc) / ${RATIO})"
+  PARALLEL_J="J=1"
 fi
 
 if [ -z $PARALLEL_j ]; then

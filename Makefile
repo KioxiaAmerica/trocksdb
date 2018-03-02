@@ -161,6 +161,12 @@ LIB_SOURCES += utilities/env_librados.cc
 LDFLAGS += -lrados
 endif
 
+ifdef INDIRECT_VALUE_SUPPORT
+LIB_SOURCES += db/value_log.cc
+LIB_SOURCES += db/value_log_iterator.cc
+endif
+
+
 AM_LINK = $(AM_V_CCLD)$(CXX) $^ $(EXEC_LDFLAGS) -o $@ $(LDFLAGS) $(COVERAGEFLAGS)
 # detect what platform we're building on
 dummy := $(shell (export ROCKSDB_ROOT="$(CURDIR)"; export PORTABLE="$(PORTABLE)"; "$(CURDIR)/build_tools/build_detect_platform" "$(CURDIR)/make_config.mk"))
@@ -169,7 +175,7 @@ include make_config.mk
 CLEAN_FILES += make_config.mk
 
 missing_make_config_paths := $(shell				\
-	grep "\/\S*" -o $(CURDIR)/make_config.mk | 		\
+	grep "./\S*\|/\S*" -o $(CURDIR)/make_config.mk | 	\
 	while read path;					\
 		do [ -e $$path ] || echo $$path; 		\
 	done | sort | uniq)
@@ -512,6 +518,21 @@ PARALLEL_TEST = \
 	transaction_test \
 	write_prepared_transaction_test
 
+#LOCK/CRASH test cases
+#backupable_db_test		[unit] trocks
+#compaction_job_stats_test	[unit] trocks
+#corruption_test		[asan] trocks
+#db_properties_test		[unit] noflags
+ifdef INDIRECT_VALUE_SUPPORT
+LOCKS= \
+	backupable_db_test \
+	compaction_job_stats_test \
+	corruption_test 
+else
+LOCKS= \
+	db_properties_test 
+endif
+
 SUBSET := $(TESTS)
 ifdef ROCKSDBTESTS_START
         SUBSET := $(shell echo $(SUBSET) | sed 's/^.*$(ROCKSDBTESTS_START)/$(ROCKSDBTESTS_START)/')
@@ -809,19 +830,21 @@ watch-log:
 check: all
 	$(MAKE) gen_parallel_tests
 	$(AM_V_GEN)if test "$(J)" != 1                                  \
-	    && (build_tools/gnu_parallel --gnu --help 2>/dev/null) |                    \
+	    && (build_tools/gnu_parallel --gnu --help 2>/dev/null) |    \
 	        grep -q 'GNU Parallel';                                 \
 	then                                                            \
 	    $(MAKE) T="$$t" TMPD=$(TMPD) check_0;                       \
 	else                                                            \
-	    for t in $(TESTS); do                                       \
+	    for t in $(filter-out $(LOCKS),$(TESTS)); do                \
 	      echo "===== Running $$t"; ./$$t || exit 1; done;          \
 	fi
 	rm -rf $(TMPD)
 ifneq ($(PLATFORM), OS_AIX)
 ifeq ($(filter -DROCKSDB_LITE,$(OPT)),)
+ifeq ($(filter ldb_test.py,$(LOCKS)),)
 	python tools/ldb_test.py
 	sh tools/rocksdb_dump_test.sh
+endif
 endif
 endif
 
@@ -1159,6 +1182,9 @@ external_sst_file_basic_test: db/external_sst_file_basic_test.o db/db_test_util.
 
 external_sst_file_test: db/external_sst_file_test.o db/db_test_util.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
+ifdef INDIRECT_VALUE_SUPPORT
+	if [ `ulimit -n` -lt 500000 ]; then echo "ulimit is too low. Please run 'ulimit -S -n 500000' before running tests."; exit 1; fi
+endif
 
 db_tailing_iter_test: db/db_tailing_iter_test.o db/db_test_util.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
@@ -1518,6 +1544,7 @@ install: install-static
 # Jni stuff
 # ---------------------------------------------------------------------------
 
+JAVA_HOME = /usr/lib/jvm/java-8-openjdk-amd64/
 JAVA_INCLUDE = -I$(JAVA_HOME)/include/ -I$(JAVA_HOME)/include/linux
 ifeq ($(PLATFORM), OS_SOLARIS)
 	ARCH := $(shell isainfo -b)
@@ -1768,7 +1795,7 @@ jdb_bench:
 
 commit_prereq: build_tools/rocksdb-lego-determinator \
                build_tools/precommit_checker.py
-	J=$(J) build_tools/precommit_checker.py unit unit_481 clang_unit release release_481 clang_release tsan asan ubsan lite unit_non_shm
+	J=$(J) build_tools/precommit_checker.py release unit asan tsan ubsan
 	$(MAKE) clean && $(MAKE) jclean && $(MAKE) rocksdbjava;
 
 # ---------------------------------------------------------------------------

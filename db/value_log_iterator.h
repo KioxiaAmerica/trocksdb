@@ -148,8 +148,8 @@ private:
   ParsedInternalKey ikey_;  // like key_, but parsed
   std::string npikey;  // string form of ikey_
   bool valid_;  // set when there is another kv to be read
-  ColumnFamilyData* pcfd;  // ColumnFamilyData for this run
   CompactionIterator* c_iter_;  // underlying c_iter_, the source for our values
+  ColumnFamilyData* pcfd;  // ColumnFamilyData for this run
   Slice *end_;   // if given, the key+1 of the end of range
   bool use_indirects_;  // if false, just pass c_iter_ result through
   std::vector<NoInitChar> keys;  // all the keys read from the iterator, jammed together

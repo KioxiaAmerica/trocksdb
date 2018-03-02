@@ -464,7 +464,8 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
             }
             if(nextdiskref.Offset()==endofst) {   // if start of next rcd = endpoint of current file
               // The next reference is in the next output file.  Advance to the start of the next output file
-              if(fileendoffsets[filex_]<0)++ostatusx_;  // if we are leaving a file with error, point to the next error (if any)
+              //if(fileendoffsets[filex_]<0)++ostatusx_;  // if we are leaving a file with error, point to the next error (if any)
+              // Note: fileendoffsets[filex_]<0 is always false because fileendoffsets[x] always returns an unsigned integer.
               nextdiskref.SetFileno(nextdiskref.Fileno()+1);  // next file...
               nextdiskref.SetOffset(0);  // at the beginning...
               ++filex_;   // ... and advance to look at the ending position of the NEXT output file

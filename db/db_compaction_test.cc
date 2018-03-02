@@ -1526,7 +1526,6 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
   ASSERT_OK(db_->CompactRange(compact_options, nullptr, nullptr));
   // 2 files in L2
   ASSERT_EQ("0,0,2", FilesPerLevel(0));
-
   // file 3 [ 0 => 200]
   for (int32_t i = 0; i < 200; i++) {
     values[i] = RandomString(&rnd, value_size);
@@ -1784,9 +1783,9 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionThirdPath) {
   Reopen(options);
 
   for (int i = 0; i < key_idx; i++) {
-    auto v = Get(Key(i));
+    auto v = Get(KeyBigNewFile(i,i%100));
     ASSERT_NE(v, "NOT_FOUND");
-    ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+    ASSERT_TRUE(v.size() == 1 || v.size() == largevaluesize);
   }
 
   Destroy(options);

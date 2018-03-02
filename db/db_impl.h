@@ -576,6 +576,9 @@ class DBImpl : public DB {
   InstrumentedMutex* mutex() { return &mutex_; }
 
   Status NewDB();
+#ifdef INDIRECT_VALUE_SUPPORT
+  Status OpenVLogs(const DBOptions& db_options);  // Called after versions have been initialized, to create and populate VLogs
+#endif
 
 #ifdef INDIRECT_VALUE_SUPPORT
   Status OpenVLogs(const DBOptions& db_options);  // Called after versions have been initialized, to create and populate VLogs

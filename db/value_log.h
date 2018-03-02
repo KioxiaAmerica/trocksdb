@@ -223,10 +223,10 @@ uint64_t FileNumber() {return (fileno<<2)+ringno;}
 static int const sstrefsize {16};  // the size of an indirect reference in the SST
 
 private:
+int ringno;
 VLogRingRefFileno fileno;
 VLogRingRefFileOffset offset;
 VLogRingRefFileLen len;
-int ringno;
 union {
   uint64_t intform[2];   // internal form
   char extform[sstrefsize];   // external form
@@ -560,7 +560,8 @@ uint64_t ResizeRingIfNecessary(VLogRingRefFileno tailfile, VLogRingRefFileno hea
 // The result is a VLogRingRef for the first (of possibly several sequential) file, and a vector indicating the
 // number of bytes written to each file
 // We housekeep the end-of-VLogRing information
-void VLogRingWrite(
+// result is true if there are errors
+bool VLogRingWrite(
 std::vector<NoInitChar>& bytes,   // The bytes to be written, jammed together
 std::vector<VLogRingRefFileOffset>& rcdend,  // The running length of all records up to and including this one
 VLogRingRef& firstdataref,   // result: reference to the first value written

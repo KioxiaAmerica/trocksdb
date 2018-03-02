@@ -470,6 +470,8 @@ void DBImpl::PurgeObsoleteFiles(const JobContext& state, bool schedule_only) {
       case kBlobFile:
         keep = true;
         break;
+      default:
+        break;
     }
 
     if (keep) {
