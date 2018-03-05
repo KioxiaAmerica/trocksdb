@@ -1675,7 +1675,9 @@ void VersionStorageInfo::UpdateFilesByCompactionPri(
     return;
   }
   // No need to sort the highest level because it is never compacted.
+#if DEBLEVEL&0x1000
 printf("files by level:"); for (int level = 0; level < num_levels(); level++)printf(" %zd",files_[level].size()); printf("\n");  // scaf debug 
+#endif
   for (int level = 0; level < num_levels() - 1; level++) {
     const std::vector<FileMetaData*>& files = files_[level];
     auto& files_by_compaction_pri = files_by_compaction_pri_[level];
@@ -2649,17 +2651,19 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     // The VLog changes include deleting files that have passed out of the new Version.  These files are
     // detected here.  These changes must be put into both the current database and the manifest.  We do this
     // by folding them into the last edit_batch entry and also the current CF.
-    std::vector<VLogRingRestartInfo> vlog_deletions;
-    DetectVLogDeletions(column_family_data,&vlog_deletions);    // compute the deletions
-    Coalesce(batch_edits.back()->vlog_additions,vlog_deletions,true);  // apply them to the current edits
-    Coalesce(accum_vlog_edits,vlog_deletions,true);  // add deletions into accumulated edits
-    Coalesce(column_family_data->vloginfo(),accum_vlog_edits,false);   // apply accum edits, including deletions, to database.  false means 'don't include the delete', used for the CF version
+    if(column_family_data!=nullptr) {  // if the column doesn't exist yet, don't collect stats on it.  Do if it is being dropped, though
+      std::vector<VLogRingRestartInfo> vlog_deletions;
+      DetectVLogDeletions(column_family_data,&vlog_deletions);    // compute the deletions
+      Coalesce(batch_edits.back()->vlog_additions,vlog_deletions,true);  // apply them to the current edits
+      Coalesce(accum_vlog_edits,vlog_deletions,true);  // add deletions into accumulated edits
+      Coalesce(column_family_data->vloginfo(),accum_vlog_edits,false);   // apply accum edits, including deletions, to database.  false means 'don't include the delete', used for the CF version
 #if DEBLEVEL&0x1000
-    {printf("VlogInfo before writing manifest: ");
-       std::vector<VLogRingRestartInfo> *vring = &column_family_data->vloginfo();
-       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, space amp=%5.2f, files=",i,(*vring)[i].size,(*vring)[i].frag,((double)(*vring)[i].size)/(1+(*vring)[i].size-(*vring)[i].frag));for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
-    }
+      {printf("VlogInfo before writing manifest: ");
+         std::vector<VLogRingRestartInfo> *vring = &column_family_data->vloginfo();
+         for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, space amp=%5.2f, files=",i,(*vring)[i].size,(*vring)[i].frag,((double)(*vring)[i].size)/(1+(*vring)[i].size-(*vring)[i].frag));for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
+      }
 #endif
+    }
     // Now the database matches the new Version, and the edits are right to create it on restart
 #endif
 

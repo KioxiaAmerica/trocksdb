@@ -148,7 +148,7 @@ printf("\n");
 
 
     // initialize the vectors to reduce later reallocation and copying
-    keys.reserve((uint64_t)(1.2*compaction->max_compaction_bytes())); diskdata.reserve(100000000);  // scaf size the diskdata better, depending on level
+    keys.reserve((uint64_t)(std::min(10000000.0,1.2*compaction->max_compaction_bytes()))); diskdata.reserve(50000000);  // scaf size the diskdata better, depending on level
     passthroughrecl.reserve(10000); passthroughdata.reserve(10000*VLogRingRef::sstrefsize);  // reserve space for passthrough data and lengths
     diskrecl.reserve(10000); keylens.reserve(10000); valueclass.reserve(10000);  // scaf const  number of keys in an ordinary compaction
 

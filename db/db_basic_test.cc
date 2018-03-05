@@ -175,7 +175,7 @@ TEST_F(DBBasicTest, LevelLimitReopen) {
   const std::string value(1024 * 1024, ' ');
   int i = 0;
   while (NumTableFilesAtLevel(2, 1) == 0) {
-    ASSERT_OK(Put(1, Key(i++), value));
+    ASSERT_OK(Put(1, KeyBig(i++,value.size()), ValueBig(value)));
     dbfull()->TEST_WaitForFlushMemTable();
     dbfull()->TEST_WaitForCompact();
   }
