@@ -1414,7 +1414,7 @@ Status CompactionJob::InstallCompactionResults(
     // rather than an AR).
     // For Active Recycling, copy the references from the input to the output
     if(compaction->compaction_reason() == CompactionReason::kActiveRecycling) {
-      for (int i = 0;i<sub_compact.outputs.size();++i)const_cast<SubcompactionState&>(sub_compact).outputs[i].meta.avgparentfileno = (*compaction->inputs())[i].files[0]->avgparentfileno;
+      for (uint32_t i = 0;i<sub_compact.outputs.size();++i)const_cast<SubcompactionState&>(sub_compact).outputs[i].meta.avgparentfileno = (*compaction->inputs())[i].files[0]->avgparentfileno;
     } else {
       // Normal compaction.  Find the last level in the ring the new outputs will be compacted into.
       int outlevel;
@@ -1446,10 +1446,10 @@ Status CompactionJob::InstallCompactionResults(
           // Rather than installing the ref_0 of the file, we use a value of 0 as a proxy, so that if the file is recycled we will not keep the old
           // ref_0 indefinitely (which would lead to premature compaction of the file)
           VLogRingRefFileno case2bno = vlog->rings()[outringno]->nearhead();
-          for(int curroutx = 0; curroutx<sub_compact.outputs.size();++curroutx) {
+          for(uint32_t curroutx = 0; curroutx<sub_compact.outputs.size();++curroutx) {
             // default as described above: ref from file if any, otherwise near end of output ring 
             const_cast<SubcompactionState&>(sub_compact).outputs[curroutx].meta.avgparentfileno =
-              outringno < sub_compact.outputs[curroutx].meta.indirect_ref_0.size() && sub_compact.outputs[curroutx].meta.indirect_ref_0[outringno]
+              (uint32_t)outringno < sub_compact.outputs[curroutx].meta.indirect_ref_0.size() && sub_compact.outputs[curroutx].meta.indirect_ref_0[outringno]
                 ? 0 : case2bno;
           }
           // For levels close to the bottom of the ring, calculate overlaps
@@ -1472,19 +1472,19 @@ Status CompactionJob::InstallCompactionResults(
 
             // Traverse the files, accumulating the ring-ref_0s for the output files
 // scaf should go back to average value, but omitting files that overlap on the ends(?) since they are subject to change.  Or maybe count just 1 end?
-            std::vector<int> curroverlapx(overlapping_files.size(),0);  // running pointer into files - one for each level we are keeping
-            for(int curroutx = 0; curroutx<sub_compact.outputs.size();++curroutx) {
+            std::vector<uint32_t> curroverlapx(overlapping_files.size(),0);  // running pointer into files - one for each level we are keeping
+            for(uint32_t curroutx = 0; curroutx<sub_compact.outputs.size();++curroutx) {
               // we are looking for overlaps with curroutx.  Count the numbers of files and the index of each
               int nolaps = 0; double totalolaps = 0.0; VLogRingRefFileno minolap = ~0;  // number of overlaps, and total/min indexes
               // look for overlaps in each level, advancing the file pointers for each level independently, and accumulating overlap totals
-              for(int checklevel=0; checklevel<overlapping_files.size();++checklevel){
+              for(uint32_t checklevel=0; checklevel<overlapping_files.size();++checklevel){
                 auto& ofiles = overlapping_files[checklevel];  // the overlapping files for the current level
                 // skip over files that do not go past the min key for curroutx
                 while(curroverlapx[checklevel]<ofiles.size() &&
                     user_cmp->Compare(*const_cast<SubcompactionState&>(sub_compact).outputs[curroutx].meta.smallest.rep(), *ofiles[curroverlapx[checklevel]]->largest.rep()) > 0)++curroverlapx[checklevel];
                 // process files, stopping when one goes past the max key for curroutx.  Ignore files that have no reference in the ring we are looking at
                 while(curroverlapx[checklevel]<ofiles.size()) {
-                  if(!!ofiles[curroverlapx[checklevel]]->being_compacted && outringno<ofiles[curroverlapx[checklevel]]->indirect_ref_0.size()) {  // if this SST has an entry for the ring of interest
+                  if(!!ofiles[curroverlapx[checklevel]]->being_compacted && (uint32_t)outringno<ofiles[curroverlapx[checklevel]]->indirect_ref_0.size()) {  // if this SST has an entry for the ring of interest
                     VLogRingRefFileno ref0 = ofiles[curroverlapx[checklevel]]->indirect_ref_0[outringno];  // value of the ref
                     if(ref0) {    // if the ref is to a legit file...
                       ++nolaps, totalolaps += ref0, minolap = std::min(minolap, ref0);  // accumulate the file reference into the total
@@ -1504,7 +1504,7 @@ Status CompactionJob::InstallCompactionResults(
       }
     }
 #endif
-    for (int i = 0;i<sub_compact.outputs.size();++i) {
+    for (uint32_t i = 0;i<sub_compact.outputs.size();++i) {
 #ifdef INDIRECT_VALUE_SUPPORT
       // For Active Recycling there is no concept of 'output level', because each file is put back into the level it started at.
       // We take advantage of the fact that subcompactions are disabled for AR, and thus that the output files in the sole subcompaction

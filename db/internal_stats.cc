@@ -556,17 +556,18 @@ bool InternalStats::HandleLevelStats(std::string* value, Slice suffix) {
 bool InternalStats::HandleVLogRingStats(std::string* value, Slice suffix) {
   char buf[1000];
   std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
-  const auto* vstorage = cfd_->current()->storage_info();
+  //Warning: Unused Variable
+  //const auto* vstorage = cfd_->current()->storage_info();
   snprintf(buf, sizeof(buf),
            "Ring Files Size(MB) Frag(%%)\n"
            "---------------------------\n");
   value->append(buf);
 
-  for(int i = 0;i<vli.size();++i) {  // for each ring...
+  for(uint32_t i = 0;i<vli.size();++i) {  // for each ring...
     // number of files per ring
     uint64_t nfiles = 0;
     uint64_t prevend = vli[i].valid_files.size()>1 && vli[i].valid_files[0]==0 ? vli[i].valid_files[0] : 0;  // end of previous interval, starting with 0 or delete interval.  The first file is file 1
-    for(int j=0;j<vli[i].valid_files.size();j+=2)nfiles += vli[i].valid_files[j+1] - std::max(prevend+1,vli[i].valid_files[j]) + 1; // interval is (start,end)
+    for(uint32_t j=0;j<vli[i].valid_files.size();j+=2)nfiles += vli[i].valid_files[j+1] - std::max(prevend+1,vli[i].valid_files[j]) + 1; // interval is (start,end)
     // the number of bytes allocated in each VLog ring
     // the amount of fragmentation in each ring, i. e. bytes in VLogs 
     snprintf(buf, sizeof(buf), "%3d %7zd %8.0f %8.0f\n", i, nfiles, vli[i].size / kMB, (vli[i].frag*100.0)/(vli[i].size+1));

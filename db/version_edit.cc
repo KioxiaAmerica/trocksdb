@@ -231,9 +231,9 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
 #if DEBLEVEL&0x1800
     {const std::vector<VLogRingRestartInfo> *vring = &vlog_additions;
        int doprint = 0;
-       for(int i=0;i<vring->size();++i){if((*vring)[i].size || (*vring)[i].frag)doprint=1;}
+       for(uint32_t i=0;i<vring->size();++i){if((*vring)[i].size || (*vring)[i].frag)doprint=1;}
        if(doprint) {
-         printf("EncodeTo: ");for(int i=0;i<vring->size();++i){if((*vring)[i].size || (*vring)[i].frag){printf("ring %d: adding size=%zd, frag=%zd ",i,(*vring)[i].size,(*vring)[i].frag);}}printf("\n");
+         printf("EncodeTo: ");for(uint32_t i=0;i<vring->size();++i){if((*vring)[i].size || (*vring)[i].frag){printf("ring %d: adding size=%zd, frag=%zd ",i,(*vring)[i].size,(*vring)[i].frag);}}printf("\n");
        }
     }
 #endif

@@ -143,14 +143,14 @@ static const int kVLogRecycleMinVLogFileFreed = 7;  // scaf use option   min # f
 // Convert file number to file number and ring
 class ParsedFnameRing {
 public:
-  int ringno_;
   uint64_t fileno_;
+  VLogRingRefFileno fileno() { return fileno_; }
+  int ringno_;
+  int ringno() { return ringno_; }
+  VLogRingRefFileno filering() { return fileno_*4 + ringno_; }
   ParsedFnameRing(VLogRingRefFileno file_ring) :  // construct from combined fileno/ring
     fileno_(file_ring>>2), ringno_((int)file_ring&3) {}
-  ParsedFnameRing(int ring, VLogRingRefFileno file) : ringno_(ring), fileno_(file) {}  // construct from separate ring & file
-  int ringno() { return ringno_; }
-  VLogRingRefFileno fileno() { return fileno_; }
-  VLogRingRefFileno filering() { return fileno_*4 + ringno_; }
+  ParsedFnameRing(int ring, VLogRingRefFileno file) : fileno_(file), ringno_(ring) {}  // construct from separate ring & file
 };
 
 //
@@ -210,7 +210,7 @@ void IndirectSlice(Slice& slice) {
 // Extract portions of the ref
 VLogRingRefFileOffset Offset() { return offset; }
 VLogRingRefFileLen Len() { return len; }
-int Ringno() { return ringno; }
+uint32_t Ringno() { return ringno; }
 VLogRingRefFileno Fileno() { return fileno; }
 // Set portions of the ref
 void SetOffset(VLogRingRefFileOffset o) { offset = o; }
@@ -689,7 +689,7 @@ public:
 ;
 
   // Given the level of an output file, return the ring number, if any, to write to (-1 if no ring)
-  int VLogRingNoForLevelOutput(int level) { int i; for(i=0; i<starting_level_for_ring_.size() && level>=starting_level_for_ring_[i];++i); return i-1;}  // advance if output can go into ring; back up to last such
+  int VLogRingNoForLevelOutput(int level) { uint32_t i; for(i=0; i<starting_level_for_ring_.size() && level>=starting_level_for_ring_[i];++i); return int(i)-1;}  // advance if output can go into ring; back up to last such
 
   // Return the VLogRing for the given level
   VLogRing *VLogRingFromNo(int ringno) { return rings_[ringno].get(); }

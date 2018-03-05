@@ -127,7 +127,7 @@ printf("\n");
       result[nextdiskref.Ringno()].valid_files.push_back(firstdiskref.Fileno()+fileendoffsets.size()-1);
     }
     // account for fragmentation, added to any ring we read from
-    for(int i=0;i<result.size();++i)result[i].frag = addedfrag[i];   // copy our internal calculation
+    for(uint32_t i=0;i<result.size();++i)result[i].frag = addedfrag[i];   // copy our internal calculation
     // return other compaction stats
     vlog_bytes_written_comp = diskdatalen;   // total written after compression & CRC
     vlog_bytes_written_raw = bytesintocompression;  // total size of values that are compressed & written
@@ -167,7 +167,7 @@ private:
   std::vector<uint64_t> ref0_;  // for each ring, the earliest reference found into the ring.  Reset when we start each new file
   std::vector<int64_t> addedfrag;  // fragmentation added, for each ring
 struct RingFno {
-  int ringno;
+  uint32_t ringno;
   VLogRingRefFileno fileno;
 };
   std::vector<RingFno> diskfileref;   // where we hold the reference values from the input passthroughs

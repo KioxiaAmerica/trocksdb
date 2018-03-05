@@ -90,7 +90,7 @@ extern CompressionType CompressForVLog(const std::string& raw,
 extern void BreakRecordsIntoFiles(
   std::vector<size_t>& filecumreccnts,  // (result) running total of input records assigned to a file
   std::vector<VLogRingRefFileOffset>& rcdend,  // running total of input record lengths
-  int64_t maxfilesize,   // max size of an individual output file
+  int64_t maxfsize,   // max size of an individual output file
     // the rest of the input arguments are used only if we are limiting the size of an output file based on grandparent size
   const std::vector<FileMetaData*> *grandparents,  // (optional) grandparent files that overlap with the key-range
   const std::vector<NoInitChar> *keys,  // (optional) the keys associated with the input records, run together
@@ -114,11 +114,11 @@ extern void BreakRecordsIntoFiles(
     // (consider the case of lengths 5 5 5 5 1000000 0 0 0 0  which we would like to split into two files of size 500005).  If there
     // is no data left, stop with the files we have - the zero-length records will add on to the end of the last file
     if(bytesleft==0.0)break;   // stop to avoid 0-length file
-    double targetfilect = std::max(1.0,std::floor(bytesleft/(double)maxfilesize));  // number of files expected, rounded down
+    double targetfilect = std::max(1.0,std::floor(bytesleft/(double)maxfsize));  // number of files expected, rounded down
     int64_t targetfileend = prevbytes + (int64_t)(bytesleft/targetfilect);  // min endpoint for this file (min number of bytes plus number of bytes previously output)
     // Allocate records to this file until the minimum fileend is reached.  Use binary search in case there are a lot of small files (questionable decision, since
     // the files would have been added one by one)
-    int64_t left = rcdx-1;  // init brackets for search
+    uint64_t left = rcdx-1;  // init brackets for search
     // the loop variable rcdx will hold the result of the search, fulfilling its role as pointer to the end of the written block
     rcdx=rcdend.size()-1;
     while(rcdx!=(left+1)) {  // binary search
@@ -155,25 +155,25 @@ extern void BreakRecordsIntoFiles(
         // it is proper for us to limit the size AFTER decompression; so we use the total key+value size
         compactionsize += ((*grandparents)[grandparentx]->raw_key_size && (*grandparents)[grandparentx]->raw_value_size) ?  // if size is 0, it means we couldn't initialize the true size
             (*grandparents)[grandparentx]->raw_key_size+(*grandparents)[grandparentx]->raw_value_size    // if neither 0, use initialized size
-            : (uint64_t)(1.2*maxfilesize);   // if size is 0, assume a biggish file.  1.2 is a handwave
+            : (uint64_t)(1.2*maxfsize);   // if size is 0, assume a biggish file.  1.2 is a handwave
         // if the new grandparent doesn't make the compaction too big, continue looking at the next one
         if(compactionsize <= maxcompsize)continue;
         // Here the compaction has become too big.  We will NOT be able to include the new grandparent.  That means we must discard keys from the end of the putative
         // output until it no longer overlaps with the file we couldn't include.  We will use a binary search to do this, because there may be a lot of keys.
-        // As above we start left at its lowest possible value, rcdx at its highest possible value (which equals its starting value)
-        int64_t left = firstrcdinfile;  // init brackets for search.  The ending value of left will be the LAST record, and there must be at least 1 record in the file, so 
+        // As above we start leftvalue at its lowest possible value, rcdx at its highest possible value (which equals its starting value)
+        uint64_t leftvalue = firstrcdinfile;  // init brackets for search.  The ending value of leftvalue will be the LAST record, and there must be at least 1 record in the file, so 
         // the loop variable rcdx will hold the result of the search, fulfilling its role as pointer to the end of the written block
-        while(rcdx!=(left+1)) {  // binary search
-          // at top of loop rcdend[left]<targetfileend and rcdend[rcdx]>=targetfileend.  This remains invariant.  Note that left may be before the search region, or even -1
-          // Loop terminates when rcdx-left=1; at that point rcdx points to the ending+1 record, i. e. the first record that contains a key too high
-          // Calculate the middle record position, which is known not to equal an endpoint (since rcdx-left>1)
-          size_t mid = left + ((rcdx-left)>>1);   // index of middle value
+        while(rcdx!=(leftvalue+1)) {  // binary search
+          // at top of loop rcdend[leftvalue]<targetfileend and rcdend[rcdx]>=targetfileend.  This remains invariant.  Note that leftvalue may be before the search region, or even -1
+          // Loop terminates when rcdx-leftvalue=1; at that point rcdx points to the ending+1 record, i. e. the first record that contains a key too high
+          // Calculate the middle record position, which is known not to equal an endpoint (since rcdx-leftvalue>1)
+          size_t mid = leftvalue + ((rcdx-leftvalue)>>1);   // index of middle value
           // update one or the other input pointer
           size_t keymidx = mid ? (*keylens)[mid-1] : 0;  // start of middle internal key
           Slice keymid((char *)(*keys).data()+keymidx, (*keylens)[mid]-keymidx);  // last key in new output file.
-          if(icmp->user_comparator()->Compare(nextstartkey,ExtractUserKey(keymid))>0)left=mid; else rcdx=mid;
+          if(icmp->user_comparator()->Compare(nextstartkey,ExtractUserKey(keymid))>0)leftvalue=mid; else rcdx=mid;
         }
-        rcdx = left;  // back up to the last admissible key
+        rcdx = leftvalue;  // back up to the last admissible key
         break;  // rcdx has been set
       }
     }
@@ -252,7 +252,7 @@ void Coalesce(std::vector<VLogRingRestartInfo>& pri,  // the left input and resu
   if(pri.size()==0)pri.resize(sec.size());
   assert(pri.size()==sec.size());  // rings should have same size
   // process each ring
-  for(int i = 0; i<pri.size(); ++i)pri[i].Coalesce(sec[i],outputdeletion);
+  for(uint32_t i = 0; i<pri.size(); ++i)pri[i].Coalesce(sec[i],outputdeletion);
 }
 
 
@@ -312,7 +312,7 @@ printf("VLogRing cfd_=%p\n",cfd_);
   while(power2-->0)fd_ring[0].emplace_back();  // mustn't use resize() - if requires copy semantics, incompatible with unique_ptr
 
   // For each file in this ring, open it (if its number is in the manifest) or delete it (if not)
-  for(int i=0;i<filenames.size();++i) {
+  for(uint32_t i=0;i<filenames.size();++i) {
     ParsedFnameRing fnring = VlogFnametoRingFname(filenames[i]);
 
     if(fnring.ringno_==ringno) {  // If this file is for our ring...
@@ -589,7 +589,7 @@ printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.si
 #endif
 
   // Loop for each file: create it, reopen as random-access
-  for(int i=0;i<filecumreccnts.size();++i) {
+  for(uint32_t i=0;i<filecumreccnts.size();++i) {
     Status iostatus;  // where we save status from the file I/O
     size_t lenofthisfile = rcdend[filecumreccnts[i]-1] - startofnextfile;  // total len up through new file, minus starting position
 
@@ -674,7 +674,7 @@ ProbDelay();
     size_t new_ring_slot = Ringx(*fdring,fileno_for_writing);  // position therein
 
     // Loop to add each file to the ring
-    for(int i=0;i<pathnames.size();++i) {
+    for(uint32_t i=0;i<pathnames.size();++i) {
       (*fdring)[new_ring_slot]=std::move(VLogRingFile(filepointers[i],fileendoffsets[i]));
       if(++new_ring_slot==(*fdring).size()){
         //  The write wraps around the end of the ring buffer...
@@ -749,7 +749,8 @@ Status VLogRing::VLogRingGet(
 
   // loop until we have resolved the pointer:
   int retrystate = 0;   // number of times we have retried
-int retrycount = 0;  // scaf debug
+  //Warning: Unused Variable.
+  //int retrycount = 0;  // scaf debug
   while(1) {
     // acquire the head pointer
     VLogRingRefFileno headfile = atomics.fd_ring_head_fileno.load(std::memory_order_acquire);
@@ -1169,14 +1170,14 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
   std::vector<std::string> existing_vlog_files_for_cf;  // .vlg files for this cf
   std::vector<VLogRingRefFileLen> existing_vlog_sizes_for_cf;  // corresponding file sizes
   std::string columnsuffix = "." + kRocksDbVLogFileExt + cfd_->GetName();  // suffix for this CF's vlog files
-  for(int i = 0;i<vlg_filenames.size();++i){
+  for(uint32_t i = 0;i<vlg_filenames.size();++i){
     if(vlg_filenames[i].size()>columnsuffix.size() && 0==vlg_filenames[i].substr(vlg_filenames[i].size()-columnsuffix.size()).compare(columnsuffix))
       existing_vlog_files_for_cf.emplace_back(vlg_filenames[i]);  // if suffix matches, keep the filename
       existing_vlog_sizes_for_cf.push_back(vlg_filesizes[i]);   // and size
   }
 
   // For each ring, allocate & initialize the ring, and save the resulting object address
-  for(int i = 0; i<cfd_->vloginfo().size(); ++i) {
+  for(uint32_t i = 0; i<cfd_->vloginfo().size(); ++i) {
     // Create the ring and save it
 // use these 3 lines when make_unique is supported    rings_.push_back(std::move(std::make_unique<VLogRing>(i /* ring# */, cfd_ /* ColumnFamilyData */, existing_vlog_files_for_cf /* filenames */,
 //      (VLogRingRefFileno)early_refs[i] /* earliest_ref */, (VLogRingRefFileno)cfd_->GetRingEnds()[i]/* latest_ref */,
@@ -1290,14 +1291,14 @@ if(!rings_.size() || !newsst.indirect_ref_0.size())printf("VLogSstInstall newsst
         // for each ring that has a reference in the SST, enqueue the SST to that ring's chains.  We know that there
         // are chain-fields for each ring containing a reference.  We use only the forward chains here since this queue
         // is consumed from head to tail
-        for (int i=0;i<newsst.indirect_ref_0.size();++i)
+        for (uint32_t i=0;i<newsst.indirect_ref_0.size();++i)
           if(newsst.indirect_ref_0[i]){newsst.ringfwdchain[i] = waiting_sst_queues[i]; waiting_sst_queues[i] = &newsst;};
       ReleaseLock();
     } else {
       // Normal case after initial recovery.  Put the SST into each ring for which it has a reference
       if(newsst.level<0)
         printf("installing SST with no level\n");  // scaf debug only
-      for (int i=0;i<newsst.indirect_ref_0.size();++i)if(newsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstInstall(newsst);
+      for (uint32_t i=0;i<newsst.indirect_ref_0.size();++i)if(newsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstInstall(newsst);
     }
   }
 
@@ -1309,7 +1310,7 @@ if(!rings_.size() || !newsst.indirect_ref_0.size())printf("VLogSstInstall newsst
 if(!rings_.size() || !retiringsst.indirect_ref_0.size())printf("VLogSstUnCurrent retiringsst=%p rings_.size()=%zd\n",&retiringsst,rings_.size());
 #endif
     if(!rings_.size())return;  // no action if the rings have not, or never will be, created
-    for (int i=0;i<retiringsst.indirect_ref_0.size();++i)if(retiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstUnCurrent(retiringsst);
+    for (uint32_t i=0;i<retiringsst.indirect_ref_0.size();++i)if(retiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstUnCurrent(retiringsst);
     }
 
   // Remove the VLog file's dependency on an SST, and delete the VLog file if it is now unused
@@ -1320,7 +1321,7 @@ if(!rings_.size() || !retiringsst.indirect_ref_0.size())printf("VLogSstUnCurrent
 if(!rings_.size() || !expiringsst.indirect_ref_0.size())printf("VLogSstDelete expiringsst=%p rings_.size()=%zd\n",&expiringsst,rings_.size());
 #endif
     if(!rings_.size())return;  // no action if the rings have not, or never will be, created
-    for (int i=0;i<expiringsst.indirect_ref_0.size();++i)if(expiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstDelete(expiringsst);
+    for (uint32_t i=0;i<expiringsst.indirect_ref_0.size();++i)if(expiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstDelete(expiringsst);
     }
 
 

@@ -190,14 +190,13 @@ class InternalStats {
           num_input_files_in_output_level(0),
           num_output_files(0),
           num_input_records(0),
+          num_dropped_records(0),
 #ifdef INDIRECT_VALUE_SUPPORT
           vlog_bytes_written_comp(0),
           vlog_bytes_written_raw(0),
           vlog_bytes_remapped(0),
           vlog_files_created(0),
 #endif
-          num_dropped_records(0),
-
           count(_count) {}
 
     explicit CompactionStats(const CompactionStats& c)

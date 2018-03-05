@@ -285,12 +285,6 @@ int compactionno;  // scaf debug
   const int start_level_;    // the lowest level to be compacted
   const int output_level_;  // levels to which output files are stored; for AR, the highest level being compacted
     // this is set only for Active Recycling passes in support of indirect values.
-#ifdef INDIRECT_VALUE_SUPPORT
-  VLogRing *vlogring_;   // for Active Recycling, points to the VLogRing that is being recycled.  This is nonnull ONLY for Active Recycling and is used as the flag
-    // for that state.  scaf?
-  size_t ringno_;   // the ring number that is being Active Recycled
-  VLogRingRefFileno lastfileno_;  // the last file in the recycled prefix
-#endif
   uint64_t max_output_file_size_;
   uint64_t max_compaction_bytes_;
   const ImmutableCFOptions immutable_cf_options_;
@@ -344,6 +338,13 @@ int compactionno;  // scaf debug
 
   // Reason for compaction.  Active Recycling is signified by an appropriate reason here
   CompactionReason compaction_reason_;
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  VLogRing *vlogring_;   // for Active Recycling, points to the VLogRing that is being recycled.  This is nonnull ONLY for Active Recycling and is used as the flag
+    // for that state.  scaf?
+  size_t ringno_;   // the ring number that is being Active Recycled
+  VLogRingRefFileno lastfileno_;  // the last file in the recycled prefix
+#endif
 };
 
 // Utility function
