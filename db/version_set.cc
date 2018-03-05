@@ -777,11 +777,11 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
   // If there are rings, collect the stats for them
   std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
   cf_meta->vlog_filecount.clear();  cf_meta->vlog_totalsize.clear(); cf_meta->vlog_totalfrag.clear();
-  for(int i = 0;i<vli.size();++i) {  // for each ring...
+  for(uint32_t i = 0;i<vli.size();++i) {  // for each ring...
     // number of files per ring
     uint64_t nfiles = 0;
     uint64_t prevend = vli[i].valid_files.size()>1 && vli[i].valid_files[0]==0 ? vli[i].valid_files[0] : 0;  // end of previous interval, starting with 0 or delete interval.  The first file is file 1
-    for(int j=0;j<vli[i].valid_files.size();j+=2)nfiles += vli[i].valid_files[j+1] - std::max(prevend+1,vli[i].valid_files[j]) + 1; // interval is (start,end)
+    for(uint32_t j=0;j<vli[i].valid_files.size();j+=2)nfiles += vli[i].valid_files[j+1] - std::max(prevend+1,vli[i].valid_files[j]) + 1; // interval is (start,end)
     cf_meta->vlog_filecount.push_back(nfiles);
     // the number of bytes allocated in each VLog ring
     cf_meta->vlog_totalsize.push_back(vli[i].size);
@@ -2657,7 +2657,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
 #if DEBLEVEL&0x1000
     {printf("VlogInfo before writing manifest: ");
        std::vector<VLogRingRestartInfo> *vring = &column_family_data->vloginfo();
-       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, space amp=%5.2f, files=",i,(*vring)[i].size,(*vring)[i].frag,((double)(*vring)[i].size)/(1+(*vring)[i].size-(*vring)[i].frag));for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
+       for(uint32_t i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, space amp=%5.2f, files=",i,(*vring)[i].size,(*vring)[i].frag,((double)(*vring)[i].size)/(1+(*vring)[i].size-(*vring)[i].frag));for(uint32_t j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
     }
 #endif
     // Now the database matches the new Version, and the edits are right to create it on restart

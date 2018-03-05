@@ -330,7 +330,7 @@ ProbDelay();
     // See how many bytes were read from each ring.  They will become fragmentation, to the extent they were not passed through
     std::vector<int64_t> refsread(std::vector<int64_t>(addedfrag.size()));  // for each ring, the # bytes referred to
     c_iter->RingBytesRefd(refsread);  // read bytesread from the iterator
-    for(int i=0;i<addedfrag.size();++i)addedfrag[i] += refsread[i];  //  every byte will add to fragmentation, if not passed through
+    for(uint32_t i=0;i<addedfrag.size();++i)addedfrag[i] += refsread[i];  //  every byte will add to fragmentation, if not passed through
 
     // TODO: It might be worthwhile to sort the kvs by key.  This would be needed only during Active Recycling, since they are
     // automatically sorted during compaction.  Perhaps we could merge by level.

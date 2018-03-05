@@ -108,7 +108,7 @@ class CompactionIterator {
   const Slice& user_key() const { return current_user_key_; }
   const CompactionIterationStats& iter_stats() const { return iter_stats_; }
 #ifdef INDIRECT_VALUE_SUPPORT
-  void RingBytesRefd(std::vector<int64_t>& refbytes) { for(int i = 0;i<refbytes.size();++i)refbytes[i]=ring_bytes_refd_[i]; }  // the total length of all indirect data referred to, in each ring
+  void RingBytesRefd(std::vector<int64_t>& refbytes) { for(uint32_t i = 0;i<refbytes.size();++i)refbytes[i]=ring_bytes_refd_[i]; }  // the total length of all indirect data referred to, in each ring
 #endif
 
  private:

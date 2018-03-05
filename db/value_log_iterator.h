@@ -127,7 +127,7 @@ printf("\n");
       result[nextdiskref.Ringno()].valid_files.push_back(firstdiskref.Fileno()+fileendoffsets.size()-1);
     }
     // account for fragmentation, added to any ring we read from
-    for(int i=0;i<result.size();++i)result[i].frag = addedfrag[i];   // copy our internal calculation
+    for(uint32_t i=0;i<result.size();++i)result[i].frag = addedfrag[i];   // copy our internal calculation
     // return other compaction stats
     vlog_bytes_written_comp = diskdatalen;   // total written after compression & CRC
     vlog_bytes_written_raw = bytesintocompression;  // total size of values that are compressed & written

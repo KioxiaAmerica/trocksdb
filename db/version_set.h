@@ -136,7 +136,7 @@ class VersionStorageInfo {
     ParsedFnameRing avgparent(f->avgparentfileno);  // split ring/file into ring and file
     if(avgparent.fileno()==0) {
       // replace fileno of 0 with indirect_ref_0 in the current ring.  If nonexistent or 0, leave size unmodified
-      if(ring >= f->indirect_ref_0.size() || f->indirect_ref_0[ring]==0)return (double)f->compensated_file_size;   // if no ref, keep use size
+      if((uint32_t)ring >= f->indirect_ref_0.size() || f->indirect_ref_0[ring]==0)return (double)f->compensated_file_size;   // if no ref, keep use size
       avgparent = ParsedFnameRing(ring,f->indirect_ref_0[ring]);  // make up a ring ref with the current info for this file
     }
     if(avgparent.ringno()!=ring || avgparent.fileno()==0)return (double)f->compensated_file_size;  // if no valid file ref, use default
