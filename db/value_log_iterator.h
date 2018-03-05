@@ -167,7 +167,7 @@ private:
   std::vector<uint64_t> ref0_;  // for each ring, the earliest reference found into the ring.  Reset when we start each new file
   std::vector<int64_t> addedfrag;  // fragmentation added, for each ring
 struct RingFno {
-  int ringno;
+  uint32_t ringno;
   VLogRingRefFileno fileno;
 };
   std::vector<RingFno> diskfileref;   // where we hold the reference values from the input passthroughs

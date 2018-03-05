@@ -90,7 +90,7 @@ extern CompressionType CompressForVLog(const std::string& raw,
 extern void BreakRecordsIntoFiles(
   std::vector<size_t>& filecumreccnts,  // (result) running total of input records assigned to a file
   std::vector<VLogRingRefFileOffset>& rcdend,  // running total of input record lengths
-  int64_t maxfilesize,   // max size of an individual output file
+  int64_t maxfsize,   // max size of an individual output file
     // the rest of the input arguments are used only if we are limiting the size of an output file based on grandparent size
   const std::vector<FileMetaData*> *grandparents,  // (optional) grandparent files that overlap with the key-range
   const std::vector<NoInitChar> *keys,  // (optional) the keys associated with the input records, run together
@@ -114,7 +114,7 @@ extern void BreakRecordsIntoFiles(
     // (consider the case of lengths 5 5 5 5 1000000 0 0 0 0  which we would like to split into two files of size 500005).  If there
     // is no data left, stop with the files we have - the zero-length records will add on to the end of the last file
     if(bytesleft==0.0)break;   // stop to avoid 0-length file
-    double targetfilect = std::max(1.0,std::floor(bytesleft/(double)maxfilesize));  // number of files expected, rounded down
+    double targetfilect = std::max(1.0,std::floor(bytesleft/(double)maxfsize));  // number of files expected, rounded down
     int64_t targetfileend = prevbytes + (int64_t)(bytesleft/targetfilect);  // min endpoint for this file (min number of bytes plus number of bytes previously output)
     // Allocate records to this file until the minimum fileend is reached.  Use binary search in case there are a lot of small files (questionable decision, since
     // the files would have been added one by one)
@@ -155,25 +155,25 @@ extern void BreakRecordsIntoFiles(
         // it is proper for us to limit the size AFTER decompression; so we use the total key+value size
         compactionsize += ((*grandparents)[grandparentx]->raw_key_size && (*grandparents)[grandparentx]->raw_value_size) ?  // if size is 0, it means we couldn't initialize the true size
             (*grandparents)[grandparentx]->raw_key_size+(*grandparents)[grandparentx]->raw_value_size    // if neither 0, use initialized size
-            : (uint64_t)(1.2*maxfilesize);   // if size is 0, assume a biggish file.  1.2 is a handwave
+            : (uint64_t)(1.2*maxfsize);   // if size is 0, assume a biggish file.  1.2 is a handwave
         // if the new grandparent doesn't make the compaction too big, continue looking at the next one
         if(compactionsize <= maxcompsize)continue;
         // Here the compaction has become too big.  We will NOT be able to include the new grandparent.  That means we must discard keys from the end of the putative
         // output until it no longer overlaps with the file we couldn't include.  We will use a binary search to do this, because there may be a lot of keys.
-        // As above we start left at its lowest possible value, rcdx at its highest possible value (which equals its starting value)
-        uint64_t left = firstrcdinfile;  // init brackets for search.  The ending value of left will be the LAST record, and there must be at least 1 record in the file, so 
+        // As above we start leftvalue at its lowest possible value, rcdx at its highest possible value (which equals its starting value)
+        uint64_t leftvalue = firstrcdinfile;  // init brackets for search.  The ending value of leftvalue will be the LAST record, and there must be at least 1 record in the file, so 
         // the loop variable rcdx will hold the result of the search, fulfilling its role as pointer to the end of the written block
-        while(rcdx!=(left+1)) {  // binary search
-          // at top of loop rcdend[left]<targetfileend and rcdend[rcdx]>=targetfileend.  This remains invariant.  Note that left may be before the search region, or even -1
-          // Loop terminates when rcdx-left=1; at that point rcdx points to the ending+1 record, i. e. the first record that contains a key too high
-          // Calculate the middle record position, which is known not to equal an endpoint (since rcdx-left>1)
-          size_t mid = left + ((rcdx-left)>>1);   // index of middle value
+        while(rcdx!=(leftvalue+1)) {  // binary search
+          // at top of loop rcdend[leftvalue]<targetfileend and rcdend[rcdx]>=targetfileend.  This remains invariant.  Note that leftvalue may be before the search region, or even -1
+          // Loop terminates when rcdx-leftvalue=1; at that point rcdx points to the ending+1 record, i. e. the first record that contains a key too high
+          // Calculate the middle record position, which is known not to equal an endpoint (since rcdx-leftvalue>1)
+          size_t mid = leftvalue + ((rcdx-leftvalue)>>1);   // index of middle value
           // update one or the other input pointer
           size_t keymidx = mid ? (*keylens)[mid-1] : 0;  // start of middle internal key
           Slice keymid((char *)(*keys).data()+keymidx, (*keylens)[mid]-keymidx);  // last key in new output file.
-          if(icmp->user_comparator()->Compare(nextstartkey,ExtractUserKey(keymid))>0)left=mid; else rcdx=mid;
+          if(icmp->user_comparator()->Compare(nextstartkey,ExtractUserKey(keymid))>0)leftvalue=mid; else rcdx=mid;
         }
-        rcdx = left;  // back up to the last admissible key
+        rcdx = leftvalue;  // back up to the last admissible key
         break;  // rcdx has been set
       }
     }
@@ -749,7 +749,8 @@ Status VLogRing::VLogRingGet(
 
   // loop until we have resolved the pointer:
   int retrystate = 0;   // number of times we have retried
-int retrycount = 0;  // scaf debug
+  //Warning: Unused Variable.
+  //int retrycount = 0;  // scaf debug
   while(1) {
     // acquire the head pointer
     VLogRingRefFileno headfile = atomics.fd_ring_head_fileno.load(std::memory_order_acquire);

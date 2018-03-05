@@ -1420,9 +1420,9 @@ Status CompactionJob::InstallCompactionResults(
       int outlevel;
 
       VLog *vlog = compaction->column_family_data()->vlog().get();
-      uint32_t outringno = vlog->VLogRingNoForLevelOutput(compaction->output_level()+1);  // ring# the output goes into
+      int outringno = vlog->VLogRingNoForLevelOutput(compaction->output_level()+1);  // ring# the output goes into
       if(outringno>=0) {  // if there are rings...
-        outlevel = outringno >= vlog->rings().size()-1 ? compaction->column_family_data()->current()->storage_info()->num_levels()-1
+        outlevel = (uint32_t)outringno >= vlog->rings().size()-1 ? compaction->column_family_data()->current()->storage_info()->num_levels()-1
                                                                                            : compaction->column_family_data()->vlog()->starting_level_for_ring(outringno+1)-1;  // get last level for output ring
         for(;outlevel>compaction->output_level();--outlevel){ if(compaction->column_family_data()->current()->storage_info()->NumLevelFiles(outlevel)!=0)break; }
         // now outlevel is the last level in the output ring that has files.  If that's not below the new files, there's nothing to look at
@@ -1448,7 +1448,7 @@ Status CompactionJob::InstallCompactionResults(
         for(uint32_t curroutx = 0; curroutx<sub_compact.outputs.size();++curroutx) {
           // default as described above: ref from file if any, otherwise near end of output ring 
           const_cast<SubcompactionState&>(sub_compact).outputs[curroutx].meta.avgparentfileno =
-            outringno < sub_compact.outputs[curroutx].meta.indirect_ref_0.size() && sub_compact.outputs[curroutx].meta.indirect_ref_0[outringno]
+            (uint32_t)outringno < sub_compact.outputs[curroutx].meta.indirect_ref_0.size() && sub_compact.outputs[curroutx].meta.indirect_ref_0[outringno]
               ? 0 : case2bno;
         }
         // For levels close to the bottom of the ring, calculate overlaps
@@ -1484,7 +1484,7 @@ Status CompactionJob::InstallCompactionResults(
                   user_cmp->Compare(*const_cast<SubcompactionState&>(sub_compact).outputs[curroutx].meta.smallest.rep(), *ofiles[curroverlapx[checklevel]]->largest.rep()) > 0)++curroverlapx[checklevel];
               // process files, stopping when one goes past the max key for curroutx.  Ignore files that have no reference in the ring we are looking at
               while(curroverlapx[checklevel]<ofiles.size()) {
-                if(!!ofiles[curroverlapx[checklevel]]->being_compacted && outringno<ofiles[curroverlapx[checklevel]]->indirect_ref_0.size()) {  // if this SST has an entry for the ring of interest
+                if(!!ofiles[curroverlapx[checklevel]]->being_compacted && (uint32_t)outringno<ofiles[curroverlapx[checklevel]]->indirect_ref_0.size()) {  // if this SST has an entry for the ring of interest
                   VLogRingRefFileno ref0 = ofiles[curroverlapx[checklevel]]->indirect_ref_0[outringno];  // value of the ref
                   if(ref0) {    // if the ref is to a legit file...
                     ++nolaps, totalolaps += ref0, minolap = std::min(minolap, ref0);  // accumulate the file reference into the total

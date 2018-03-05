@@ -96,7 +96,7 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
 printf("Creating iterator for level=%d, earliest_passthrough=",level);
 #endif
     }
-    if(outputringno<0){use_indirects_ = false; return;}  // if no output ring, skip looking for indirects
+    if(outputringno+1==0){use_indirects_ = false; return;}  // if no output ring, skip looking for indirects
     VLogRing *outputring = current_vlog->VLogRingFromNo((int)outputringno);  // the ring we will write values to
 
     // Calculate the remapping threshold.  References earlier than this will be remapped.
