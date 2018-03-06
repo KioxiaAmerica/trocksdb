@@ -2664,6 +2664,8 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
       }
     // Now the database matches the new Version, and the edits are right to create it on restart
 #endif
+    }
+#endif
 
     // Write new record to MANIFEST log
     if (s.ok()) {
