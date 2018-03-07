@@ -331,12 +331,13 @@ printf("VersionEdit::DeleteFile: %p\n",f);
   typedef std::set<std::pair<int, uint64_t>> DeletedFileSet;
 
   const DeletedFileSet& GetDeletedFiles() { return deleted_files_; }
-  const std::vector<FileMetaData*>& GetRetiringFiles() { return retiring_files_; }
   const std::vector<std::pair<int, FileMetaData>>& GetNewFiles() {
     return new_files_;
   }
+#ifdef INDIRECT_VALUE_SUPPORT
+  const std::vector<FileMetaData*>& GetRetiringFiles() { return retiring_files_; }
   std::vector<VLogRingRestartInfo>& VLogAdditions() { return vlog_additions; }
-
+#endif
   std::string DebugString(bool hex_key = false) const;
   std::string DebugJSON(int edit_num, bool hex_key = false) const;
 
