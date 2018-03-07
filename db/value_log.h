@@ -126,7 +126,7 @@ static const int expansion_minimum = 10;  // minimum number of expansion files  
 // it is still unprotected, it will be deleted prematurely.  Keeping track of which files should be released at the end of each compaction is a pain,
 // so we simply don't delete files that are within a few compactions of the end.  The deadband is a worst-case estimate of the number of VLog files
 // that could be created (in all threads) between the time a compaction starts and the time its Version is ratified
-static const int deletion_deadband = 10;  // scaf should be 1000 for multi-VLog files
+static const int deletion_deadband = 10;  // scaf should be 1000 for multi-VLog files, or 1% of the number of files for large databases
 static const int max_simultaneous_deletions = 1000;  // maximum number of files we can delete in one go.  The limitation is that we have to reserve
    // space for them before we acquire the lock
 static const double vlog_remapping_fraction = 0.5;  // References to the oldest VLog files - this fraction of them - will be remapped if encountered during compaction

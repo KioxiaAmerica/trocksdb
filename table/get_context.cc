@@ -104,7 +104,11 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
     bool value_was_indirect = false;  // set if the value was indirect, which means we can't pin it
 #ifdef INDIRECT_VALUE_SUPPORT   // resolve the Get() value before putting it through the merge maze
     if(( value_was_indirect = IsTypeIndirect(parsed_key.type))){   // remember if this was indirected; if so...
-      Status resstat = merge_context_->GetVlog()->VLogGet((Slice)value,resolved_value); // scaf should check status
+      if(!(merge_context_->GetVlog()->VLogGet((Slice)value,resolved_value)).ok()) {
+        // error reading from log; will have been logged earlier.  Abort here
+        state_ = kCorrupt;  // indicate failure type
+        return false;  // ask for no more keys
+      }
       (Slice&)value = Slice(resolved_value);  // violates const correctness, but that's better than interface changes  scaf MUST PIN THIS
     }
 #endif

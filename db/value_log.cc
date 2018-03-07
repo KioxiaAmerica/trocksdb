@@ -276,7 +276,7 @@ void Coalesce(std::vector<VLogRingRestartInfo>& pri,  // the left input and resu
 //
 // Each column family has (possibly many) VLogRing.  VLogRingRef entries in an SST implicitly refer to the VLog of the column family.
 // Constructor.  Find all the VLogRing files and open them.  Create the VLogRingQueue for the files.
-// Delete files that have numbers higher than the last valid one.
+// Delete files that are not marked as valid in the manifest
 VLogRing::VLogRing(
   int ringno,   // ring number of this ring within the CF
   ColumnFamilyData *cfd,  // info for the CF for this ring
@@ -408,7 +408,7 @@ ProbDelay();
     deleted_files.emplace_back(tailfile,fd_ring[arrayx][slotx]);  // mark file for deletion.  This also resets the ring slot to empty
     if(++slotx==fd_ring[arrayx].size())slotx=0;  // Step to next slot; don't use Ringx() lest it perform a slow divide
     ++tailfile;  // Advance file number to match slot pointer
-    if(tailfile+deletion_deadband>headfile)break;   // Tail must stop at one past head, and that only if ring is empty; but we enforce the deadband
+    if(tailfile+deletion_deadband>=headfile)break;   // Tail must stop at one past head, and that only if ring is empty; but we enforce the deadband
     if(fd_ring[arrayx][slotx].refcount_deletion)break;  // if the current slot has references, it will become the tail
   }
   // If we delete past the queued pointer, move the queued pointer
@@ -555,7 +555,7 @@ ProbDelay();
 ProbDelay();
 #endif 
     // See if the tail pointer was being held up, for whatever reason
-    if(tailfile<=headfile && fd_ring[currentarray][Ringx(fd_ring[currentarray],tailfile)].refcount_deletion==0) {  // if tail>head, the ring is empty & refcounts are invalid
+    if(tailfile+deletion_deadband<headfile && fd_ring[currentarray][Ringx(fd_ring[currentarray],tailfile)].refcount_deletion==0) {  // if tail>=head, the ring is empty & refcounts are invalid
       // The file at the tail pointer was deletable, which means the tail pointer was being held up either by proximity to the headpointer or
       // because a deletion operation hit its size limit.  We need to delete files, starting at the tailpointer.
       // This is a very rare case but we have to handle it because otherwise the tail pointer could get stuck

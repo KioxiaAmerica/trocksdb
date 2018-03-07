@@ -1186,6 +1186,7 @@ TEST_F(DBTest, GetApproximateMemTableStats) {
   ASSERT_GT(size, 6000);
 }
 
+#ifndef INDIRECT_VALUE_SUPPORT
 TEST_F(DBTest, ApproximateSizes) {
   do {
     Options options = CurrentOptions();
@@ -1206,11 +1207,11 @@ TEST_F(DBTest, ApproximateSizes) {
     static const int S2 = 105000;  // Allow some expansion from metadata
     Random rnd(301);
     for (int i = 0; i < N; i++) {
-      ASSERT_OK(Put(1, Key(i), RandomString(&rnd, S1)));
+      ASSERT_OK(Put(1, KeyBig(i,S1), ValueBig(RandomString(&rnd, S1))));
     }
 
     // 0 because GetApproximateSizes() does not account for memtable space
-    ASSERT_TRUE(Between(Size("", Key(50), 1), 0, 0));
+    ASSERT_TRUE(Between(Size("", KeyBig(50,S1), 1), 0, 0));
 
     // Check sizes across recovery by reopening a few times
     for (int run = 0; run < 3; run++) {
@@ -1218,17 +1219,17 @@ TEST_F(DBTest, ApproximateSizes) {
 
       for (int compact_start = 0; compact_start < N; compact_start += 10) {
         for (int i = 0; i < N; i += 10) {
-          ASSERT_TRUE(Between(Size("", Key(i), 1), S1 * i, S2 * i));
-          ASSERT_TRUE(Between(Size("", Key(i) + ".suffix", 1), S1 * (i + 1),
+          ASSERT_TRUE(Between(Size("", KeyBig(i,S1), 1), S1 * i, S2 * i));
+          ASSERT_TRUE(Between(Size("", KeyBig(i,S1) + ".suffix", 1), S1 * (i + 1),
                               S2 * (i + 1)));
-          ASSERT_TRUE(Between(Size(Key(i), Key(i + 10), 1), S1 * 10, S2 * 10));
+          ASSERT_TRUE(Between(Size(KeyBig(i,S1), KeyBig(i + 10,S1), 1), S1 * 10, S2 * 10));
         }
-        ASSERT_TRUE(Between(Size("", Key(50), 1), S1 * 50, S2 * 50));
+        ASSERT_TRUE(Between(Size("", KeyBig(50,S1), 1), S1 * 50, S2 * 50));
         ASSERT_TRUE(
-            Between(Size("", Key(50) + ".suffix", 1), S1 * 50, S2 * 50));
+            Between(Size("", KeyBig(50,S1) + ".suffix", 1), S1 * 50, S2 * 50));
 
-        std::string cstart_str = Key(compact_start);
-        std::string cend_str = Key(compact_start + 9);
+        std::string cstart_str = KeyBig(compact_start,S1);
+        std::string cend_str = KeyBig(compact_start + 9,S1);
         Slice cstart = cstart_str;
         Slice cend = cend_str;
         dbfull()->TEST_CompactRange(0, &cstart, &cend, handles_[1]);
@@ -1247,39 +1248,41 @@ TEST_F(DBTest, ApproximateSizes_MixOfSmallAndLarge) {
     Options options = CurrentOptions();
     options.compression = kNoCompression;
     CreateAndReopenWithCF({"pikachu"}, options);
+    static const int S1 = 10000;
 
     Random rnd(301);
     std::string big1 = RandomString(&rnd, 100000);
-    ASSERT_OK(Put(1, Key(0), RandomString(&rnd, 10000)));
-    ASSERT_OK(Put(1, Key(1), RandomString(&rnd, 10000)));
-    ASSERT_OK(Put(1, Key(2), big1));
-    ASSERT_OK(Put(1, Key(3), RandomString(&rnd, 10000)));
-    ASSERT_OK(Put(1, Key(4), big1));
-    ASSERT_OK(Put(1, Key(5), RandomString(&rnd, 10000)));
-    ASSERT_OK(Put(1, Key(6), RandomString(&rnd, 300000)));
-    ASSERT_OK(Put(1, Key(7), RandomString(&rnd, 10000)));
+    ASSERT_OK(Put(1, KeyBig(0,S1), ValueBig(RandomString(&rnd, S1))));
+    ASSERT_OK(Put(1, KeyBig(1,S1), ValueBig(RandomString(&rnd, S1))));
+    ASSERT_OK(Put(1, KeyBig(2,big1.size()), ValueBig(big1)));
+    ASSERT_OK(Put(1, KeyBig(3,S1), ValueBig(RandomString(&rnd, S1))));
+    ASSERT_OK(Put(1, KeyBig(4,big1.size()), ValueBig(big1)));
+    ASSERT_OK(Put(1, KeyBig(5,S1), ValueBig(RandomString(&rnd, S1))));
+    ASSERT_OK(Put(1, KeyBig(6,300000), ValueBig(RandomString(&rnd, 300000))));
+    ASSERT_OK(Put(1, KeyBig(7,S1), ValueBig(RandomString(&rnd, S1))));
 
     // Check sizes across recovery by reopening a few times
     for (int run = 0; run < 3; run++) {
       ReopenWithColumnFamilies({"default", "pikachu"}, options);
 
-      ASSERT_TRUE(Between(Size("", Key(0), 1), 0, 0));
-      ASSERT_TRUE(Between(Size("", Key(1), 1), 10000, 11000));
-      ASSERT_TRUE(Between(Size("", Key(2), 1), 20000, 21000));
-      ASSERT_TRUE(Between(Size("", Key(3), 1), 120000, 121000));
-      ASSERT_TRUE(Between(Size("", Key(4), 1), 130000, 131000));
-      ASSERT_TRUE(Between(Size("", Key(5), 1), 230000, 231000));
-      ASSERT_TRUE(Between(Size("", Key(6), 1), 240000, 241000));
-      ASSERT_TRUE(Between(Size("", Key(7), 1), 540000, 541000));
-      ASSERT_TRUE(Between(Size("", Key(8), 1), 550000, 560000));
+      ASSERT_TRUE(Between(Size("", KeyBig(0,S1), 1), 0, 0));
+      ASSERT_TRUE(Between(Size("", KeyBig(1,S1), 1), 10000, 11000));
+      ASSERT_TRUE(Between(Size("", KeyBig(2,big1.size()), 1), 20000, 21000));
+      ASSERT_TRUE(Between(Size("", KeyBig(3,S1), 1), 120000, 121000));
+      ASSERT_TRUE(Between(Size("", KeyBig(4,big1.size()), 1), 130000, 131000));
+      ASSERT_TRUE(Between(Size("", KeyBig(5,S1), 1), 230000, 231000));
+      ASSERT_TRUE(Between(Size("", KeyBig(6,300000), 1), 240000, 241000));
+      ASSERT_TRUE(Between(Size("", KeyBig(7,S1), 1), 540000, 541000));
+      ASSERT_TRUE(Between(Size("", KeyBig(8,1000), 1), 550000, 560000));
 
-      ASSERT_TRUE(Between(Size(Key(3), Key(5), 1), 110000, 111000));
+      ASSERT_TRUE(Between(Size(KeyBig(3,S1), KeyBig(5,S1), 1), 110000, 111000));
 
       dbfull()->TEST_CompactRange(0, nullptr, nullptr, handles_[1]);
     }
     // ApproximateOffsetOf() is not yet implemented in plain table format.
   } while (ChangeOptions(kSkipPlainTable));
 }
+#endif
 #endif  // ROCKSDB_LITE
 
 #ifndef ROCKSDB_LITE
