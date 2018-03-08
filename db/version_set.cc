@@ -55,8 +55,9 @@
 #endif
 
 namespace rocksdb {
-
+#ifdef INDIRECT_VALUE_SUPPORT
 void DetectVLogDeletions(ColumnFamilyData *, std::vector<VLogRingRestartInfo> *);
+#endif
 
 namespace {
 

@@ -213,6 +213,10 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
                      rate_limit_delay_max_milliseconds);
     ROCKS_LOG_HEADER(log, "               Options.disable_auto_compactions: %d",
                      disable_auto_compactions);
+#ifdef INDIRECT_VALUE_SUPPORT
+    ROCKS_LOG_HEADER(log, "               Options.allow_trivial_move: %d",
+                     allow_trivial_move);
+#endif
 
     const auto& it_compaction_style =
         compaction_style_to_string.find(compaction_style);

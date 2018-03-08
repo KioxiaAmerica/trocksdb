@@ -402,6 +402,12 @@ static std::unordered_map<std::string, OptionTypeInfo> cf_options_type_info = {
      {offset_of(&ColumnFamilyOptions::disable_auto_compactions),
       OptionType::kBoolean, OptionVerificationType::kNormal, true,
       offsetof(struct MutableCFOptions, disable_auto_compactions)}},
+#ifdef INDIRECT_VALUE_SUPPORT
+    {"allow_trivial_move",
+     {offset_of(&ColumnFamilyOptions::allow_trivial_move),
+      OptionType::kBoolean, OptionVerificationType::kNormal, true,
+      offsetof(struct MutableCFOptions, allow_trivial_move)}},
+#endif
     {"filter_deletes",
      {0, OptionType::kBoolean, OptionVerificationType::kDeprecated, true, 0}},
     {"inplace_update_support",

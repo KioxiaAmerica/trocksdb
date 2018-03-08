@@ -158,6 +158,7 @@ struct MutableCFOptions {
         report_bg_io_stats(options.report_bg_io_stats),
         compression(options.compression)
 #ifdef INDIRECT_VALUE_SUPPORT   // declare mutable options
+        ,allow_trivial_move(options.allow_trivial_move)
 // Tuning parameters are mutable
 #endif
   {
@@ -189,6 +190,7 @@ struct MutableCFOptions {
         compression(Snappy_Supported() ? kSnappyCompression : kNoCompression)
 #ifdef INDIRECT_VALUE_SUPPORT   // initialize mutable options
 // Tuning parameters are mutable
+        ,allow_trivial_move(false)
 #endif
   {}
 
@@ -233,6 +235,9 @@ struct MutableCFOptions {
   uint64_t max_bytes_for_level_base;
   double max_bytes_for_level_multiplier;
   std::vector<int> max_bytes_for_level_multiplier_additional;
+#ifdef INDIRECT_VALUE_SUPPORT
+  bool allow_trivial_move;  // allow trivial move, bypassing compaction.  Used to allow some tests to run
+#endif
 
   // Misc options
   uint64_t max_sequential_skip_in_iterations;

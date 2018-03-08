@@ -18,7 +18,9 @@ class VersionEdit;
 struct FileMetaData;
 class InternalStats;
 class ColumnFamilyData;
+#ifdef INDIRECT_VALUE_SUPPORT
 struct VLogRingRestartInfo;
+#endif
 
 // A helper class so we can efficiently apply a whole sequence
 // of edits to a particular state without creating intermediate

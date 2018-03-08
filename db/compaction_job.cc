@@ -873,8 +873,10 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   // Then in the loop it returns the references to the values that were written.  Errors encountered during c_iter are preserved
   // and associated with the failing keys.
   // If there is no VLog it means this table type doesn't support indirects, and the iterator will be a passthrough
+#if DEBLEVEL&0x2000
 if(sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling)
   printf("Starting kv capture for Active Recycling (%zd SSTs, VLogFiles up to %zd)\n",sub_compact->compaction->num_input_levels(),sub_compact->compaction->lastfileno());  // scaf
+#endif
   std::unique_ptr<IndirectIterator> value_iter(new IndirectIterator(
     c_iter,cfd,sub_compact->compaction,end,cfd->vlog()!=nullptr,
     // For Active Recycling we pass a pointer to the RecyclingIterator, so the IndirectIterator can query it directly about end-of-file
@@ -884,8 +886,10 @@ if(sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecy
   // For Active Recycling, we need to keep track of which input file's keys we are working on so that when we create the corresponding output
   // file we mark it at the correct level.  If we are not AR, we will just use the output_level
   int arfileno = 0;
+#if DEBLEVEL&0x2000
 if(sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling)
   printf("Starting kv processing for Active Recycling\n");  // scaf
+#endif
 #if DEBLEVEL&512
 std::vector<uint64_t> our_ref0;  // vector of file-refs
 our_ref0.push_back(~0);
@@ -1147,10 +1151,11 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
   value_iter->getedit((const_cast<Compaction*>(sub_compact->compaction))->edit()->VLogAdditions(), 
     sub_compact->compaction_job_stats.vlog_bytes_written_comp, sub_compact->compaction_job_stats.vlog_bytes_written_raw, sub_compact->compaction_job_stats.vlog_bytes_remapped,
     sub_compact->compaction_job_stats.vlog_files_created);
-
-#endif
+#if DEBLEVEL&0x2000
 if(sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling)
-  printf("Active Recycling finished kv processing\n");  // scaf
+  printf("Active Recycling finished kv processing\n");
+#endif
+#endif
 
 
   sub_compact->c_iter.reset();

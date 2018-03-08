@@ -119,6 +119,11 @@ printf("\n");
 // scaf must handle the case where there was no diskref & thus no diskdatalen
     result.clear();  // init result to empty (i. e. no changes)
     if(!use_indirects_) return;  // return null value if no indirects
+    // return with no stats if there was a write error, or if nothing was written to the VLog
+    if(!status_.ok() || diskdatalen==0) {
+      vlog_bytes_written_comp = vlog_bytes_written_raw = vlog_bytes_remapped = vlog_files_created = 0;  // nothing was written
+      return;
+    }
     result.resize(ref0_.size());  // reserve space for all the rings
     // account for size added to the output ring
     if(fileendoffsets.size()){   // if there are no files, output no record, since a 0 record is a delete

@@ -279,6 +279,8 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   //Activation level should be in increasing order and always >0.
   //
   // NOTE: if you add a class like vector of shared_ptr, you must add to the blacklist in options_settable_test, and to the options string there
+  // set to allow trivial move.  This does not update the VLogs and is used only to allow tests to run
+  bool allow_trivial_move = false;
   std::vector<uint32_t> activation_level;
   //Minimum Indirect Value Size : only values this size or larger are written to the Value Log(default 0)
   std::vector<size_t> min_indirect_val_size;

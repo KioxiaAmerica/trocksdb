@@ -335,7 +335,9 @@ printf("VersionEdit::DeleteFile: %p\n",f);
   const std::vector<std::pair<int, FileMetaData>>& GetNewFiles() {
     return new_files_;
   }
+#ifdef INDIRECT_VALUE_SUPPORT
   std::vector<VLogRingRestartInfo>& VLogAdditions() { return vlog_additions; }
+#endif
 
   std::string DebugString(bool hex_key = false) const;
   std::string DebugJSON(int edit_num, bool hex_key = false) const;

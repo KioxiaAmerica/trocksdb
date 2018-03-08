@@ -158,6 +158,10 @@ ColumnFamilyOptions BuildColumnFamilyOptions(
       mutable_cf_options.max_bytes_for_level_base;
   cf_opts.max_bytes_for_level_multiplier =
       mutable_cf_options.max_bytes_for_level_multiplier;
+#ifdef INDIRECT_VALUE_SUPPORT
+  cf_opts.allow_trivial_move =
+      mutable_cf_options.allow_trivial_move;
+#endif
 
   cf_opts.max_bytes_for_level_multiplier_additional.clear();
   for (auto value :

@@ -148,6 +148,10 @@ void MutableCFOptions::Dump(Logger* log) const {
                  level0_stop_writes_trigger);
   ROCKS_LOG_INFO(log, "                     max_compaction_bytes: %" PRIu64,
                  max_compaction_bytes);
+#ifdef INDIRECT_VALUE_SUPPORT
+  ROCKS_LOG_INFO(log, "                 allow_trivial_move: %d",
+                 allow_trivial_move);
+#endif
   ROCKS_LOG_INFO(log, "                    target_file_size_base: %" PRIu64,
                  target_file_size_base);
   ROCKS_LOG_INFO(log, "              target_file_size_multiplier: %d",
