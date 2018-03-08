@@ -152,15 +152,15 @@ struct MutableCFOptions {
         max_bytes_for_level_multiplier(options.max_bytes_for_level_multiplier),
         max_bytes_for_level_multiplier_additional(
             options.max_bytes_for_level_multiplier_additional),
+#ifdef INDIRECT_VALUE_SUPPORT   // declare mutable options
+        allow_trivial_move(options.allow_trivial_move),
+// Tuning parameters are mutable
+#endif
         max_sequential_skip_in_iterations(
             options.max_sequential_skip_in_iterations),
         paranoid_file_checks(options.paranoid_file_checks),
         report_bg_io_stats(options.report_bg_io_stats),
         compression(options.compression)
-#ifdef INDIRECT_VALUE_SUPPORT   // declare mutable options
-        ,allow_trivial_move(options.allow_trivial_move)
-// Tuning parameters are mutable
-#endif
   {
     RefreshDerivedOptions(options.num_levels, options.compaction_style);
   }
@@ -184,14 +184,14 @@ struct MutableCFOptions {
         target_file_size_multiplier(0),
         max_bytes_for_level_base(0),
         max_bytes_for_level_multiplier(0),
+#ifdef INDIRECT_VALUE_SUPPORT   // initialize mutable options
+// Tuning parameters are mutable
+        allow_trivial_move(false),
+#endif
         max_sequential_skip_in_iterations(0),
         paranoid_file_checks(false),
         report_bg_io_stats(false),
         compression(Snappy_Supported() ? kSnappyCompression : kNoCompression)
-#ifdef INDIRECT_VALUE_SUPPORT   // initialize mutable options
-// Tuning parameters are mutable
-        ,allow_trivial_move(false)
-#endif
   {}
 
   // Must be called after any change to MutableCFOptions
