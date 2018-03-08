@@ -831,6 +831,7 @@ bool ColumnFamilyData::NeedsCompaction() const {
   return compaction_picker_->NeedsCompaction(current_->storage_info());
 }
 
+#ifdef INDIRECT_VALUE_SUPPORT
 void ColumnFamilyData::CheckForActiveRecycle(std::vector<CompactionInputFiles>& compaction_inputs,  // result: the files to Active Recycle, if any, each on its own 'level'.  If no AR needed, empty.
      size_t& ringno,    // result: the ring number to be recycled, if any
      VLogRingRefFileno& lastfileno    // the last file# in the recycled region
@@ -849,6 +850,7 @@ void ColumnFamilyData::CheckForActiveRecycle(std::vector<CompactionInputFiles>& 
     if(compaction_inputs.size()!=0)break;  // if we found an AR, stop looking
   }
 }
+#endif
 
 Compaction* ColumnFamilyData::PickCompaction(
     const MutableCFOptions& mutable_options, LogBuffer* log_buffer) {

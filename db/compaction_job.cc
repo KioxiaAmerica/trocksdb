@@ -1428,7 +1428,7 @@ Status CompactionJob::InstallCompactionResults(
       if(vlog!=nullptr) {  // if this CF supports VLogs...
         int outringno = vlog->VLogRingNoForLevelOutput(compaction->output_level()+1);  // ring# the output goes into
         if(outringno>=0) {  // if there are rings...
-          outlevel = outringno >= vlog->rings().size()-1 ? compaction->column_family_data()->current()->storage_info()->num_levels()-1
+          outlevel = outringno >= int64_t(vlog->rings().size())-1 ? compaction->column_family_data()->current()->storage_info()->num_levels()-1
                                                                                              : compaction->column_family_data()->vlog()->starting_level_for_ring(outringno+1)-1;  // get last level for output ring
           for(;outlevel>compaction->output_level();--outlevel){ if(compaction->column_family_data()->current()->storage_info()->NumLevelFiles(outlevel)!=0)break; }
           // now outlevel is the last level in the output ring that has files.  If that's not below the new files, there's nothing to look at
