@@ -372,7 +372,7 @@ public:
 
     // Combine two edits into one equivalent composite.  The operation defined here must be left-associative and must work when *this is
     // the empty state.
-    void Coalesce(VLogRingRestartInfo& sec, bool outputdeletion);  // fold sec into this
+    void Coalesce(const VLogRingRestartInfo& sec, bool outputdeletion);  // fold sec into this
 
     // see if valid_files contains the given fileno
     bool ContainsFileno(VLogRingRefFileno fno)
@@ -381,7 +381,7 @@ public:
 
 // Routine to coalesce a vector of Ring info.  Must be left-associative, and work when applied to empty arguments.
 // Leaves result in 'pri'
-extern void Coalesce(std::vector<VLogRingRestartInfo>& pri, std::vector<VLogRingRestartInfo>& sec, bool outputdeletion);
+extern void Coalesce(std::vector<VLogRingRestartInfo>& pri, const std::vector<VLogRingRestartInfo>& sec, bool outputdeletion);
 
 
 // A VLogRing is a set of sequentially-numbered files, with a common prefix and extension .vlg, that contain

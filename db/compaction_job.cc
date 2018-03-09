@@ -118,6 +118,8 @@ struct CompactionJob::SubcompactionState {
   // A flag determine whether the key has been seen in ShouldStopBefore()
   bool seen_key = false;
 #ifdef INDIRECT_VALUE_SUPPORT
+  // file numbers written
+  std::vector<VLogRingRestartInfo> vlog_additions;
   // number of bytes written to VLog after compression
   uint64_t vlog_bytes_written_comp;
   // number of bytes written to VLog before compression
@@ -1145,10 +1147,9 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
   }
 
 #ifdef INDIRECT_VALUE_SUPPORT
-  // Now that we have processed all the I/O, collect the VLog-related changes and incorporate them into the edit.
-// scaf bug: this needs to be done under lock.  Also, the VLogAdditions for all the subcompactions must be rolled together and the edit applied once
-// scaf is this ever tested with subcompactions??
-  value_iter->getedit((const_cast<Compaction*>(sub_compact->compaction))->edit()->VLogAdditions(), 
+  // Now that we have processed all the I/O, collect the VLog-related changes for the subcompaction.  We will later merge the subcomps and put the aggregate into the edit.
+// obsolete   value_iter->getedit((const_cast<Compaction*>(sub_compact->compaction))->edit()->VLogAdditions(), 
+  value_iter->getedit(sub_compact->vlog_additions, 
     sub_compact->compaction_job_stats.vlog_bytes_written_comp, sub_compact->compaction_job_stats.vlog_bytes_written_raw, sub_compact->compaction_job_stats.vlog_bytes_remapped,
     sub_compact->compaction_job_stats.vlog_files_created);
 #if DEBLEVEL&0x2000
@@ -1406,6 +1407,10 @@ Status CompactionJob::InstallCompactionResults(
 
   for (const auto& sub_compact : compact_->sub_compact_states) {
 #ifdef INDIRECT_VALUE_SUPPORT
+    // Collect the files written by subcompactions into a single set
+    Coalesce(compaction->edit()->VLogAdditions(),sub_compact.vlog_additions,true /* allow_delete */);
+    // other stats are collected by Add()
+
     // For files that are not at the last level, we must assign a ring position that we can use for picking compactions, giving
     // priority to compactions that will free up files in the tail.  The ring position is the average file number of the last-level files
     // that overlap the key-range of the new file.  We assign the number based on the last-level files, not the parent files, because ultimately the last-level

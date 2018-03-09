@@ -111,7 +111,14 @@ TEST_F(DBRangeDelTest, CompactionOutputFilesExactlyFilled) {
   dbfull()->TEST_CompactRange(0, nullptr, nullptr, nullptr,
                               true /* disallow_trivial_move */);
   ASSERT_EQ(0, NumTableFilesAtLevel(0));
-  ASSERT_EQ(2, NumTableFilesAtLevel(1));
+#ifdef INDIRECT_VALUE_SUPPORT
+  // We try to honor the file-size limit of 9K, and there are 24K of kvs.  That takes 3 files
+  const int expfiles = 3;
+#else
+  // If each file is overlong by 1 kv, they fit into 2 files.
+  const int expfiles = 2;
+#endif
+  ASSERT_EQ(expfiles, NumTableFilesAtLevel(1));
   db_->ReleaseSnapshot(snapshot);
 }
 
@@ -339,6 +346,9 @@ TEST_F(DBRangeDelTest, ValidLevelSubcompactionBoundaries) {
   options.num_levels = 3;
   options.target_file_size_base = kFileBytes;
   options.target_file_size_multiplier = 1;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move = true;
+#endif
   Reopen(options);
 
   Random rnd(301);
@@ -398,6 +408,9 @@ TEST_F(DBRangeDelTest, ValidUniversalSubcompactionBoundaries) {
   options.num_levels = kNumLevels;
   options.target_file_size_base = kNumPerFile << 10;
   options.target_file_size_multiplier = 1;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move = true;
+#endif
   Reopen(options);
 
   Random rnd(301);
@@ -910,7 +923,10 @@ TEST_F(DBRangeDelTest, CompactionTreatsSplitInputLevelDeletionAtomically) {
   options.level0_file_num_compaction_trigger = kNumFilesPerLevel;
   options.memtable_factory.reset(
       new SpecialSkipListFactory(2 /* num_entries_flush */));
-  options.target_file_size_base = kValueBytes;
+  options.target_file_size_base = (uint64_t)(kValueBytes*1.7);  // allow 2 keys per file for both indirect and direct values
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move = true;
+#endif
   // i == 0: CompactFiles
   // i == 1: CompactRange
   // i == 2: automatic compaction
@@ -996,7 +1012,7 @@ TEST_F(DBRangeDelTest, UnorderedTombstones) {
   ASSERT_EQ("c", files[0][0].largest.user_key());
 
   std::string v;
-  auto s = db_->Get(ReadOptions(), "a", &v);
+  auto s = db_->Get(ReadOptions(), cf, "a", &v);
   ASSERT_TRUE(s.IsNotFound());
 }
 

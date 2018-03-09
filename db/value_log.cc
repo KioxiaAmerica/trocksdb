@@ -114,7 +114,10 @@ extern void BreakRecordsIntoFiles(
     // (consider the case of lengths 5 5 5 5 1000000 0 0 0 0  which we would like to split into two files of size 500005).  If there
     // is no data left, stop with the files we have - the zero-length records will add on to the end of the last file
     if(bytesleft==0.0)break;   // stop to avoid 0-length file
-    double targetfilect = std::max(1.0,std::floor(bytesleft/(double)maxfsize));  // number of files expected, rounded down
+    // Round mostly down, but not so far down as to make the file too large (mostly needed for testcases that check 1 or 2 files).  We constrain the length to
+    // between 1.0 and 1.25 times the nominal file size.  bytesleft/nfiles is in [1.00,1.25)*maxfile so nfiles is in [bytesleft/1.25*maxfile,bytesleft/maxfile).
+    // Round the low value up, the high value down, and take the larger of the results
+    double targetfilect = std::max(std::ceil(bytesleft/((double)maxfsize*1.25)),std::floor(bytesleft/((double)maxfsize)));  // number of files expected, rounded down
     int64_t targetfileend = prevbytes + (int64_t)(bytesleft/targetfilect);  // min endpoint for this file (min number of bytes plus number of bytes previously output)
     // Allocate records to this file until the minimum fileend is reached.  Use binary search in case there are a lot of small files (questionable decision, since
     // the files would have been added one by one)
@@ -141,7 +144,8 @@ extern void BreakRecordsIntoFiles(
       // get first and last key of putative output file
       size_t key0x = firstrcdinfile ? (*keylens)[firstrcdinfile-1] : 0;  // start of first internal key in rcd
       Slice key0((char *)(*keys).data()+key0x, (*keylens)[firstrcdinfile]-key0x);  // first key in new output file.
-      Slice keyn((char *)(*keys).data()+(*keylens)[rcdx-1], (*keylens)[rcdx]-(*keylens)[rcdx-1]);  // last key in new output file.
+      size_t keynx = rcdx ? (*keylens)[rcdx-1] : 0;  // start of first internal key in rcd
+      Slice keyn((char *)(*keys).data()+keynx, (*keylens)[rcdx]-keynx);  // last key in new output file.
       // skip over grandparent files that are entirely before the current output file
       while(grandparentx<(*grandparents).size() && icmp->user_comparator()->Compare((*grandparents)[grandparentx]->largest.user_key(),ExtractUserKey(key0))<0)++grandparentx;  // skip if grandparent all before output
       // initialize the total compaction size to the size of the output file
@@ -198,7 +202,7 @@ static ParsedFnameRing VlogFnametoRingFname(std::string pathfname) {
 }
 
 // merge edits in sec into *this
-void VLogRingRestartInfo::Coalesce(VLogRingRestartInfo& sec,  // the stats to merge in
+void VLogRingRestartInfo::Coalesce(const VLogRingRestartInfo& sec,  // the stats to merge in
   bool outputdeletion  // true if a deletion in the input should be passed through to the result.  For final status we elide the deletion
 )
 {
@@ -242,7 +246,7 @@ void VLogRingRestartInfo::Coalesce(VLogRingRestartInfo& sec,  // the stats to me
 
 // fold the VLog edits in sec into pri.  Each is vector with one set of stats per ring
 void Coalesce(std::vector<VLogRingRestartInfo>& pri,  // the left input and result
-  std::vector<VLogRingRestartInfo>& sec,  // right input
+  const std::vector<VLogRingRestartInfo>& sec,  // right input
   bool outputdeletion  // true if a deletion in the input should be passed through to the result.  For final status we elide the deletion
 )
 {
