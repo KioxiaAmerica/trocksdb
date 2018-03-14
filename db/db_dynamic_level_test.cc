@@ -287,7 +287,7 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesCompactRange) {
   options.level0_file_num_compaction_trigger = 2;
   options.level0_slowdown_writes_trigger = 9999;
   options.level0_stop_writes_trigger = 9999;
-  options.target_file_size_base = 2;
+  options.target_file_size_base = 2048;
   options.level_compaction_dynamic_level_bytes = true;
   options.max_bytes_for_level_base = 10240;
   options.max_bytes_for_level_multiplier = 4;
@@ -372,6 +372,9 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBaseInc) {
   options.max_background_compactions = 2;
   options.num_levels = 5;
   options.max_compaction_bytes = 100000000;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move = true;
+#endif
 
   DestroyAndReopen(options);
 

@@ -139,7 +139,9 @@ bool Compaction::IsFullCompaction(
   return num_files_in_compaction == total_num_files;
 }
 
+#if DEBLEVEL&0x4000
 int Compaction::compactionnoshared = 0; // scaf debug
+#endif
 
 Compaction::Compaction(VersionStorageInfo* vstorage,
                        const ImmutableCFOptions& _immutable_cf_options,
@@ -193,7 +195,7 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
   if (is_manual_compaction_) {
     compaction_reason_ = CompactionReason::kManualCompaction;
   }
-#if 0  // scaf debug
+#if DEBLEVEL&0x4000
   compactionno = Compaction::compactionnoshared++;
   if(compaction_reason_ == CompactionReason::kActiveRecycling)printf("Starting AR compaction\n");
   else printf("Starting compaction number %d into level %d\n",compactionno,output_level_);
@@ -225,7 +227,7 @@ Compaction::~Compaction() {
 #if DEBLEVEL&16
 printf("~Compaction()\n");
 #endif
-#if 0  // scaf debug
+#if DEBLEVEL&0x4000
 printf("completing compaction number %d\n",compactionno);  // scaf debug
 #endif
   if (input_version_ != nullptr) {

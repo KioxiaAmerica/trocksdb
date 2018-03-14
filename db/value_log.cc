@@ -103,8 +103,8 @@ extern void BreakRecordsIntoFiles(
   // Loop till we have processed all the inputs
   int64_t prevbytes = 0;  // total bytes written to previous files
   size_t grandparentx = 0;  // index of the next grandparent file.  We advance after we are sure the current file can no longer contribute
-  for(size_t rcdx = 0; rcdx<rcdend.size();++rcdx){   // rcdx is the index of the next input record to process
-    size_t firstrcdinfile = rcdx;  // remember the starting rcd# for this file
+  for(int64_t rcdx = 0; rcdx<(int64_t)rcdend.size();++rcdx){   // rcdx is the index of the next input record to process
+    int64_t firstrcdinfile = rcdx;  // remember the starting rcd# for this file
     // Calculate the output filesize, erring on the side of larger files.  In other words, we round down the number
     // of files needed, and get the target filesize from that.  For each calculation we use the number of bytes remaining
     // in the input, so that if owing to breakage a file gets too long, we will keep trying to prorate the remaining bytes
@@ -121,7 +121,7 @@ extern void BreakRecordsIntoFiles(
     int64_t targetfileend = prevbytes + (int64_t)(bytesleft/targetfilect);  // min endpoint for this file (min number of bytes plus number of bytes previously output)
     // Allocate records to this file until the minimum fileend is reached.  Use binary search in case there are a lot of small files (questionable decision, since
     // the files would have been added one by one)
-    uint64_t left = rcdx-1;  // init brackets for search
+    int64_t left = rcdx-1;  // init brackets for search
     // the loop variable rcdx will hold the result of the search, fulfilling its role as pointer to the end of the written block
     rcdx=rcdend.size()-1;
     while(rcdx!=(left+1)) {  // binary search
@@ -165,10 +165,9 @@ extern void BreakRecordsIntoFiles(
         // Here the compaction has become too big.  We will NOT be able to include the new grandparent.  That means we must discard keys from the end of the putative
         // output until it no longer overlaps with the file we couldn't include.  We will use a binary search to do this, because there may be a lot of keys.
         // As above we start leftvalue at its lowest possible value, rcdx at its highest possible value (which equals its starting value)
-        uint64_t leftvalue = firstrcdinfile;  // init brackets for search.  The ending value of leftvalue will be the LAST record, and there must be at least 1 record in the file, so 
-        // the loop variable rcdx will hold the result of the search, fulfilling its role as pointer to the end of the written block
-        while(rcdx!=(leftvalue+1)) {  // binary search
-          // at top of loop rcdend[leftvalue]<targetfileend and rcdend[rcdx]>=targetfileend.  This remains invariant.  Note that leftvalue may be before the search region, or even -1
+        int64_t leftvalue = firstrcdinfile-1;  // init brackets for search.  put left side before the search region to allow rcdx to get as low as it needs
+        while(rcdx!=(leftvalue+1)) {  // binary search.
+          // at top of loop (*keys)[leftvalue]<target key and (*keys)[rcdx]>=target key.  This remains invariant.  Note that leftvalue may be before the search region, or even -1
           // Loop terminates when rcdx-leftvalue=1; at that point rcdx points to the ending+1 record, i. e. the first record that contains a key too high
           // Calculate the middle record position, which is known not to equal an endpoint (since rcdx-leftvalue>1)
           size_t mid = leftvalue + ((rcdx-leftvalue)>>1);   // index of middle value
@@ -177,7 +176,7 @@ extern void BreakRecordsIntoFiles(
           Slice keymid((char *)(*keys).data()+keymidx, (*keylens)[mid]-keymidx);  // last key in new output file.
           if(icmp->user_comparator()->Compare(nextstartkey,ExtractUserKey(keymid))>0)leftvalue=mid; else rcdx=mid;
         }
-        rcdx = leftvalue;  // back up to the last admissible key
+        rcdx = std::max(leftvalue,firstrcdinfile);  // back up to the last admissible key; but make sure the file contains at least one key
         break;  // rcdx has been set
       }
     }
