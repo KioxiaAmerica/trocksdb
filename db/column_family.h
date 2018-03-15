@@ -219,7 +219,7 @@ class ColumnFamilyData {
   }
 
   // REQUIRES: DB mutex held
-  // Build ColumnFamiliesOptions with immutable options and latest mutable
+  // Build ColumnFamilyOptions with immutable options and latest mutable
   // options.
   ColumnFamilyOptions GetLatestCFOptions() const;
 

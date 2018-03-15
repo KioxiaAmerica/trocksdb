@@ -153,8 +153,20 @@ struct MutableCFOptions {
         max_bytes_for_level_multiplier_additional(
             options.max_bytes_for_level_multiplier_additional),
 #ifdef INDIRECT_VALUE_SUPPORT   // declare mutable options
-        allow_trivial_move(options.allow_trivial_move),
 // Tuning parameters are mutable
+        allow_trivial_move(options.allow_trivial_move),
+        vlogring_activation_level(options.vlogring_activation_level),
+        min_indirect_val_size(options.min_indirect_val_size),
+        fraction_remapped_during_compaction(options.fraction_remapped_during_compaction),
+        fraction_remapped_during_active_recycling(options.fraction_remapped_during_active_recycling),
+        fragmentation_active_recycling_trigger(options.fragmentation_active_recycling_trigger),
+        fragmentation_active_recycling_klaxon(options.fragmentation_active_recycling_klaxon),
+        active_recycling_sst_minct(options.active_recycling_sst_minct),
+        active_recycling_sst_maxct(options.active_recycling_sst_maxct),
+        active_recycling_vlogfile_freed_min(options.active_recycling_vlogfile_freed_min),
+        vlogfile_max_size(options.vlogfile_max_size),
+        compaction_picker_age_importance(options.compaction_picker_age_importance),
+        ring_compression_style(options.ring_compression_style),
 #endif
         max_sequential_skip_in_iterations(
             options.max_sequential_skip_in_iterations),
@@ -187,6 +199,19 @@ struct MutableCFOptions {
 #ifdef INDIRECT_VALUE_SUPPORT   // initialize mutable options
 // Tuning parameters are mutable
         allow_trivial_move(false),
+        vlogring_activation_level(std::vector<uint32_t>({1})),
+        min_indirect_val_size(std::vector<size_t>({0})),
+        fraction_remapped_during_compaction(std::vector<float>({0.5})),
+        fraction_remapped_during_active_recycling(std::vector<float>({0.25})),
+        fragmentation_active_recycling_trigger(std::vector<float>({0.25})),
+        fragmentation_active_recycling_klaxon(std::vector<float>({0.5})),
+        active_recycling_sst_minct(std::vector<size_t>({5})),
+        active_recycling_sst_maxct(std::vector<size_t>({15})),
+        active_recycling_vlogfile_freed_min(std::vector<size_t>({7})),
+        vlogfile_max_size(std::vector<uint64_t>({40 * (1LL < 20)})),
+        compaction_picker_age_importance(std::vector<float>({10.0})),
+    //Ring Compression Style: indicates what kind of compression will be applied to the data
+        ring_compression_style(std::vector<CompressionType>({kZlibCompression})),
 #endif
         max_sequential_skip_in_iterations(0),
         paranoid_file_checks(false),
@@ -237,6 +262,20 @@ struct MutableCFOptions {
   std::vector<int> max_bytes_for_level_multiplier_additional;
 #ifdef INDIRECT_VALUE_SUPPORT
   bool allow_trivial_move;  // allow trivial move, bypassing compaction.  Used to allow some tests to run
+  
+  // VLog Options
+  std::vector<uint32_t> vlogring_activation_level;
+  std::vector<size_t> min_indirect_val_size;
+  std::vector<float> fraction_remapped_during_compaction;
+  std::vector<float> fraction_remapped_during_active_recycling;
+  std::vector<float> fragmentation_active_recycling_trigger;
+  std::vector<float> fragmentation_active_recycling_klaxon;
+  std::vector<size_t> active_recycling_sst_minct;
+  std::vector<size_t> active_recycling_sst_maxct;
+  std::vector<size_t> active_recycling_vlogfile_freed_min;
+  std::vector<uint64_t> vlogfile_max_size;
+  std::vector<float> compaction_picker_age_importance;
+  std::vector<CompressionType> ring_compression_style;
 #endif
 
   // Misc options

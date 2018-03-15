@@ -272,51 +272,53 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   //std:vector<uint64_t> VLogOptions(...);
   // The idea name VLogOptions can't be used, but we should definitely pick a shorter, more appropriate name.
   
+  // set to allow trivial move.  This does not update the VLogs and is used only to allow tests to run
+  bool allow_trivial_move = false;
   // We need to allow for multiple rings per CF
   // Each ring is tied to a level (activation_level below)
   // such that values entering at that level are put into the ring.
   //Activation Level : values coming into this level are written to the ring. Level 1 is the smallest level on disk.
-  //Activation level should be in increasing order and always >0.
+  //Activation level should be in increasing order.  Values greater than 0 indicate the level; values less than 0 are relative to the END of the ring AT THE TIME THE VLOG IS CREATED, i. e.
+  //  a value of -1 means 'the last level'
   //
   // NOTE: if you add a class like vector of shared_ptr, you must add to the blacklist in options_settable_test, and to the options string there
-  // set to allow trivial move.  This does not update the VLogs and is used only to allow tests to run
-  bool allow_trivial_move = false;
-  std::vector<uint32_t> activation_level;
-  //Minimum Indirect Value Size : only values this size or larger are written to the Value Log(default 0)
-  std::vector<size_t> min_indirect_val_size;
-  
-  //GC Velocity : for each byte of fragmentation added to the ring, this many bytes are recycled from the tail to the head(default 5.0)
-  std::vector<float> gc_velocity;
-  
-  //Space Amp Limit : apply emergency measures if space amp exceeds this (default: 20)
-  std::vector<float> space_amp_limit;
-  
-  //Space Amp Warning : start Active Recycling if the space amp exceeds this (default: 10)
-  std::vector<float> space_amp_warn;
-  
-  //Emergency Size : emergency measures will free up at least this many Value Log files(default 3)
-  std::vector<size_t> emergency_size;
-  
-  //Active Recycling Size : each Active Recycling operation will process this many SSTs
-  std::vector<size_t> active_recycling_size;
-  
-  //Max VLog Filesize : recommended limit in bytes for a Vlog file(default 16MB)
-  std::vector<uint64_t> max_vlog_size;
+  std::vector<uint32_t> vlogring_activation_level = std::vector<uint32_t>({1});
 
-  //Passive Recycling Leeway : add up to this fraction to an SST's compaction score based on the age of the files in the compaction (default 0.2)
-  std::vector<float> passive_recycling_leeway;
+  //Minimum Indirect Value Size : only values this size or larger are written to the Value Log
+  std::vector<size_t> min_indirect_val_size = std::vector<size_t>({0});
   
-  //Ring Compression Style: indicates what kind of compression will be applied to the data (default kNoCompression)
-  //kNoCompression = 0x0,
-  //kSnappyCompression = 0x1,
-  //kZlibCompression = 0x2,
-  //kBZip2Compression = 0x3,
-  //kLZ4Compression = 0x4,
-  //kLZ4HCCompression = 0x5,
-  //kXpressCompression = 0x6,
-  //kZSTD = 0x7,
-  std::vector<CompressionType> ring_style_compression;
-//  );
+  //remapping fraction: During compaction, the oldest values will be copied from the tail of the VLog to the head.  This parameter tells how many:
+  // 0.25=just the oldest 1/4 of the values, 0.75=the oldest 3/4
+  std::vector<float> fraction_remapped_during_compaction = std::vector<float>({0.5});
+  
+  //same idea, but the fraction to remap during active recycling.  Usually smaller, to minimize the amount of fragmentation added
+  // outside of the files being freed
+  std::vector<float> fraction_remapped_during_active_recycling = std::vector<float>({0.25});
+  
+  //Fragmentation Trigger : start Active Recycling if the fragmentation in the VLog exceeds this fraction of the VLog size
+  std::vector<float> fragmentation_active_recycling_trigger = std::vector<float>({0.25});
+  
+  //Fragmentation Klaxon : apply emergency measures if fragmentation exceeds this
+  std::vector<float> fragmentation_active_recycling_klaxon = std::vector<float>({0.5});
+  
+  //AR SST min: minimum number of SSTs to include in an active-recycling compaction
+  std::vector<size_t> active_recycling_sst_minct = std::vector<size_t>({5});
+  
+  //AR SST max: maximum number of SSTs to include in an active-recycling compaction
+  std::vector<size_t> active_recycling_sst_maxct = std::vector<size_t>({15});
+  
+  //AR VLogFile min # freed: minimum number of VLogFiles to free per AR pass
+  std::vector<size_t> active_recycling_vlogfile_freed_min = std::vector<size_t>({7});
+  
+  //Max VLog Filesize : recommended limit in bytes for a Vlog file
+  std::vector<uint64_t> vlogfile_max_size = std::vector<uint64_t>({40 * (1LL < 20)});  // 40MB
+
+  //Age over Size preference: use during compaction picking.  When 0, the age of the VLogFiles referred to by the SST is ignored, and size is the criterion.  The larger this number,
+  // the more age matters.  A value of 10 make age matter much more than size
+  std::vector<float> compaction_picker_age_importance = std::vector<float>({10.0});
+  
+  //Ring Compression Style: indicates what kind of compression will be applied to the data
+  std::vector<CompressionType> ring_compression_style = std::vector<CompressionType>({kZlibCompression});
 #endif
 
   // Create ColumnFamilyOptions with default values for all fields

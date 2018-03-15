@@ -10,7 +10,7 @@
 
 #pragma once
 
-#define DEBLEVEL 0x0000  // 1=SST ring ops 2=file ops 4=iterator ops 8=ring pointers 16=deleted_files 32=versions 64=top-level ring ops 128=ring status 256=Versions 512=Audit ref0 1024=Destructors
+#define DEBLEVEL 0x1000  // 1=SST ring ops 2=file ops 4=iterator ops 8=ring pointers 16=deleted_files 32=versions 64=top-level ring ops 128=ring status 256=Versions 512=Audit ref0 1024=Destructors
                         // 0x800=VlogInfo 0x1000=space amp 0x2000=AR stats
 #define DELAYPROB 0   // percentage of the time a call to ProbDelay will actually delay
 #define DELAYTIME std::chrono::milliseconds(10)
@@ -119,8 +119,9 @@ extern CompressionType CompressForVLog(const std::string& raw,  // input to be c
 
 static const std::string kRocksDbVLogFileExt = "vlg";   // extension for vlog files is vlgxxx when xxx is CF name
 static const VLogRingRefFileno high_value = ((VLogRingRefFileno)-1)>>1;  // biggest positive value
-static const float expansion_fraction = 0.25;  // fraction of valid files to leave for expansion
+static const float expansion_fraction = 0.25;  // fraction of valid files to leave for expansion when sizing the VLog
 static const int expansion_minimum = 10;  // minimum number of expansion files   // scaf 100
+
 // The deletion deadband is the number of files at the end of the VLog that are protected from deletion.  The problem is that files added to the
 // VLog are unreferenced (and unprotected by earlier references) until the Version has started being created.  If the tail pointer gets to such a file while
 // it is still unprotected, it will be deleted prematurely.  Keeping track of which files should be released at the end of each compaction is a pain,
@@ -129,10 +130,12 @@ static const int expansion_minimum = 10;  // minimum number of expansion files  
 static const int deletion_deadband = 10;  // scaf should be 1000 for multi-VLog files, or 1% of the number of files for large databases
 static const int max_simultaneous_deletions = 1000;  // maximum number of files we can delete in one go.  The limitation is that we have to reserve
    // space for them before we acquire the lock
+
+static const int kVLogCompressionVersionFormat = 2;  // compressed-data format we use.  This is an internal RocksDB number and might change if compression formats change
+
 static const double vlog_remapping_fraction = 0.5;  // References to the oldest VLog files - this fraction of them - will be remapped if encountered during compaction
 static const double vlog_remapping_fraction_ar = 0.25;  // References to the oldest VLog files - this fraction of them - will be remapped if encountered during active recycling
 static const int maxfilesize = 100000;  // scaf largest file to write out
-static const int kVLogCompressionVersionFormat = 2;  // compressed-data format we use
 static const double kVLogRecycleThreshold = 0.25;  // scaf use option   fragmentation fraction at which we start AR
 static const int kVLogRecycleMinSsts = 5;  // scaf use option   min # SSTs to include in AR
 static const int kVLogRecycleMaxSsts = 15;  // scaf use option   max # SSTs for AR

@@ -123,7 +123,7 @@ printf("\n");
     std::vector<VLogRingRefFileOffset> outputrcdend; outputrcdend.reserve(10000); // each entry here is the running total of the bytecounts that will be sent to the SST from each kv
 
     // Get the compression information to use for this file
-    CompressionType compressiontype(kSnappyCompression);  // scaf need option
+    CompressionType compressiontype = compaction->mutable_cf_options()->ring_compression_style[outputringno];  // scaf need option
     CompressionOptions compressionopts{};  // scaf need option
     std::string compressiondict;  // scaf need initial dict
 

@@ -220,9 +220,8 @@ TEST_P(DBCompactionTestWithParam, CompactionDeletionTrigger) {
   }
 }
 #ifdef INDIRECT_VALUE_SUPPORT
-//Warning: Unused Function
-//static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
-#if 0  // turn on for long r/w test
+#if 1  // turn on for long r/w test
+static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
 TEST_F(DBCompactionTest, IndirectTest) {
   Options options = CurrentOptions();
   options.write_buffer_size = 10 * 1024 * 1024;
