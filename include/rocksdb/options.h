@@ -277,12 +277,14 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   // We need to allow for multiple rings per CF
   // Each ring is tied to a level (activation_level below)
   // such that values entering at that level are put into the ring.
-  //Activation Level : values coming into this level are written to the ring. Level 1 is the smallest level on disk.
-  //Activation level should be in increasing order.  Values greater than 0 indicate the level; values less than 0 are relative to the END of the ring AT THE TIME THE VLOG IS CREATED, i. e.
-  //  a value of -1 means 'the last level'
   //
   // NOTE: if you add a class like vector of shared_ptr, you must add to the blacklist in options_settable_test, and to the options string there
-  std::vector<uint32_t> vlogring_activation_level = std::vector<uint32_t>({1});
+
+  //Activation Level : values coming into this level are written to the ring. Level 1 is the smallest level on disk.
+  //Activation level should be in increasing order.  Values >= 0 indicate the level; values less than 0 are relative to the END of the ring AT THE TIME THE VLOG IS CREATED, i. e.
+  //  a value of -1 means 'the last level'
+  // This is 'mutable' only in the sense that it can change when the system is restarted.  After initialization we don't look at it.
+  std::vector<int32_t> vlogring_activation_level = std::vector<int32_t>({0});
 
   //Minimum Indirect Value Size : only values this size or larger are written to the Value Log
   std::vector<size_t> min_indirect_val_size = std::vector<size_t>({0});
@@ -311,7 +313,7 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   std::vector<size_t> active_recycling_vlogfile_freed_min = std::vector<size_t>({7});
   
   //Max VLog Filesize : recommended limit in bytes for a Vlog file
-  std::vector<uint64_t> vlogfile_max_size = std::vector<uint64_t>({40 * (1LL < 20)});  // 40MB
+  std::vector<uint64_t> vlogfile_max_size = std::vector<uint64_t>({40 * (1LL << 20)});  // 40MB
 
   //Age over Size preference: use during compaction picking.  When 0, the age of the VLogFiles referred to by the SST is ignored, and size is the criterion.  The larger this number,
   // the more age matters.  A value of 10 make age matter much more than size

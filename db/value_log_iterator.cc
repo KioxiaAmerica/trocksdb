@@ -112,7 +112,11 @@ printf("Creating iterator for level=%d, earliest_passthrough=",level);
     VLogRingRefFileno tail = current_vlog->rings_[outputringno]->atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // first file with live refs
     if(head>tail)head-=tail; else head=0;  // change 'head' to head-tail.  It would be possible for tail to pass head, on an
            // empty ring.  What happens then doesn't matter, but to keep things polite we check for it rather than overflowing the unsigned subtraction.
-    earliest_passthrough = (VLogRingRefFileno)(tail + ((recyciter==nullptr) ? vlog_remapping_fraction_ar : vlog_remapping_fraction) * head);  // calc file# before which we remap
+    earliest_passthrough = (VLogRingRefFileno)(tail + 
+                                                    ((recyciter==nullptr) ? compaction->mutable_cf_options()->fraction_remapped_during_active_recycling
+                                                                          : compaction->mutable_cf_options()->fraction_remapped_during_compaction)[outputringno]
+                                                    * head);  // calc file# before which we remap
+        // scaf bug this creates one passthrough for all rings during AR, whilst they might have different thresholds
     // For Active Recycling, since the aim is to free old files, we make sure we remap everything in the files we are going to delete.  More than that is a tuning parameter.
     if(recyciter!=nullptr)earliest_passthrough = std::max(earliest_passthrough,compaction->lastfileno()+4);   // AR   scaf constant, which is max # data files per compaction
 #if DEBLEVEL&4
@@ -336,7 +340,7 @@ ProbDelay();
     // automatically sorted during compaction.  Perhaps we could merge by level.
 
     // Allocate space in the Value Log and write the values out, and save the information for assigning references
-    outputring->VLogRingWrite(diskdata,diskrecl,firstdiskref,fileendoffsets,outputerrorstatus);
+    outputring->VLogRingWrite(diskdata,diskrecl,compaction->mutable_cf_options()->vlogfile_max_size[outputringno],firstdiskref,fileendoffsets,outputerrorstatus);
     nextdiskref = firstdiskref;    // remember where we start, and initialize the running pointer to the disk data
 
     // save what we need to return to stats

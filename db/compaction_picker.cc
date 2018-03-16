@@ -1211,7 +1211,7 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
 #ifdef INDIRECT_VALUE_SUPPORT
   // See if we need to perform an Active Recycling pass becase the fragmentation is getting too high
   compaction_inputs_.clear();  // start with an empty set of files
-  vstorage_->GetCfd()->CheckForActiveRecycle(compaction_inputs_, ringno_, lastfileno_);  // see if we select a set of files to recycle
+  vstorage_->GetCfd()->CheckForActiveRecycle(compaction_inputs_, ringno_, lastfileno_, mutable_cf_options_);  // see if we select a set of files to recycle
   if(!compaction_inputs_.empty()) {
     // Active Recycling needed.  Indicate that as the reason for compaction.  This reason code controls processing during the compaction
     compaction_reason_ = CompactionReason::kActiveRecycling;

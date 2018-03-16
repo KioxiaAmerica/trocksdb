@@ -501,6 +501,7 @@ ProbDelay();
 void VLogRing::VLogRingWrite(
 std::vector<NoInitChar>& bytes,   // The bytes to be written, jammed together
 std::vector<VLogRingRefFileOffset>& rcdend,  // The running length of all records up to and including this one
+int64_t maxfilesize,   // recommended maximum VLogFile size - may be exceeded up to 25%
 VLogRingRef& firstdataref,   // result: reference to the first value written
 std::vector<VLogRingRefFileOffset>& fileendoffsets,   // result: ending offset of the data written to each file.  The file numbers written are sequential
           // following the one in firstdataref.  The starting offset in the first file is in firstdataref; it is 0 for the others
@@ -1153,7 +1154,8 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
 #endif
   immdbopts_ = immdbopts;  // save the options
   // Save the ring starting levels
-    starting_level_for_ring_.push_back(0);  // scaf
+  starting_level_for_ring_.clear();
+  for(auto l : cfd_->VLogRingActivationLevel()){if (l<0)l+=cfd_->NumberLevels(); starting_level_for_ring_.push_back(l);}
 
   // The the database is not new, the CF will have the stats for the rings.  If the CF has no stats, create null stats for each level
   if(cfd_->vloginfo().size()==0)cfd_->vloginfo().resize(starting_level_for_ring_.size());

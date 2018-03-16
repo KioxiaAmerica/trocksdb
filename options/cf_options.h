@@ -122,7 +122,6 @@ struct ImmutableCFOptions {
 
   const SliceTransform* memtable_insert_with_hint_prefix_extractor;
 #ifdef INDIRECT_VALUE_SUPPORT    // declare immutable options
-// options related to ring structure and compression are immutable.  Ring structure may change over a restart, as long as a ring is not deleted while it is holding values
 #endif
 };
 
@@ -155,6 +154,7 @@ struct MutableCFOptions {
 #ifdef INDIRECT_VALUE_SUPPORT   // declare mutable options
 // Tuning parameters are mutable
         allow_trivial_move(options.allow_trivial_move),
+// options related to ring structure and compression are immutable.  Ring structure may change over a restart, as long as a ring is not deleted while it is holding values
         vlogring_activation_level(options.vlogring_activation_level),
         min_indirect_val_size(options.min_indirect_val_size),
         fraction_remapped_during_compaction(options.fraction_remapped_during_compaction),
@@ -199,7 +199,7 @@ struct MutableCFOptions {
 #ifdef INDIRECT_VALUE_SUPPORT   // initialize mutable options
 // Tuning parameters are mutable
         allow_trivial_move(false),
-        vlogring_activation_level(std::vector<uint32_t>({1})),
+        vlogring_activation_level(std::vector<int32_t>{0}),
         min_indirect_val_size(std::vector<size_t>({0})),
         fraction_remapped_during_compaction(std::vector<float>({0.5})),
         fraction_remapped_during_active_recycling(std::vector<float>({0.25})),
@@ -208,7 +208,7 @@ struct MutableCFOptions {
         active_recycling_sst_minct(std::vector<size_t>({5})),
         active_recycling_sst_maxct(std::vector<size_t>({15})),
         active_recycling_vlogfile_freed_min(std::vector<size_t>({7})),
-        vlogfile_max_size(std::vector<uint64_t>({40 * (1LL < 20)})),
+        vlogfile_max_size(std::vector<uint64_t>({40 * (1LL << 20)})),
         compaction_picker_age_importance(std::vector<float>({10.0})),
     //Ring Compression Style: indicates what kind of compression will be applied to the data
         ring_compression_style(std::vector<CompressionType>({kZlibCompression})),
@@ -263,8 +263,9 @@ struct MutableCFOptions {
 #ifdef INDIRECT_VALUE_SUPPORT
   bool allow_trivial_move;  // allow trivial move, bypassing compaction.  Used to allow some tests to run
   
-  // VLog Options
-  std::vector<uint32_t> vlogring_activation_level;
+  // VLog Options (mutable)
+// options related to ring structure and compression are immutable.  Ring structure may change over a restart, as long as a ring is not deleted while it is holding values
+  std::vector<int32_t> vlogring_activation_level;
   std::vector<size_t> min_indirect_val_size;
   std::vector<float> fraction_remapped_during_compaction;
   std::vector<float> fraction_remapped_during_active_recycling;

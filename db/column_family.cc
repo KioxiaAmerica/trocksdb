@@ -834,7 +834,8 @@ bool ColumnFamilyData::NeedsCompaction() const {
 #ifdef INDIRECT_VALUE_SUPPORT
 void ColumnFamilyData::CheckForActiveRecycle(std::vector<CompactionInputFiles>& compaction_inputs,  // result: the files to Active Recycle, if any, each on its own 'level'.  If no AR needed, empty.
      size_t& ringno,    // result: the ring number to be recycled, if any
-     VLogRingRefFileno& lastfileno    // the last file# in the recycled region
+     VLogRingRefFileno& lastfileno,    // the last file# in the recycled region
+     const MutableCFOptions& compoptions   // options in effect for this compaction
      ) {
   compaction_inputs.clear();  // set to empty, to indicate no AR if we don't find one
   if(vlog_==nullptr) return;  // If this CF doesn't support VLogs, return 'no AR'
@@ -842,10 +843,10 @@ void ColumnFamilyData::CheckForActiveRecycle(std::vector<CompactionInputFiles>& 
   for(size_t i = vlog_->rings().size();i>0;) {
     --i;
     // See if this ring needs to be recycled: if it is large enough and its fragmentation is high enough
-    if(vlog_info[i].size*kVLogRecycleThreshold>=vlog_info[i].frag)continue;  // scaf use option; also check for min # files.  If there is not enough fragmentation, don't AR
+    if(vlog_info[i].size*compoptions.fragmentation_active_recycling_trigger[i]>=vlog_info[i].frag)continue;  // scaf use option; also check for min # files.  If there is not enough fragmentation, don't AR
     // Fetch the files to be recycled and return them
-    compaction_inputs.reserve(kVLogRecycleMaxSsts);  // scaf const   handle quite a few files at once.  The capacity of the ring tells the max # result SSTs
-    vlog_->rings()[i]->VLogRingFindLaggingSsts(kVLogRecycleMinVLogFileFreed,kVLogRecycleMinSsts,compaction_inputs,lastfileno);  // scaf const  find out what to recycle  min 5 vlog files, min 7 SSTs
+    compaction_inputs.reserve(compoptions.active_recycling_sst_maxct[i]);  // scaf const   handle quite a few files at once.  The capacity of the ring tells the max # result SSTs
+    vlog_->rings()[i]->VLogRingFindLaggingSsts(compoptions.active_recycling_vlogfile_freed_min[i],compoptions.active_recycling_sst_minct[i],compaction_inputs,lastfileno);  // scaf const  find out what to recycle  min 5 vlog files, min 7 SSTs
     ringno = i;  // tell the caller which ring to use
     if(compaction_inputs.size()!=0)break;  // if we found an AR, stop looking
   }

@@ -133,13 +133,13 @@ static const int max_simultaneous_deletions = 1000;  // maximum number of files 
 
 static const int kVLogCompressionVersionFormat = 2;  // compressed-data format we use.  This is an internal RocksDB number and might change if compression formats change
 
-static const double vlog_remapping_fraction = 0.5;  // References to the oldest VLog files - this fraction of them - will be remapped if encountered during compaction
-static const double vlog_remapping_fraction_ar = 0.25;  // References to the oldest VLog files - this fraction of them - will be remapped if encountered during active recycling
-static const int maxfilesize = 100000;  // scaf largest file to write out
-static const double kVLogRecycleThreshold = 0.25;  // scaf use option   fragmentation fraction at which we start AR
-static const int kVLogRecycleMinSsts = 5;  // scaf use option   min # SSTs to include in AR
-static const int kVLogRecycleMaxSsts = 15;  // scaf use option   max # SSTs for AR
-static const int kVLogRecycleMinVLogFileFreed = 7;  // scaf use option   min # files to free with an AR run
+// obsolete static const double vlog_remapping_fraction = 0.5;  // References to the oldest VLog files - this fraction of them - will be remapped if encountered during compaction
+// obsolete static const double vlog_remapping_fraction_ar = 0.25;  // References to the oldest VLog files - this fraction of them - will be remapped if encountered during active recycling
+// obsolete static const int maxfilesize = 100000;  // scaf largest file to write out
+// obsolete static const double kVLogRecycleThreshold = 0.25;  // scaf use option   fragmentation fraction at which we start AR
+// obsolete static const int kVLogRecycleMinSsts = 5;  // scaf use option   min # SSTs to include in AR
+// obsolete static const int kVLogRecycleMaxSsts = 15;  // scaf use option   max # SSTs for AR
+// obsolete static const int kVLogRecycleMinVLogFileFreed = 7;  // scaf use option   min # files to free with an AR run
 
 // ParsedFnameRing contains filenumber and ringnumber for a file.  We use it to split the compositie filename/ring into its parts
 
@@ -566,6 +566,7 @@ uint64_t ResizeRingIfNecessary(VLogRingRefFileno tailfile, VLogRingRefFileno hea
 void VLogRingWrite(
 std::vector<NoInitChar>& bytes,   // The bytes to be written, jammed together
 std::vector<VLogRingRefFileOffset>& rcdend,  // The running length of all records up to and including this one
+int64_t maxfilesize,   // recommended maximum VLogFile size - may be exceeded up to 25%
 VLogRingRef& firstdataref,   // result: reference to the first value written
 std::vector<VLogRingRefFileOffset>& fileendoffsets,   // result: ending offset of the data written to each file.  The file numbers written are sequential
           // following the one in firstdataref.  The starting offset in the first file is in firstdataref; it is 0 for the others
