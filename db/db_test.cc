@@ -1406,6 +1406,9 @@ TEST_F(DBTest, UnremovableSingleDelete) {
   do {
     Options options = CurrentOptions(options_override);
     options.disable_auto_compactions = true;
+#ifdef INDIRECT_VALUE_SUPPORT
+    options.allow_trivial_move=true;
+#endif
     CreateAndReopenWithCF({"pikachu"}, options);
 
     Put(1, "foo", "first");
@@ -2783,13 +2786,16 @@ TEST_F(DBTest, FIFOCompactionTestWithCompaction) {
   options.compression = kNoCompression;
   options.create_if_missing = true;
   options = CurrentOptions(options);
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   DestroyAndReopen(options);
 
   Random rnd(301);
   for (int i = 0; i < 60; i++) {
     // Generate and flush a file about 20KB.
     for (int j = 0; j < 20; j++) {
-      ASSERT_OK(Put(ToString(i * 20 + j), RandomString(&rnd, 980)));
+      ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980)));
     }
     Flush();
     ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -2800,7 +2806,7 @@ TEST_F(DBTest, FIFOCompactionTestWithCompaction) {
   for (int i = 0; i < 60; i++) {
     // Generate and flush a file about 20KB.
     for (int j = 0; j < 20; j++) {
-      ASSERT_OK(Put(ToString(i * 20 + j + 2000), RandomString(&rnd, 980)));
+      ASSERT_OK(PutBig(ToString(i * 20 + j + 2000), RandomString(&rnd, 980)));
     }
     Flush();
     ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -2825,6 +2831,9 @@ TEST_F(DBTest, FIFOCompactionStyleWithCompactionAndDelete) {
   options.compression = kNoCompression;
   options.create_if_missing = true;
   options = CurrentOptions(options);
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   DestroyAndReopen(options);
 
   Random rnd(301);
@@ -2912,13 +2921,16 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     options.compaction_options_fifo.allow_compaction = false;
     options.compaction_options_fifo.ttl = 1 * 60 * 60 ;  // 1 hour
     options = CurrentOptions(options);
+#ifdef INDIRECT_VALUE_SUPPORT
+    options.allow_trivial_move=true;
+#endif
     DestroyAndReopen(options);
 
     Random rnd(301);
     for (int i = 0; i < 10; i++) {
       // Generate and flush a file about 10KB.
       for (int j = 0; j < 10; j++) {
-        ASSERT_OK(Put(ToString(i * 20 + j), RandomString(&rnd, 980)));
+        ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980)));
       }
       Flush();
       ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -2947,13 +2959,16 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     options.compaction_options_fifo.allow_compaction = false;
     options.compaction_options_fifo.ttl = 1 * 60 * 60;  // 1 hour
     options = CurrentOptions(options);
+#ifdef INDIRECT_VALUE_SUPPORT
+    options.allow_trivial_move=true;
+#endif
     DestroyAndReopen(options);
 
     Random rnd(301);
     for (int i = 0; i < 10; i++) {
       // Generate and flush a file about 10KB.
       for (int j = 0; j < 10; j++) {
-        ASSERT_OK(Put(ToString(i * 20 + j), RandomString(&rnd, 980)));
+        ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980)));
       }
       Flush();
       ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -2969,7 +2984,7 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     // Create 1 more file to trigger TTL compaction. The old files are dropped.
     for (int i = 0; i < 1; i++) {
       for (int j = 0; j < 10; j++) {
-        ASSERT_OK(Put(ToString(i * 20 + j), RandomString(&rnd, 980)));
+        ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980)));
       }
       Flush();
     }
@@ -2989,13 +3004,16 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     options.compaction_options_fifo.allow_compaction = false;
     options.compaction_options_fifo.ttl =  1 * 60 * 60;  // 1 hour
     options = CurrentOptions(options);
+#ifdef INDIRECT_VALUE_SUPPORT
+    options.allow_trivial_move=true;
+#endif
     DestroyAndReopen(options);
 
     Random rnd(301);
     for (int i = 0; i < 3; i++) {
       // Generate and flush a file about 10KB.
       for (int j = 0; j < 10; j++) {
-        ASSERT_OK(Put(ToString(i * 20 + j), RandomString(&rnd, 980)));
+        ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980)));
       }
       Flush();
       ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -3010,7 +3028,7 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
 
     for (int i = 0; i < 5; i++) {
       for (int j = 0; j < 140; j++) {
-        ASSERT_OK(Put(ToString(i * 20 + j), RandomString(&rnd, 980)));
+        ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980)));
       }
       Flush();
       ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -3027,13 +3045,16 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     options.compaction_options_fifo.ttl = 1 * 60 * 60;  // 1 hour
     options.level0_file_num_compaction_trigger = 6;
     options = CurrentOptions(options);
+#ifdef INDIRECT_VALUE_SUPPORT
+    options.allow_trivial_move=true;
+#endif
     DestroyAndReopen(options);
 
     Random rnd(301);
     for (int i = 0; i < 10; i++) {
       // Generate and flush a file about 10KB.
       for (int j = 0; j < 10; j++) {
-        ASSERT_OK(Put(ToString(i * 20 + j), RandomString(&rnd, 980)));
+        ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980)));
       }
       Flush();
       ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -3052,7 +3073,7 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     // Create 10 more files. The old 5 files are dropped as their ttl expired.
     for (int i = 0; i < 10; i++) {
       for (int j = 0; j < 10; j++) {
-        ASSERT_OK(Put(ToString(i * 20 + j), RandomString(&rnd, 980)));
+        ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980)));
       }
       Flush();
       ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -3071,13 +3092,16 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     options.compaction_options_fifo.ttl = 1 * 60 * 60;  // 1 hour
     options.level0_file_num_compaction_trigger = 6;
     options = CurrentOptions(options);
+#ifdef INDIRECT_VALUE_SUPPORT
+    options.allow_trivial_move=true;
+#endif
     DestroyAndReopen(options);
 
     Random rnd(301);
     for (int i = 0; i < 60; i++) {
       // Generate and flush a file about 20KB.
       for (int j = 0; j < 20; j++) {
-        ASSERT_OK(Put(ToString(i * 20 + j), RandomString(&rnd, 980)));
+        ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980)));
       }
       Flush();
       ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -3088,7 +3112,7 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     for (int i = 0; i < 60; i++) {
       // Generate and flush a file about 20KB.
       for (int j = 0; j < 20; j++) {
-        ASSERT_OK(Put(ToString(i * 20 + j + 2000), RandomString(&rnd, 980)));
+        ASSERT_OK(PutBig(ToString(i * 20 + j + 2000), RandomString(&rnd, 980)));
       }
       Flush();
       ASSERT_OK(dbfull()->TEST_WaitForCompact());

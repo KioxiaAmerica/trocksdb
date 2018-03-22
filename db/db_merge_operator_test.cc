@@ -169,6 +169,9 @@ TEST_P(MergeOperatorPinningTest, OperandsMultiBlocks) {
   options.level0_slowdown_writes_trigger = (1 << 30);
   options.level0_stop_writes_trigger = (1 << 30);
   options.disable_auto_compactions = true;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   DestroyAndReopen(options);
 
   const int kKeysPerFile = 10;

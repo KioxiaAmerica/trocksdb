@@ -155,6 +155,9 @@ class FakeCompaction : public CompactionIterator::CompactionProxy {
     return "\xff\xff\xff\xff\xff\xff\xff\xff\xff";
   }
   virtual bool allow_ingest_behind() const { return false; }
+#ifdef INDIRECT_VALUE_SUPPORT
+    virtual CompactionReason compaction_reason() { return CompactionReason::kLevelMaxLevelSize; }
+#endif
 
   bool key_not_exists_beyond_output_level = false;
 };

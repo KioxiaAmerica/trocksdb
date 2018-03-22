@@ -539,6 +539,9 @@ TEST_P(DBTestUniversalCompactionMultiLevels, UniversalCompactionTrivialMove) {
   options.level0_file_num_compaction_trigger = 3;
   options.max_background_compactions = 2;
   options.target_file_size_base = 32 * 1024;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   DestroyAndReopen(options);
   CreateAndReopenWithCF({"pikachu"}, options);
 
@@ -996,6 +999,9 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionTrivialMoveTest1) {
   options.level0_file_num_compaction_trigger = 3;
   options.max_background_compactions = 1;
   options.target_file_size_base = 32 * 1024;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   DestroyAndReopen(options);
   CreateAndReopenWithCF({"pikachu"}, options);
 
@@ -1042,6 +1048,9 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionTrivialMoveTest2) {
   options.level0_file_num_compaction_trigger = 8;
   options.max_background_compactions = 2;
   options.target_file_size_base = 64 * 1024;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   DestroyAndReopen(options);
   CreateAndReopenWithCF({"pikachu"}, options);
 

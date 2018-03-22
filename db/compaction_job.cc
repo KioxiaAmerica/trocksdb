@@ -201,7 +201,7 @@ struct CompactionJob::SubcompactionState {
     // Scan to find earliest grandparent file that contains key.
     while (grandparent_index < grandparents.size() &&
            icmp->Compare(internal_key,
-                         grandparents[grandparent_index]->largest.Encode()) >
+                         grandparents[grandparent_index]->largest.Encode()) >  // bug: this should check smallest key.  As written misses GPs that contain the key
                0) {
       if (seen_key) {
         overlapped_bytes += grandparents[grandparent_index]->fd.GetFileSize();

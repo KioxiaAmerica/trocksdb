@@ -1507,6 +1507,9 @@ TEST_F(DBTest2, MaxCompactionBytesTest) {
   options.target_file_size_base = 100 << 10;
   // Infinite for full compaction.
   options.max_compaction_bytes = options.target_file_size_base * 100;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move = true;
+#endif
 
   Reopen(options);
 
@@ -1522,13 +1525,22 @@ TEST_F(DBTest2, MaxCompactionBytesTest) {
 
   // When compact from Ln -> Ln+1, cut a file if the file overlaps with
   // more than three files in Ln+1.
+#ifdef INDIRECT_VALUE_SUPPORT
+  // The max_compaction must be big enough to hold 3 grandparents plus 1/3 of the file from Ln, to allow the file to be split into
+  // just 3 pieces
+  options.max_compaction_bytes = (uint64_t)((double)options.target_file_size_base * 3.4);
+#else
+  // The standard code has a bug in compaction_job.cc that doesn't count a grandparent as overlapping unless the LAST key in the
+  // grandparent is before the key going into the output file.  Thus, the last grandparent is not counted in the size, and we get by
+  // with smaller max_compaction to create 3 pieces
   options.max_compaction_bytes = options.target_file_size_base * 3;
+#endif
   Reopen(options);
 
-  GenerateNewRandomFile(&rnd);
+  GenerateNewRandomFileBig(&rnd);
   // Add three more small files that overlap with the previous file
   for (int i = 0; i < 3; i++) {
-    Put("a", "z");
+    Put("key5", "z");
     ASSERT_OK(Flush());
   }
   dbfull()->TEST_WaitForCompact();
@@ -1911,6 +1923,9 @@ TEST_F(DBTest2, AutomaticCompactionOverlapManualCompaction) {
   Options options = CurrentOptions();
   options.num_levels = 3;
   options.IncreaseParallelism(20);
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   DestroyAndReopen(options);
 
   ASSERT_OK(Put(Key(0), "a"));
@@ -1986,6 +2001,9 @@ TEST_F(DBTest2, ManualCompactionOverlapManualCompaction) {
   options.num_levels = 2;
   options.IncreaseParallelism(20);
   options.disable_auto_compactions = true;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   DestroyAndReopen(options);
 
   ASSERT_OK(Put(Key(0), "a"));
@@ -2340,6 +2358,9 @@ TEST_F(DBTest2, ReadCallbackTest) {
   Options options;
   options.disable_auto_compactions = true;
   options.num_levels = 7;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   Reopen(options);
   std::vector<const Snapshot*> snapshots;
   // Try to create a db with multiple layers and a memtable

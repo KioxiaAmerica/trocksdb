@@ -151,6 +151,8 @@ void MutableCFOptions::Dump(Logger* log) const {
 #ifdef INDIRECT_VALUE_SUPPORT
   ROCKS_LOG_INFO(log, "                 allow_trivial_move: %d",
                  allow_trivial_move);
+  ROCKS_LOG_INFO(log, "                 compaction_score_limit_L0: %f",
+                 compaction_score_limit_L0);
 #endif
   ROCKS_LOG_INFO(log, "                    target_file_size_base: %" PRIu64,
                  target_file_size_base);

@@ -161,6 +161,8 @@ ColumnFamilyOptions BuildColumnFamilyOptions(
 #ifdef INDIRECT_VALUE_SUPPORT
   cf_opts.allow_trivial_move =
       mutable_cf_options.allow_trivial_move;
+  cf_opts.compaction_score_limit_L0 =
+      mutable_cf_options.compaction_score_limit_L0;
 #endif
 
   cf_opts.max_bytes_for_level_multiplier_additional.clear();

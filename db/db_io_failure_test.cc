@@ -159,6 +159,9 @@ TEST_F(DBIOFailureTest, ManifestWriteError) {
     options.create_if_missing = true;
     options.error_if_exists = false;
     options.paranoid_checks = true;
+#ifdef INDIRECT_VALUE_SUPPORT
+    options.allow_trivial_move=true;
+#endif
     DestroyAndReopen(options);
     ASSERT_OK(Put("foo", "bar"));
     ASSERT_EQ("bar", Get("foo"));

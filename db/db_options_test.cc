@@ -127,6 +127,9 @@ TEST_F(DBOptionsTest, SetBytesPerSync) {
   options.disable_auto_compactions = true;
   options.compression = kNoCompression;
   options.env = env_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   Reopen(options);
   int counter = 0;
   int low_bytes_per_sync = 0;
@@ -178,6 +181,9 @@ TEST_F(DBOptionsTest, SetWalBytesPerSync) {
   options.disable_auto_compactions = true;
   options.compression = kNoCompression;
   options.env = env_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   Reopen(options);
   ASSERT_EQ(512, dbfull()->GetDBOptions().wal_bytes_per_sync);
   int counter = 0;
@@ -236,6 +242,9 @@ TEST_F(DBOptionsTest, EnableAutoCompactionAndTriggerStall) {
           std::numeric_limits<uint64_t>::max();
       options.env = env_;
 
+#ifdef INDIRECT_VALUE_SUPPORT
+      options.allow_trivial_move=true;
+#endif
       DestroyAndReopen(options);
       int i = 0;
       for (; i < 1024; i++) {
@@ -327,6 +336,9 @@ TEST_F(DBOptionsTest, SetOptionsMayTriggerCompaction) {
   options.create_if_missing = true;
   options.level0_file_num_compaction_trigger = 1000;
   options.env = env_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   Reopen(options);
   for (int i = 0; i < 3; i++) {
     // Need to insert two keys to avoid trivial move.

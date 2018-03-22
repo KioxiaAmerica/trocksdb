@@ -122,7 +122,7 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
 
     auto type = parsed_key.type;
     // Key matches. Process it
-    if (IsTypeMemtableSingleValue(type) &&
+    if (IsTypeMemorSSTSingleValue(type) &&
         range_del_agg_ != nullptr && range_del_agg_->ShouldDelete(parsed_key)) {
       type = kTypeRangeDeletion;
     }

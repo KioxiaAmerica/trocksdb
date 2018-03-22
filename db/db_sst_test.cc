@@ -608,6 +608,9 @@ TEST_F(DBSSTTest, OpenDBWithInfiniteMaxOpenFiles) {
     } else {
       options.max_file_opening_threads = 5;
     }
+#ifdef INDIRECT_VALUE_SUPPORT
+    options.allow_trivial_move=true;
+#endif
     options = CurrentOptions(options);
     DestroyAndReopen(options);
 
@@ -749,6 +752,9 @@ TEST_F(DBSSTTest, GetTotalSstFilesSizeVersionsFilesShared) {
   Options options = CurrentOptions();
   options.disable_auto_compactions = true;
   options.compression = kNoCompression;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   DestroyAndReopen(options);
   // Generate 5 files in L0
   for (int i = 0; i < 5; i++) {

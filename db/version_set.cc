@@ -1470,7 +1470,7 @@ void VersionStorageInfo::ComputeCompactionScore(
           // meaningless, and the levels do not assume reasonable proportions.  When the L0 score is X, L1 grows
           // to X times normal size before getting any compactions.  To prevent that from
           // happening, we put a limit on X.
-          score = std::min(score,2.0);  // scaf need option.  Is this a good idea?
+          score = std::min(score,mutable_cf_options.compaction_score_limit_L0);  // scaf   Is this a good idea?
 #endif
         }
       }

@@ -120,7 +120,7 @@ class VersionStorageInfo {
   void GetVLogReshapingParms(int level, int *ring, VLogRingRefFileno *file0, VLogRingRefFileno *nfiles) {
     // if there are no VLog or rings, return 0
     *file0 = 0;  // init 'no info' return
-    if(cfd_->vlog())cfd_->vlog()->GetVLogReshapingParms(level, ring, file0, nfiles);  // If there is a VLog, ask it
+    if(cfd_&&cfd_->vlog())cfd_->vlog()->GetVLogReshapingParms(level, ring, file0, nfiles);  // If there is a VLog, ask it.  cfd_ can be null only running test scripts that don't open a CF
     return;
   }
   // Return the effective filesize for the file, taking position into account

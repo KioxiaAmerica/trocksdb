@@ -106,11 +106,24 @@ inline bool IsTypeSingleKey(ValueType t) {
    ) ); 
 }
 
-// Checks for Delete, Value, Merge, Blob - things that can go into memtables
+// Checks for Value, Merge, Blob - individual values that can go into memtables
 inline bool IsTypeMemtableSingleValue(ValueType t) {
   return (bool) ( (t<=kTypeIndirectMerge) &
    ((
       (1LL << kTypeValue)| (1LL << kTypeMerge) | (1LL << kTypeBlobIndex)
+    )>>t
+   ) ); 
+}
+
+// Checks for Value, Merge, Blob, IndirectValue, IndirectMerge - individual values that can appear in memtables or SSTs
+inline bool IsTypeMemorSSTSingleValue(ValueType t) {
+  return (bool) ( (t<=kTypeIndirectMerge) &
+   ((
+      (1LL << kTypeValue)| (1LL << kTypeMerge) | (1LL << kTypeBlobIndex)
+#ifdef INDIRECT_VALUE_SUPPORT
+      | (1LL << kTypeIndirectValue)
+      | (1LL << kTypeIndirectMerge)
+#endif
     )>>t
    ) ); 
 }

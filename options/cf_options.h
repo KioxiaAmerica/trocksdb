@@ -154,6 +154,7 @@ struct MutableCFOptions {
 #ifdef INDIRECT_VALUE_SUPPORT   // declare mutable options
 // Tuning parameters are mutable
         allow_trivial_move(options.allow_trivial_move),
+        compaction_score_limit_L0(options.compaction_score_limit_L0),
 // options related to ring structure and compression are immutable.  Ring structure may change over a restart, as long as a ring is not deleted while it is holding values
         vlogring_activation_level(options.vlogring_activation_level),
         min_indirect_val_size(options.min_indirect_val_size),
@@ -199,17 +200,18 @@ struct MutableCFOptions {
 #ifdef INDIRECT_VALUE_SUPPORT   // initialize mutable options
 // Tuning parameters are mutable
         allow_trivial_move(false),
+        compaction_score_limit_L0(1000.0),
         vlogring_activation_level(std::vector<int32_t>{0}),
         min_indirect_val_size(std::vector<size_t>({0})),
-        fraction_remapped_during_compaction(std::vector<float>({0.5})),
-        fraction_remapped_during_active_recycling(std::vector<float>({0.25})),
-        fragmentation_active_recycling_trigger(std::vector<float>({0.25})),
-        fragmentation_active_recycling_klaxon(std::vector<float>({0.5})),
+        fraction_remapped_during_compaction(std::vector<double>({0.5})),
+        fraction_remapped_during_active_recycling(std::vector<double>({0.25})),
+        fragmentation_active_recycling_trigger(std::vector<double>({0.25})),
+        fragmentation_active_recycling_klaxon(std::vector<double>({0.5})),
         active_recycling_sst_minct(std::vector<size_t>({5})),
         active_recycling_sst_maxct(std::vector<size_t>({15})),
         active_recycling_vlogfile_freed_min(std::vector<size_t>({7})),
         vlogfile_max_size(std::vector<uint64_t>({40 * (1LL << 20)})),
-        compaction_picker_age_importance(std::vector<float>({10.0})),
+        compaction_picker_age_importance(std::vector<double>({10.0})),
     //Ring Compression Style: indicates what kind of compression will be applied to the data
         ring_compression_style(std::vector<CompressionType>({kZlibCompression})),
 #endif
@@ -262,20 +264,20 @@ struct MutableCFOptions {
   std::vector<int> max_bytes_for_level_multiplier_additional;
 #ifdef INDIRECT_VALUE_SUPPORT
   bool allow_trivial_move;  // allow trivial move, bypassing compaction.  Used to allow some tests to run
-  
+  double compaction_score_limit_L0;  // maximum compaction score assigned to L0
   // VLog Options (mutable)
 // options related to ring structure and compression are immutable.  Ring structure may change over a restart, as long as a ring is not deleted while it is holding values
   std::vector<int32_t> vlogring_activation_level;
   std::vector<size_t> min_indirect_val_size;
-  std::vector<float> fraction_remapped_during_compaction;
-  std::vector<float> fraction_remapped_during_active_recycling;
-  std::vector<float> fragmentation_active_recycling_trigger;
-  std::vector<float> fragmentation_active_recycling_klaxon;
+  std::vector<double> fraction_remapped_during_compaction;
+  std::vector<double> fraction_remapped_during_active_recycling;
+  std::vector<double> fragmentation_active_recycling_trigger;
+  std::vector<double> fragmentation_active_recycling_klaxon;
   std::vector<size_t> active_recycling_sst_minct;
   std::vector<size_t> active_recycling_sst_maxct;
   std::vector<size_t> active_recycling_vlogfile_freed_min;
   std::vector<uint64_t> vlogfile_max_size;
-  std::vector<float> compaction_picker_age_importance;
+  std::vector<double> compaction_picker_age_importance;
   std::vector<CompressionType> ring_compression_style;
 #endif
 

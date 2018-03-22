@@ -966,6 +966,9 @@ TEST_F(CompactionPickerTest, NotScheduleL1IfL0WithHigherPri2) {
   NewVersionStorage(6, kCompactionStyleLevel);
   mutable_cf_options_.level0_file_num_compaction_trigger = 2;
   mutable_cf_options_.max_bytes_for_level_base = 900000000U;
+#ifdef INDIRECT_VALUE_SUPPORT
+  mutable_cf_options_.allow_trivial_move=true;
+#endif
 
   // 6 L0 files, score 3.
   Add(0, 1U, "000", "400", 1U);
@@ -975,7 +978,7 @@ TEST_F(CompactionPickerTest, NotScheduleL1IfL0WithHigherPri2) {
   Add(0, 32U, "001", "400", 1000000000U, 0, 0);
   Add(0, 33U, "001", "400", 1000000000U, 0, 0);
 
-  // L1 total size 2GB, score 2.2. If one file being comapcted, score 1.1.
+  // L1 total size 2GB, score 2.2. If one file being compacted, score 1.1.
   Add(1, 4U, "050", "300", 1000000000U, 0, 0);
   Add(1, 5U, "301", "350", 1000000000U, 0, 0);
 

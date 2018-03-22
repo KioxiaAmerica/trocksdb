@@ -223,14 +223,6 @@ enum Tickers : uint32_t {
   // Number of refill intervals where rate limiter's bytes are fully consumed.
   NUMBER_RATE_LIMITER_DRAINS,
 
-#ifdef INDIRECT_VALUE_SUPPORT
-// scafstats
-  // number of bytes written to VLogs
-  VLOG_BYTES_WRITTEN_COMP,
-  // number of bytes written to VLogs, before compression
-  VLOG_BYTES_WRITTEN_RAW,
-#endif
-
   TICKER_ENUM_MAX
 };
 

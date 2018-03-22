@@ -1275,6 +1275,9 @@ TEST_F(DBIteratorTest, PinnedDataIteratorMultipleFiles) {
   options.table_factory.reset(NewBlockBasedTableFactory(table_options));
   options.disable_auto_compactions = true;
   options.write_buffer_size = 1024 * 1024 * 10;  // 10 Mb
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   DestroyAndReopen(options);
 
   std::map<std::string, std::string> true_data;
@@ -1457,6 +1460,9 @@ TEST_F(DBIteratorTest, IterSeekForPrevCrossingFiles) {
   BlockBasedTableOptions table_options;
   table_options.filter_policy.reset(NewBloomFilterPolicy(10, true));
   options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   DestroyAndReopen(options);
 
   ASSERT_OK(Put("a1", "va1"));
@@ -1823,6 +1829,9 @@ TEST_F(DBIteratorTest, ReadAhead) {
   table_options.block_size = 1024;
   table_options.no_block_cache = true;
   options.table_factory.reset(new BlockBasedTableFactory(table_options));
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   Reopen(options);
 
   std::string value(1024, 'a');

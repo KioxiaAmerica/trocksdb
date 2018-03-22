@@ -274,6 +274,16 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   
   // set to allow trivial move.  This does not update the VLogs and is used only to allow tests to run
   bool allow_trivial_move = false;
+
+  // compaction limit for L0.  The calculated compaction priority is (level size/desired level size).  When the host Put()s faster than the system can
+  // compact, L0 starts to fill.  Its compaction priority gors.  L0->L1 compactions start to have priority.  L1 grows too, but L0 grows faster.  Eventually
+  // the database is upside-down, with L1 larger than the lower levels.  This problem is especially bad when there are indirect values, because the scheme
+  // for recycling them requires orderly picking of compactions from the oldest files.
+  //
+  // This parameter gives the maximum compaction priority that L0 can have.  Setting a value such as, say, 2.0 will limit L1 to twice its natural size and cause compactions to
+  // be scheduled for lower levels
+  double compaction_score_limit_L0 = 1000.0;   // default is to leave L0 unlimited
+
   // We need to allow for multiple rings per CF
   // Each ring is tied to a level (activation_level below)
   // such that values entering at that level are put into the ring.
@@ -291,17 +301,17 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   
   //remapping fraction: During compaction, the oldest values will be copied from the tail of the VLog to the head.  This parameter tells how many:
   // 0.25=just the oldest 1/4 of the values, 0.75=the oldest 3/4
-  std::vector<float> fraction_remapped_during_compaction = std::vector<float>({0.5});
+  std::vector<double> fraction_remapped_during_compaction = std::vector<double>({0.5});
   
   //same idea, but the fraction to remap during active recycling.  Usually smaller, to minimize the amount of fragmentation added
   // outside of the files being freed
-  std::vector<float> fraction_remapped_during_active_recycling = std::vector<float>({0.25});
+  std::vector<double> fraction_remapped_during_active_recycling = std::vector<double>({0.25});
   
   //Fragmentation Trigger : start Active Recycling if the fragmentation in the VLog exceeds this fraction of the VLog size
-  std::vector<float> fragmentation_active_recycling_trigger = std::vector<float>({0.25});
+  std::vector<double> fragmentation_active_recycling_trigger = std::vector<double>({0.25});
   
   //Fragmentation Klaxon : apply emergency measures if fragmentation exceeds this
-  std::vector<float> fragmentation_active_recycling_klaxon = std::vector<float>({0.5});
+  std::vector<double> fragmentation_active_recycling_klaxon = std::vector<double>({0.5});
   
   //AR SST min: minimum number of SSTs to include in an active-recycling compaction
   std::vector<size_t> active_recycling_sst_minct = std::vector<size_t>({5});
@@ -317,7 +327,7 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
 
   //Age over Size preference: use during compaction picking.  When 0, the age of the VLogFiles referred to by the SST is ignored, and size is the criterion.  The larger this number,
   // the more age matters.  A value of 10 make age matter much more than size
-  std::vector<float> compaction_picker_age_importance = std::vector<float>({10.0});
+  std::vector<double> compaction_picker_age_importance = std::vector<double>({10.0});
   
   //Ring Compression Style: indicates what kind of compression will be applied to the data
   std::vector<CompressionType> ring_compression_style = std::vector<CompressionType>({kZlibCompression});

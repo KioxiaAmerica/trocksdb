@@ -953,6 +953,9 @@ const int kvblock = (14*73);
   options.table_factory.reset(NewBlockBasedTableFactory(bbto));
   options.optimize_filters_for_hits = true;
   options.statistics = rocksdb::CreateDBStatistics();
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move=true;
+#endif
   CreateAndReopenWithCF({"mypikachu"}, options);
 
   int numkeys = 200000;

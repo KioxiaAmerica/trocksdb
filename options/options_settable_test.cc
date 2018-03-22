@@ -341,13 +341,13 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
       {offset_of(&ColumnFamilyOptions::min_indirect_val_size),
        sizeof(std::vector<size_t>)},
        {offset_of(&ColumnFamilyOptions::fraction_remapped_during_compaction),
-       sizeof(std::vector<float>)},
+       sizeof(std::vector<double>)},
        {offset_of(&ColumnFamilyOptions::fraction_remapped_during_active_recycling),
-       sizeof(std::vector<float>)},
+       sizeof(std::vector<double>)},
       {offset_of(&ColumnFamilyOptions::fragmentation_active_recycling_trigger),
-       sizeof(std::vector<float>)},
+       sizeof(std::vector<double>)},
       {offset_of(&ColumnFamilyOptions::fragmentation_active_recycling_klaxon),
-       sizeof(std::vector<float>)},
+       sizeof(std::vector<double>)},
       {offset_of(&ColumnFamilyOptions::active_recycling_sst_minct),
        sizeof(std::vector<size_t>)},
       {offset_of(&ColumnFamilyOptions::active_recycling_sst_maxct),
@@ -357,7 +357,7 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
       {offset_of(&ColumnFamilyOptions::vlogfile_max_size),
        sizeof(std::vector<uint64_t>)},
       {offset_of(&ColumnFamilyOptions::compaction_picker_age_importance),
-       sizeof(std::vector<float>)},
+       sizeof(std::vector<double>)},
       {offset_of(&ColumnFamilyOptions::ring_compression_style),
        sizeof(std::vector<CompressionType>)},
 #endif
@@ -407,8 +407,7 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
                       kColumnFamilyOptionsBlacklist);
 
   // Need to update the option string if a new option is added.
-  ASSERT_OK(GetColumnFamilyOptionsFromString(
-      *options,
+  char optionstring[] =
       "compaction_filter_factory=mpudlojcujCompactionFilterFactory;"
       "table_factory=PlainTable;"
       "prefix_extractor=rocksdb.CappedPrefix.13;"
@@ -453,15 +452,14 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
       "compaction_pri=kMinOverlappingRatio;"
       "hard_pending_compaction_bytes_limit=0;"
       "disable_auto_compactions=false;"
-      "report_bg_io_stats=true;",
-      new_options));
-
+      "report_bg_io_stats=true;"
 #ifdef INDIRECT_VALUE_SUPPORT
-  ASSERT_OK(GetColumnFamilyOptionsFromString(
-      *options,
-      "allow_trivial_move=false;",
-      new_options));
+      "allow_trivial_move=false;"
+      "compaction_score_limit_L0=1000.0;"
 #endif
+      ;
+  ASSERT_OK(GetColumnFamilyOptionsFromString(
+      *options, optionstring, new_options));
 
   ASSERT_EQ(unset_bytes_base,
             NumUnsetBytes(new_options_ptr, sizeof(ColumnFamilyOptions),

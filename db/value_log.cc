@@ -137,33 +137,41 @@ extern void BreakRecordsIntoFiles(
       // We are using the grandparents to limit the total size of this file PLUS its overlapping parents.
       // Because the number of grandparents averages the fanout, we will just scan forward through the grandparents, accumulating files
       // that overlap the current file.  The normal case is that we process grandparent files till we get past the last key in the output file;
-      // in that case we output all the keys in the output file.  If the total size of the grandparent files exceeds the limit, we stop
-      // with the last grandparent file that doesn't exceed the size limit, and discard trailing keys in the output file we get a key that
-      // does not require the next file as well.
-
-      // get first and last key of putative output file
+      // in that case we output all the keys in the output file. 
+      // get first key of putative output file
       size_t key0x = firstrcdinfile ? (*keylens)[firstrcdinfile-1] : 0;  // start of first internal key in rcd
       Slice key0((char *)(*keys).data()+key0x, (*keylens)[firstrcdinfile]-key0x);  // first key in new output file.
-      size_t keynx = rcdx ? (*keylens)[rcdx-1] : 0;  // start of first internal key in rcd
-      Slice keyn((char *)(*keys).data()+keynx, (*keylens)[rcdx]-keynx);  // last key in new output file.
       // skip over grandparent files that are entirely before the current output file
       while(grandparentx<(*grandparents).size() && icmp->user_comparator()->Compare((*grandparents)[grandparentx]->largest.user_key(),ExtractUserKey(key0))<0)++grandparentx;  // skip if grandparent all before output
+      // We have collected as many keys as we can, but we must also ensure that when this file is eventually compacted, it doesn't overlap so many brandparent files
+      // that it creates too large a compaction.  We code this on the assumption that this limit is rarely triggered.
+      // We go through the grandparents, accumulating the length of the grandparents that overlap the putative output record.  If all of them can be included in the
+      // compaction along with the keys in the output record, we can keep all the keys. (normal case)
+      // If adding the next grandparent would exceed the compaction size limit, we will have to cut back on keys.  There are two possibilities:
+      // (1) we may cut output keys enough to make space for the grandparent to fit; (2) we may cut keys back enough so that the file no longer overlaps
+      // this grandparent.  In case 2 we can immediately use the new output file; in case 1 we have to keep processing to make sure that the NEXT grandparent doesn't cause trouble.
       // initialize the total compaction size to the size of the output file
-      size_t compactionsize = rcdend[rcdx]-prevbytes;  // length of the records in the putative output
       // accumulate size of grandparents that overlap the putative output file.  We know the current grandparent file, if it exists, ends after the first key in the putative output
-      for(;grandparentx<(*grandparents).size();++grandparentx) {
+      size_t ratified_grandparent_size = 0;  // size of grandparents we know we can safely overlap
+      size_t newgrandparentsize; // will hold next grandparent size
+      for(;grandparentx<(*grandparents).size();ratified_grandparent_size+=newgrandparentsize, ++grandparentx) {
+        // Here rcdx is the key that we hope will be the last in the output file
+        // ratified_grandparent_size is the total size of all grandparents that we have processed & accepted
+        size_t currentfilesize = rcdend[rcdx]-prevbytes;  // length of the records in the putative output
+        size_t keynx = rcdx ? (*keylens)[rcdx-1] : 0;  // start of first internal key in rcd
+        Slice keyn((char *)(*keys).data()+keynx, (*keylens)[rcdx]-keynx);  // last key in new output file.
         Slice nextstartkey = (*grandparents)[grandparentx]->smallest.user_key();  //  starting key of next grandparent file.  Slice OK because nothing to be freed
         // if the next grandparent starts after the last key in the putative output, we have processed all overlaps and can quit
-        if(icmp->user_comparator()->Compare(nextstartkey,ExtractUserKey(keyn))>0)break;  // stop if grandparent all after output
-        // here the files overlap.  Add the size of the grandparent file to the total size of the compaction.  Because we buffer all the kvs for a compaction,
+        if(icmp->user_comparator()->Compare(nextstartkey,ExtractUserKey(keyn))>0)break;  // stop if grandparent all after output.  This is the normal exit
+        // here the files overlap.  See how big this new grandparent is.  Because we buffer all the kvs for a compaction,
         // it is proper for us to limit the size AFTER decompression; so we use the total key+value size
-        compactionsize += ((*grandparents)[grandparentx]->raw_key_size && (*grandparents)[grandparentx]->raw_value_size) ?  // if size is 0, it means we couldn't initialize the true size
+        newgrandparentsize = ((*grandparents)[grandparentx]->raw_key_size && (*grandparents)[grandparentx]->raw_value_size) ?  // if size is 0, it means we couldn't initialize the true size
             (*grandparents)[grandparentx]->raw_key_size+(*grandparents)[grandparentx]->raw_value_size    // if neither 0, use initialized size
             : (uint64_t)(1.2*maxfsize);   // if size is 0, assume a biggish file.  1.2 is a handwave
         // if the new grandparent doesn't make the compaction too big, continue looking at the next one
-        if(compactionsize <= maxcompsize)continue;
-        // Here the compaction has become too big.  We will NOT be able to include the new grandparent.  That means we must discard keys from the end of the putative
-        // output until it no longer overlaps with the file we couldn't include.  We will use a binary search to do this, because there may be a lot of keys.
+        if(currentfilesize+ratified_grandparent_size+newgrandparentsize <= maxcompsize)continue;
+        // Here the compaction has become too big.  We will NOT be able to include the new grandparent and all the keys.  That means we must discard keys from the end of the putative
+        // output until it no longer overlaps with the file we couldn't include, or the keys are short enough that the new file will fit.  We will use a binary search to do this, because there may be a lot of keys.
         // As above we start leftvalue at its lowest possible value, rcdx at its highest possible value (which equals its starting value)
         int64_t leftvalue = firstrcdinfile-1;  // init brackets for search.  put left side before the search region to allow rcdx to get as low as it needs
         while(rcdx!=(leftvalue+1)) {  // binary search.
@@ -171,13 +179,27 @@ extern void BreakRecordsIntoFiles(
           // Loop terminates when rcdx-leftvalue=1; at that point rcdx points to the ending+1 record, i. e. the first record that contains a key too high
           // Calculate the middle record position, which is known not to equal an endpoint (since rcdx-leftvalue>1)
           size_t mid = leftvalue + ((rcdx-leftvalue)>>1);   // index of middle value
-          // update one or the other input pointer
+          // update one or the other input pointer.  First, collect the information.  The key for mid:
           size_t keymidx = mid ? (*keylens)[mid-1] : 0;  // start of middle internal key
           Slice keymid((char *)(*keys).data()+keymidx, (*keylens)[mid]-keymidx);  // last key in new output file.
-          if(icmp->user_comparator()->Compare(nextstartkey,ExtractUserKey(keymid))>0)leftvalue=mid; else rcdx=mid;
+          // The size of the keys from the file, if mid becomes the last record:
+          currentfilesize = rcdend[mid]-prevbytes;  // length of the records in the putative output
+          bool midisbeforegrandparent = icmp->user_comparator()->Compare(nextstartkey,ExtractUserKey(keymid))>0;  // do we have to include the grandparent if we use mid?
+          // See if the filesize of the file ending at mid is acceptable
+          if(currentfilesize+ratified_grandparent_size+(midisbeforegrandparent?0:newgrandparentsize) <= maxcompsize)leftvalue=mid; else rcdx=mid;
         }
-        rcdx = std::max(leftvalue,firstrcdinfile);  // back up to the last admissible key; but make sure the file contains at least one key
-        break;  // rcdx has been set
+        // We have now backed leftvalue up to the point where the keys up to leftvalue, plus the grandparents up to the current one, will fit in a compaction.
+        // If the key at leftvalue is before the current grandparent, we are finished.  But if not, we have to continue the loop to look at the NEXT grandparent,
+        // to make sure it either fits or doesn't overlap.  We set rcdx to the new putative ending index.
+        // One special case: if NO kv will fit (maybe the kvs are huge), we have to take just 1 key and move on.
+        if(leftvalue<firstrcdinfile){rcdx=firstrcdinfile; break;}  // special case: 1-kv file
+        rcdx = leftvalue;   // otherwise, leftvalue is the highest key that fits: keep it
+        // fetch the ending key in the file
+        keynx = rcdx ? (*keylens)[rcdx-1] : 0;  // start of first internal key in rcd
+        keyn = Slice((char *)(*keys).data()+keynx, (*keylens)[rcdx]-keynx);  // last key in new output file.
+        if(icmp->user_comparator()->Compare(nextstartkey,ExtractUserKey(keyn))>0)break;  // case 2: no overlap with grandparent, we're done.  Leave grandparentx pointing to the current grandparent for next file
+        // otherwise, the putative file ending at rcdx overlaps the current grandparent, but that grandparent will fit into the compaction.  Ratify the
+        // current grandparent and keep looking, make sure that the next grandparent doesn't cause trouble
       }
     }
     // rcdx is the index of the last record in the new file

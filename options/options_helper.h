@@ -407,6 +407,10 @@ static std::unordered_map<std::string, OptionTypeInfo> cf_options_type_info = {
      {offset_of(&ColumnFamilyOptions::allow_trivial_move),
       OptionType::kBoolean, OptionVerificationType::kNormal, true,
       offsetof(struct MutableCFOptions, allow_trivial_move)}},
+    {"compaction_score_limit_L0",
+     {offset_of(&ColumnFamilyOptions::compaction_score_limit_L0),
+      OptionType::kDouble, OptionVerificationType::kNormal, true,
+      offsetof(struct MutableCFOptions, compaction_score_limit_L0)}},
 #endif
     {"filter_deletes",
      {0, OptionType::kBoolean, OptionVerificationType::kDeprecated, true, 0}},
