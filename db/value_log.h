@@ -10,7 +10,7 @@
 
 #pragma once
 
-#define DEBLEVEL 0x1000  // 1=SST ring ops 2=file ops 4=iterator ops 8=ring pointers 16=deleted_files 32=versions 64=top-level ring ops 128=ring status 256=Versions 512=Audit ref0 1024=Destructors
+#define DEBLEVEL 0x0000  // 1=SST ring ops 2=file ops 4=iterator ops 8=ring pointers 16=deleted_files 32=versions 64=top-level ring ops 128=ring status 256=Versions 512=Audit ref0 1024=Destructors
                         // 0x800=VlogInfo 0x1000=space amp 0x2000=AR stats
 #define DELAYPROB 0   // percentage of the time a call to ProbDelay will actually delay
 #define DELAYTIME std::chrono::milliseconds(10)
