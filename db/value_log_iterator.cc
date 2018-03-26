@@ -131,6 +131,9 @@ printf("\n");
     CompressionOptions compressionopts{};  // scaf need option
     std::string compressiondict;  // scaf need initial dict
 
+    // Get the minimum mapped size for the output level we are writing into
+    size_t minindirectlen = compaction->mutable_cf_options()->min_indirect_val_size[outputringno];
+
     // For AR, create the list of number of records in each input file.
     filecumreccnts.clear(); if(recyciter!=nullptr)filecumreccnts.resize((const_cast<Compaction *>(compaction))->inputs()->size());
     // Read all the kvs from c_iter and save them.  We start at the first kv
@@ -187,7 +190,7 @@ printf("\n");
       keylens.push_back(keys.size());    // ... and its cumulative length
       Slice &val = (Slice &) c_iter->value();  // read the value
       sstvaluelen = val.size();  // if value passes through, its length will go to the SST
-      if(IsTypeDirect(c_iter->ikey().type) && val.size() > 0 ) {  // scaf compare against min length
+      if(IsTypeDirect(c_iter->ikey().type) && recyciter==nullptr && val.size() > minindirectlen ) {  // remap Direct type if length is big enough - but never if AR
         // direct value that should be indirected
         vclass += vIndirectFirstMap;  // indicate the conversion
         bytesintocompression += val.size();  // count length into compression

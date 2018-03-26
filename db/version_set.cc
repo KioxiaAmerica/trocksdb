@@ -1470,7 +1470,7 @@ void VersionStorageInfo::ComputeCompactionScore(
           // meaningless, and the levels do not assume reasonable proportions.  When the L0 score is X, L1 grows
           // to X times normal size before getting any compactions.  To prevent that from
           // happening, we put a limit on X.
-          score = std::min(score,mutable_cf_options.compaction_score_limit_L0);  // scaf   Is this a good idea?
+          score = std::min(score,mutable_cf_options.compaction_score_limit_L0);
 #endif
         }
       }
@@ -1701,15 +1701,15 @@ printf("files by level:"); for (int level = 0; level < num_levels(); level++)pri
 #ifdef INDIRECT_VALUE_SUPPORT
         {
         // see if the current CF has VLogs, and get the scope of the result ring if so
-        int ring; VLogRingRefFileno file0; VLogRingRefFileno nfiles;
-        GetVLogReshapingParms(level, &ring, &file0, &nfiles);
+        int ring; VLogRingRefFileno file0; VLogRingRefFileno nfiles; double age_importance;
+        GetVLogReshapingParms(level, &ring, &file0, &nfiles, &age_importance);
         if(file0) {
           // if there are rings for this level, include the file numbers that will be freed in the computation of which file to compact
           // We want to give preference to compactions that will free up files near the tail of the VLog, because the fragmentation added
           // by those compactions will be cleaned up earliest
           std::partial_sort(temp.begin(), temp.begin() + num, temp.end(),
-                  [this,ring,file0,nfiles](const Fsize& f1, const Fsize& f2) -> bool {
-                    return GetFileVLogCompactionPriority(f1.file,ring,file0,nfiles) > GetFileVLogCompactionPriority(f2.file,ring,file0,nfiles);
+                  [this,ring,file0,nfiles,age_importance](const Fsize& f1, const Fsize& f2) -> bool {
+                    return GetFileVLogCompactionPriority(f1.file,ring,file0,nfiles,age_importance) > GetFileVLogCompactionPriority(f2.file,ring,file0,nfiles,age_importance);
                   });
 // scaf note it appears that compactions may get dropped from level 0 into level 2, which leaves the files in level 1 old &, because we don't refigure the overlaps, with way-out-of-date avgnos
 #if 0 // scaf for debug

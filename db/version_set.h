@@ -117,10 +117,13 @@ class VersionStorageInfo {
   ColumnFamilyData* GetCfd() { return cfd_; }
 
   // Return the low file# and range for the ring at this level.  If no ring, return 0 for file#
-  void GetVLogReshapingParms(int level, int *ring, VLogRingRefFileno *file0, VLogRingRefFileno *nfiles) {
+  void GetVLogReshapingParms(int level, int *ring, VLogRingRefFileno *file0, VLogRingRefFileno *nfiles, double *age_importance) {
     // if there are no VLog or rings, return 0
     *file0 = 0;  // init 'no info' return
-    if(cfd_&&cfd_->vlog())cfd_->vlog()->GetVLogReshapingParms(level, ring, file0, nfiles);  // If there is a VLog, ask it.  cfd_ can be null only running test scripts that don't open a CF
+    if(cfd_&&cfd_->vlog()){
+      cfd_->vlog()->GetVLogReshapingParms(level, ring, file0, nfiles);  // If there is a VLog, ask it.  cfd_ can be null only running test scripts that don't open a CF
+      if(*file0)*age_importance = std::min(10.0,std::max(0.0,cfd_->GetCurrentMutableCFOptions()->compaction_picker_age_importance[*ring]));  // get age_importance from the cf, limit to reasonable range
+    }
     return;
   }
   // Return the effective filesize for the file, taking position into account
@@ -129,7 +132,7 @@ class VersionStorageInfo {
   // maybe 10% of a file.  This means that the markup based on position will usually be decisive, and we will be
   // compacting the files near the head of the ring almost always.
   // files that have no average parent position use a position toward the beginning of the tail region.
-  double GetFileVLogCompactionPriority(FileMetaData *f, int ring, VLogRingRefFileno file0, VLogRingRefFileno nfiles){
+  double GetFileVLogCompactionPriority(FileMetaData *f, int ring, VLogRingRefFileno file0, VLogRingRefFileno nfiles, double age_importance){
     // if there is no ring information, or no position information, leave file size as is, which corresponds to end-of-tail position
     if(file0 == 0)return (double)f->compensated_file_size;  // no file info, use 
     // get the file number to use: avgparentfileno if given, otherwise ref_0 for the ring.  If none, leave filesize as is
@@ -142,10 +145,10 @@ class VersionStorageInfo {
     if(avgparent.ringno()!=ring || avgparent.fileno()==0)return (double)f->compensated_file_size;  // if no valid file ref, use default
     // We calculate x=fractional position of result in the result ring (0=head,1=tail).  Then, bias down so that a position at the end of the tail has fraction 0.
     // Here, the end of the tail is placed at 0.3 of the way from the tail to the head
-    // Then, reshape the curve by using biasedx as an exponent.  The base is chosen to make a certain range fraction of the filespace (0.1 here)
-    // correspond to a doubling of the effective filesize
-    const double base = exp(std::log(2.0)/0.10);  // 0.1 of the log size corresponds to factor of 2 in effective size    scaf use options
-    const double bias = 0.3;  // end of the tail is at 0.3    scaf use options
+    // Then, reshape the curve by using biasedx as an exponent.  The base is chosen to make a certain range fraction of the filespace
+    // correspond to a doubling of the effective filesize.  If age_importance is 10, this is a doubling for every 1/10 of the database.  0 means no effect
+    const double base = exp(std::log(2.0)*age_importance);  // 1/age_importance of the log size corresponds to factor of 2 in effective size
+    const double bias = 0.3;  // end of the tail is at 0.3    scaf use option
     return f->compensated_file_size * std::pow(base , bias-((double)(std::max((int64_t)0,(int64_t)avgparent.fileno()-(int64_t)file0))/(double)nfiles));  // effective size.  fileno may be obsolete and low, so clamp it to file0
   }
 #endif

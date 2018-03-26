@@ -990,7 +990,7 @@ Status DBImpl::OpenVLogs(const DBOptions& db_options) {
   for (auto cfd : *versions_->GetColumnFamilySet()){
     if(cfd->vlog()!=nullptr)if(!(s = cfd->vlog()->VLogInit(existing_vlog_files,existing_vlog_sizes,&immutable_db_options_,vlog_options)).ok())return s;  // if error, it has been logged
   }
-  return s;  // scaf should check for errors
+  return s;
 }
 #endif
 

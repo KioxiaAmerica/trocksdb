@@ -461,8 +461,16 @@ class CompactionJobStatsChecker : public EventListener {
 
     ASSERT_EQ(current_stats.num_output_records,
         stats.num_output_records);
+#ifdef INDIRECT_VALUE_SUPPORT
+    // we allow files to get a little bigger than the usual compaction methods as we try to avoid runts and keep sizes equal
+    ASSERT_GE(current_stats.num_output_files,
+        stats.num_output_files-1);
+    ASSERT_LE(current_stats.num_output_files,
+        stats.num_output_files+1);
+#else
     ASSERT_EQ(current_stats.num_output_files,
         stats.num_output_files);
+#endif
 
     ASSERT_EQ(current_stats.is_manual_compaction,
         stats.is_manual_compaction);
@@ -475,18 +483,14 @@ class CompactionJobStatsChecker : public EventListener {
 #endif //INDIRECT_VALUE_SUPPORT
     ASSERT_LE(current_stats.total_input_bytes,
               stats.total_input_bytes * (1.00 + kFileSizeBias));
-#ifndef INDIRECT_VALUE_SUPPORT
     ASSERT_GE(current_stats.total_output_bytes * (1.00 + kFileSizeBias),
               stats.total_output_bytes);
-#endif //INDIRECT_VALUE_SUPPORT
     ASSERT_LE(current_stats.total_output_bytes,
               stats.total_output_bytes * (1.00 + kFileSizeBias));
     ASSERT_EQ(current_stats.total_input_raw_key_bytes,
               stats.total_input_raw_key_bytes);
-#ifndef INDIRECT_VALUE_SUPPORT
     ASSERT_EQ(current_stats.total_input_raw_value_bytes,
               stats.total_input_raw_value_bytes);
-#endif //INDIRECT_VALUE_SUPPORT
 
     ASSERT_EQ(current_stats.num_records_replaced,
         stats.num_records_replaced);
@@ -668,6 +672,9 @@ TEST_P(CompactionJobStatsTest, CompactionJobStatsTest) {
   options.bytes_per_sync = 512 * 1024;
 
   options.report_bg_io_stats = true;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.min_indirect_val_size = std::vector<size_t>({1LL<<40});   // because this file writes long values with varying compression, the best we can do is turn off indirects
+#endif
   for (int test = 0; test < 2; ++test) {
     DestroyAndReopen(options);
     CreateAndReopenWithCF({"pikachu"}, options);
@@ -886,6 +893,9 @@ TEST_P(CompactionJobStatsTest, DeletionStatsTest) {
   options.compression = kNoCompression;
   options.max_bytes_for_level_multiplier = 2;
   options.max_subcompactions = max_subcompactions_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.min_indirect_val_size = std::vector<size_t>({1LL<<40});   // because this file writes long values with varying compression, the best we can do is turn off indirects
+#endif
 
   DestroyAndReopen(options);
   CreateAndReopenWithCF({"pikachu"}, options);
@@ -978,6 +988,9 @@ TEST_P(CompactionJobStatsTest, UniversalCompactionTest) {
   options.compaction_options_universal.size_ratio = 1;
   options.compaction_options_universal.max_size_amplification_percent = 1000;
   options.max_subcompactions = max_subcompactions_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.min_indirect_val_size = std::vector<size_t>({1LL<<40});   // because this file writes long values with varying compression, the best we can do is turn off indirects
+#endif
 
   DestroyAndReopen(options);
   CreateAndReopenWithCF({"pikachu"}, options);
