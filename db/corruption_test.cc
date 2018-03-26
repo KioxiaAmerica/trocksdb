@@ -125,7 +125,8 @@ class CorruptionTest : public testing::Test {
     for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
       uint64_t key;
       Slice in(iter->key());  size_t keylen=in.size();
-      if (Bytesum(std::string(in.data(),in.size()))!=0 || !ConsumeDecimalNumber(&in, &key) ||
+      std::string s = std::string(in.data(),in.size());
+      if (Bytesum(s)!=0 || !ConsumeDecimalNumber(&in, &key) ||
           in.size()!=(keylen-14) ||  // key should be 14 digits, 1 space, followed by noise, ending with byte to make bytesum 0
           key < next_expected) {
         bad_keys++;
