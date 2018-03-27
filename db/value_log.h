@@ -367,11 +367,14 @@ public:
   // deletion of empty files.  The first interval may be 0,end0 which means DELETE all files up to end0
     int64_t size;   // total # bytes in ring
     int64_t frag;   // total # bytes of fragmentation in ring
+    double fragfrac;  // fragmentation as fraction of size, clamped to a minimum size.  This could be computed from size and frag, but compaction picking (at least the part about deciding whether
+        // compaction is needed) runs in parallel with updating compaction results, which means that frag and size could be read in inconsistent states.  This wouldn't be a problem, but TSAN
+        // flags it as an error.  To stifle the error we create fracfrac which is written by update, read by picking.
 
     // empty constructor.  Could be defaulted
-    VLogRingRestartInfo() : valid_files(std::vector<VLogRingRefFileno>()), size(0), frag(0) {}
+    VLogRingRestartInfo() : valid_files(std::vector<VLogRingRefFileno>()), size(0), frag(0) { fragfrac=0;}
     // constructor when all parts are known
-    VLogRingRestartInfo(std::vector<VLogRingRefFileno> valid_files_, int64_t size_, int64_t frag_) : valid_files(valid_files_), size(size_), frag(frag_) {}
+    VLogRingRestartInfo(std::vector<VLogRingRefFileno> valid_files_, int64_t size_, int64_t frag_) : valid_files(valid_files_), size(size_), frag(frag_) { fragfrac = (double)frag/std::max((double)size,1.0e10); }
 
     // Combine two edits into one equivalent composite.  The operation defined here must be left-associative and must work when *this is
     // the empty state.

@@ -1470,12 +1470,14 @@ Status CompactionJob::InstallCompactionResults(
             // For each level we are checking, binary search to find the files in the ref level(s) that overlap the outputs.  We know the output files
             // are in key order
             for(int checklevel = compaction->output_level()+1; checklevel<=outlevel;++checklevel){
-              overlapping_files.push_back(std::vector<FileMetaData*>());  // create place to store the overlaps 
-              compaction->column_family_data()->current()->storage_info()->GetOverlappingInputsRangeBinarySearch(
-                  checklevel, ExtractUserKey(*const_cast<SubcompactionState&>(sub_compact).outputs.front().meta.smallest.rep()),
-                  ExtractUserKey(*const_cast<SubcompactionState&>(sub_compact).outputs.back().meta.largest.rep()),
-                  &overlapping_files.back(), -1 /* no hint */, nullptr /* place to return found index */,
-                  false /* 'look for overlapping files' */);  // sets overlapping_files to the overlaps, in order
+              overlapping_files.push_back(std::vector<FileMetaData*>());  // create place to store the overlaps
+              if(const_cast<SubcompactionState&>(sub_compact).outputs.size()){  // if no files output, don't look for overlaps
+                compaction->column_family_data()->current()->storage_info()->GetOverlappingInputsRangeBinarySearch(
+                   checklevel, ExtractUserKey(*const_cast<SubcompactionState&>(sub_compact).outputs.front().meta.smallest.rep()),
+                   ExtractUserKey(*const_cast<SubcompactionState&>(sub_compact).outputs.back().meta.largest.rep()),
+                   &overlapping_files.back(), -1 /* no hint */, nullptr /* place to return found index */,
+                   false /* 'look for overlapping files' */);  // sets overlapping_files to the overlaps, in order
+              }
             }
 
             const Comparator* user_cmp = compaction->column_family_data()->user_comparator();  // the comparator for this CF

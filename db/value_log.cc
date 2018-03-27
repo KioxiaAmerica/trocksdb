@@ -228,7 +228,7 @@ void VLogRingRestartInfo::Coalesce(const VLogRingRestartInfo& sec,  // the stats
 )
 {
   // merge the byte counts
-  size += sec.size;  frag += sec.frag;
+  size += sec.size;  frag += sec.frag; fragfrac = (double)frag/std::max((double)size,1.0e10);  // scaf const  don't AR until DB is 10GB
   // set up indexes to use to scan through inputs
   size_t thisx = 0, secx = 0;  // scan pointer within inputs
   // create output area
