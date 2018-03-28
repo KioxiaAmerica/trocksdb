@@ -662,6 +662,8 @@ public:
   size_t nrings() { return rings_.size(); }
   std::vector<std::unique_ptr<VLogRing>>& rings() { return rings_; }
   int starting_level_for_ring(int ringno) { return starting_level_for_ring_[ringno]; }
+  bool cfd_exists() { return cfd_ != nullptr; }   // id the cfd still valid?
+  void cfd_clear() { cfd_ = nullptr; }
 
   // No copying
   VLog(VLog const&) = delete;
