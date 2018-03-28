@@ -477,10 +477,8 @@ class CompactionJobStatsChecker : public EventListener {
 
     // file size
     double kFileSizeBias = compression_enabled_ ? 0.20 : 0.10;
-#ifndef INDIRECT_VALUE_SUPPORT
     ASSERT_GE(current_stats.total_input_bytes * (1.00 + kFileSizeBias),
               stats.total_input_bytes);
-#endif //INDIRECT_VALUE_SUPPORT
     ASSERT_LE(current_stats.total_input_bytes,
               stats.total_input_bytes * (1.00 + kFileSizeBias));
     ASSERT_GE(current_stats.total_output_bytes * (1.00 + kFileSizeBias),
