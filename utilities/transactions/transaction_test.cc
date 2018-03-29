@@ -1193,6 +1193,7 @@ TEST_P(TransactionTest, DISABLED_TwoPhaseMultiThreadTest) {
   }
 }
 
+#ifndef INDIRECT_VALUE_SUPPORT
 TEST_P(TransactionTest, TwoPhaseLongPrepareTest) {
   WriteOptions write_options;
   write_options.sync = true;
@@ -1255,6 +1256,7 @@ TEST_P(TransactionTest, TwoPhaseLongPrepareTest) {
 
   delete txn;
 }
+#endif //INDIRECT_VALUE_SUPPORT
 
 TEST_P(TransactionTest, TwoPhaseSequenceTest) {
   WriteOptions write_options;
