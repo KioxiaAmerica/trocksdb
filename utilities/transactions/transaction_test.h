@@ -85,8 +85,10 @@ class TransactionTest : public ::testing::TestWithParam<
     Status s;
     if (std::get<0>(GetParam()) == false) {
       s = TransactionDB::Open(options, txn_db_options, dbname, &db);
+      assert(s.ok());
     } else {
       s = OpenWithStackableDB();
+      assert(s.ok());
     }
     return s;
   }
