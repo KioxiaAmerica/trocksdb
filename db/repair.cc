@@ -632,7 +632,7 @@ class Repairer {
         if(vfile.column_family_name.compare(cfname)==0){  // if it matches our cf...
           // separate file# into ring and file
           ParsedFnameRing pref(vfile.file_and_ring_no);
-          while(accum_vlog_edits.size()<=pref.ringno_)accum_vlog_edits.emplace_back();  // 
+          while(accum_vlog_edits.size()<=(size_t)pref.ringno_)accum_vlog_edits.emplace_back();  // 
           accum_vlog_edits[pref.ringno_].valid_files.emplace_back(pref.fileno_);  // move in start file#
           accum_vlog_edits[pref.ringno_].valid_files.emplace_back(pref.fileno_);  // and end file#
           // add the size of the file into the size for the ring
