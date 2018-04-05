@@ -1236,13 +1236,13 @@ Status VLog::VLogGet(
   std::string& result   // where the result is built    scaf should make this a reference
 )
 {
-  Status s;  // return status, initialized to ok
-  assert(reference.size()==VLogRingRef::sstrefsize);  // should be a reference
-  if(reference.size()!=VLogRingRef::sstrefsize){
+  Status s = VLogRingRef::VLogRefAuditOpaque(reference);  // return status, initialized to ok
+  if(!s.ok()){
     ROCKS_LOG_ERROR(immdbopts_->info_log,
       "Indirect reference is not %d bytes long",VLogRingRef::sstrefsize);
-    return s = Status::Corruption("indirect reference is ill-formed.");
+    return(s);
   }
+
   VLogRingRef ref = VLogRingRef(reference.data());   // analyze the reference
 
   // Because of the OS kludge that doesn't allow zero-length files to be memory-mapped, we have to check to make

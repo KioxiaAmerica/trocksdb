@@ -210,6 +210,17 @@ void IndirectSlice(Slice& slice) {
   slice.install(workarea.extform,sizeof(workarea.extform));  // point the argument slice to our workarea
 }
 
+// check opaque ref for validity.  Just the length, for now
+static Status VLogRefAuditOpaque(
+  const Slice& reference  // the reference in raw byte form
+){
+  assert(reference.size()==VLogRingRef::sstrefsize);  // should be a reference
+  if(reference.size()!=VLogRingRef::sstrefsize){
+    return Status::Corruption("indirect reference is ill-formed.");
+  }
+  return Status::OK();
+}
+
 // Extract portions of the ref
 VLogRingRefFileOffset Offset() { return offset; }
 VLogRingRefFileLen Len() { return len; }

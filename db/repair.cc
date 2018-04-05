@@ -84,7 +84,9 @@
 #include "util/file_reader_writer.h"
 #include "util/filename.h"
 #include "util/string_util.h"
-
+#ifdef INDIRECT_VALUE_SUPPORT
+#include "db/value_log.h"
+#endif
 namespace rocksdb {
 
 namespace {
@@ -243,6 +245,22 @@ class Repairer {
   std::vector<uint64_t> logs_;
   std::vector<TableInfo> tables_;
   uint64_t next_file_number_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  struct VLogFileInfo {
+    uint64_t file_and_ring_no;
+    uint32_t path_id;
+    std::string column_family_name;
+    uint64_t filesize;
+
+  VLogFileInfo(uint64_t number, uint32_t pathid, std::string colname, uint64_t size)
+      : file_and_ring_no(number),
+        path_id(pathid),
+        column_family_name(colname),
+        filesize(size) {}
+
+  };
+  std::vector<VLogFileInfo> vlog_fds_;
+#endif
 
   Status FindFiles() {
     std::vector<std::string> filenames;
@@ -291,6 +309,14 @@ class Repairer {
             } else if (type == kTableFile) {
               table_fds_.emplace_back(number, static_cast<uint32_t>(path_id),
                                       0);
+#ifdef INDIRECT_VALUE_SUPPORT
+            } else if (type == kVLogFile) {
+              // vlog file.  Extract the CF id from the file extension
+              size_t dotpos=filenames[i].find_last_of('.');  // find start of extension
+              std::string cfname(filenames[i].substr(dotpos+1+kRocksDbVLogFileExt.size()));
+              uint64_t file_size; env_->GetFileSize(to_search_paths[path_id]+"/"+filenames[i], &file_size);
+              vlog_fds_.emplace_back(number, static_cast<uint32_t>(path_id),cfname,file_size);
+#endif
             } else {
               // Ignore other files
             }
@@ -523,6 +549,33 @@ class Repairer {
         if (parsed.sequence > t->max_sequence) {
           t->max_sequence = parsed.sequence;
         }
+#ifdef INDIRECT_VALUE_SUPPORT
+        // If this is an indirect reference, decode it into ring and file#s, and update the early-reference field if
+        // it is a new low, and the total size of references to the VLog
+        if(IsTypeIndirect(parsed.type)){
+          Slice opaquevalue = iter->value();
+          if(!(VLogRingRef::VLogRefAuditOpaque(opaquevalue)).ok()) {
+            ROCKS_LOG_ERROR(db_options_.info_log,
+                            "Table #%" PRIu64 ": invalid indirect value",
+                            t->meta.fd.GetNumber());
+            continue;
+          }
+          VLogRingRef ref = VLogRingRef(opaquevalue.data());   // analyze the reference
+          // if the reference is a new low for its ring, store it
+          uint32_t ringno = ref.Ringno();  // ring number of reference
+          while(ringno>=t->meta.indirect_ref_0.size())t->meta.indirect_ref_0.emplace_back(0);  // extend ring with 0 (=invalid) if needed
+          VLogRingRefFileLen len = ref.Len();  // length of ref - if 0, ignore the ref
+          if(len){
+            VLogRingRefFileno fileno = ref.Fileno();   // file number in reference - must not be 0
+            if(fileno!=0 && (t->meta.indirect_ref_0[ringno]==0 || t->meta.indirect_ref_0[ringno]>fileno))t->meta.indirect_ref_0[ringno]=fileno;  // set smallest ref file#
+          }
+          // accumulate the size of the references as negative fragmentation in the CF.  Eventually we will add the total VLog size to yield the
+          // actual fragmentation
+          std::vector<VLogRingRestartInfo>& vrest(cfd->vloginfo());  // restart info for the CF
+          while(vrest.size()<=ringno)vrest.emplace_back();  // expand to cover all referenced rings
+          vrest[ringno].frag -= len;  // count the active reference as negative fragmentation
+        }
+#endif
       }
       if (!iter->status().ok()) {
         status = iter->status();
@@ -565,10 +618,41 @@ class Repairer {
                      table->max_sequence, table->meta.marked_for_compaction
 #ifdef INDIRECT_VALUE_SUPPORT
                      ,table->meta.indirect_ref_0
-                     ,table->meta.avgparentfileno
+                     ,table->meta.avgparentfileno   // scaf these are not recovered, which will cause trouble if the compactions are poorly ordered
 #endif
                      );
       }
+#ifdef INDIRECT_VALUE_SUPPORT
+      // Create the column_family_data VLogInfo, which will be written out by LogAndApply
+      // We go through all the VLog files, looking for ones that are in the CF.  When we find them, we add them to the list for the ring.  When we have them all, we sort the ring and then
+      // Coalesce them into the info for the CF.  We insert each file as its own (start,end)
+      std::vector<VLogRingRestartInfo> accum_vlog_edits;  // one per ring
+      std::string cfname(cfd->GetName());
+      for (const auto& vfile : vlog_fds_) {
+        if(vfile.column_family_name.compare(cfname)==0){  // if it matches our cf...
+          // separate file# into ring and file
+          ParsedFnameRing pref(vfile.file_and_ring_no);
+          while(accum_vlog_edits.size()<=pref.ringno_)accum_vlog_edits.emplace_back();  // 
+          accum_vlog_edits[pref.ringno_].valid_files.emplace_back(pref.fileno_);  // move in start file#
+          accum_vlog_edits[pref.ringno_].valid_files.emplace_back(pref.fileno_);  // and end file#
+          // add the size of the file into the size for the ring
+          accum_vlog_edits[pref.ringno_].size += vfile.filesize;
+        }
+      }
+      // put the restart data into canonical form
+      for(auto& info : accum_vlog_edits){
+        // The frag field in the column family contains the negative size of all references found in the ring.  We want to add in the total size in VLog files, to
+        // give the amount of fragmentation
+        info.frag = info.size;
+        // sort each file list.  This leaves pairs of file#s in ascending order.  They will be coalesced into runs presently
+        std::sort(info.valid_files.begin(),info.valid_files.end());
+      }
+      // Coalesce them into the initially-empty block for the CF, with no deletions allowed
+      Coalesce(cfd->vloginfo(),accum_vlog_edits,false);   // apply accum edits, including deletions, to database.  false means 'don't include the delete', used for the CF version
+
+#endif
+
+
       mutex_.Lock();
       Status status = vset_.LogAndApply(
           cfd, *cfd->GetLatestMutableCFOptions(), &edit, &mutex_,

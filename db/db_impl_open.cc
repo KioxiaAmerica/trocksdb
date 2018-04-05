@@ -1141,9 +1141,11 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     }
   }
 #ifdef INDIRECT_VALUE_SUPPORT   // fill in the rings for each column family
-  if(!impl->OpenVLogs(db_options).ok()){  //  Init the VLogs for the CFs that were opened
-    s = Status::Corruption(
-        "The VLog files could not be opened");
+  if (s.ok()) {  // Don't open VLogs if we have had an error, because OpenVLogs deletes any .vlg files it doesn't expect, and after an error none are expected
+    if(!impl->OpenVLogs(db_options).ok()){  //  Init the VLogs for the CFs that were opened
+      s = Status::Corruption(
+          "The VLog files could not be opened");
+    }
   }
 #endif
   TEST_SYNC_POINT("DBImpl::Open:Opened");
