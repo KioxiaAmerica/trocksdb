@@ -45,7 +45,10 @@ TEST_F(DBStatisticsTest, CompressionStatsTest) {
 
   Options options = CurrentOptions();
   options.compression = type;
-  options.statistics = rocksdb::CreateDBStatistics();
+ #ifdef INDIRECT_VALUE_SUPPORT
+  options.ring_compression_style = std::vector<CompressionType>({type});
+#endif
+ options.statistics = rocksdb::CreateDBStatistics();
   options.statistics->stats_level_ = StatsLevel::kExceptTimeForMutex;
   DestroyAndReopen(options);
 
@@ -66,6 +69,9 @@ TEST_F(DBStatisticsTest, CompressionStatsTest) {
   ASSERT_GT(options.statistics->getTickerCount(NUMBER_BLOCK_DECOMPRESSED), 0);
 
   options.compression = kNoCompression;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
+#endif
   DestroyAndReopen(options);
   uint64_t currentCompressions =
             options.statistics->getTickerCount(NUMBER_BLOCK_COMPRESSED);
