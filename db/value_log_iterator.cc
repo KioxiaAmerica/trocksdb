@@ -370,8 +370,8 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
       statusx_ = 0;  // reset input error pointer to first error
       ostatusx_ = 0;  // reset output error pointer to first error
       passthroughrefx_ = 0;  // reset pointer to passthrough file/ring
-      ref0_ = std::vector<uint64_t>(cfd->vlog()->nrings(),high_value);  // initialize to no refs to each ring
-      prevringfno = RingFno{0,high_value};  // init to no previous key
+      ref0_ = std::vector<uint64_t>(cfd->vlog()->nrings(),rocksdb::high_value);  // initialize to no refs to each ring
+      prevringfno = RingFno{0,rocksdb::high_value};  // init to no previous key
       outputfileno = 0;  // init that the records we are emitting are going into SST 0
 
       Next();   // first Next() gets the first key; subsequent ones return later keys
@@ -426,7 +426,7 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
       if(ref0_[prevringfno.ringno]>prevringfno.fileno)
         ref0_[prevringfno.ringno]=prevringfno.fileno;  // if current > new, switch to new
 
-      prevringfno = RingFno{0,high_value};  // set to no indirect ref here
+      prevringfno = RingFno{0,rocksdb::high_value};  // set to no indirect ref here
       // Create its info based on its class
       switch(vclass) {
       case vPassthroughIndirect:
