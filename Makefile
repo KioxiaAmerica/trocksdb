@@ -519,51 +519,20 @@ PARALLEL_TEST = \
 	write_prepared_transaction_test
 
 #LOCK/CRASH test cases
-#activerecycling
-#corruption_test		[asan] trocks 
-#db_properties_test		[tsan] trocks 
-#db_tailing_iter_test 		[tsan] trocks 
-
-#aa81d626
-#	\
-        backupable_db_test \
-        corruption_test \
-	db_compaction_test \
-	db_properties_test \
-	db_range_del_test \
-        db_tailing_iter_test \
-	db_test \
+#[unit] \
+	backupable_db_test              trocks \
+	db_compaction_test              trocks \
+	db_properties_test              noflags \
+	db_range_del_test               noflags \
+#[tsan] \
+	db_compaction_test              trocks \
+	external_sst_file_test          trocks \
 
 ifdef INDIRECT_VALUE_SUPPORT
 LOCKS= \
-        backupable_db_test \
-        c_test  \
-        compaction_iterator_test \
-        compaction_job_stats_test \
-        compaction_picker_test \
-        corruption_test \
-        db_bloom_filter_test \
+	backupable_db_test \
 	db_compaction_test \
-        db_dynamic_level_test \
-        db_io_failure_test \
-        db_iterator_test \
-        db_merge_operator_test \
-        db_options_test \
-	db_properties_test \
-	db_range_del_test \
-        db_sst_test \
-        db_statistics_test \
-        db_tailing_iter_test \
-	db_test \
-        db_test2 \
-        db_universal_compaction_test \
-        external_sst_file_test \
-        fault_injection_test \
-        option_change_migration_test \
-        persistent_cache_test \
-        statistics_test \
-        transaction_test \
-        version_builder_test \
+	external_sst_file_test \
 
 else
 LOCKS= \
