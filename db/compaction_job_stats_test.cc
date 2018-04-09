@@ -671,7 +671,7 @@ TEST_P(CompactionJobStatsTest, CompactionJobStatsTest) {
 
   options.report_bg_io_stats = true;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.min_indirect_val_size = std::vector<size_t>({1LL<<40});   // because this file writes long values with varying compression, the best we can do is turn off indirects
+  options.min_indirect_val_size = std::vector<uint64_t>({1LL<<40});   // because this file writes long values with varying compression, the best we can do is turn off indirects
 #endif
   for (int test = 0; test < 2; ++test) {
     DestroyAndReopen(options);
@@ -892,7 +892,7 @@ TEST_P(CompactionJobStatsTest, DeletionStatsTest) {
   options.max_bytes_for_level_multiplier = 2;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.min_indirect_val_size = std::vector<size_t>({1LL<<40});   // because this file writes long values with varying compression, the best we can do is turn off indirects
+  options.min_indirect_val_size = std::vector<uint64_t>({1LL<<40});   // because this file writes long values with varying compression, the best we can do is turn off indirects
 #endif
 
   DestroyAndReopen(options);
@@ -987,7 +987,7 @@ TEST_P(CompactionJobStatsTest, UniversalCompactionTest) {
   options.compaction_options_universal.max_size_amplification_percent = 1000;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.min_indirect_val_size = std::vector<size_t>({1LL<<40});   // because this file writes long values with varying compression, the best we can do is turn off indirects
+  options.min_indirect_val_size = std::vector<uint64_t>({1LL<<40});   // because this file writes long values with varying compression, the best we can do is turn off indirects
 #endif
 
   DestroyAndReopen(options);

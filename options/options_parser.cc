@@ -587,6 +587,14 @@ bool AreEqualOptions(
     case OptionType::kInfoLogLevel:
       return (*reinterpret_cast<const InfoLogLevel*>(offset1) ==
               *reinterpret_cast<const InfoLogLevel*>(offset2));
+#ifdef INDIRECT_VALUE_SUPPORT
+    case OptionType::kVectorInt64:
+      return (*reinterpret_cast<const std::vector<uint64_t>*>(offset1) ==
+              *reinterpret_cast<const std::vector<uint64_t>*>(offset2));
+    case OptionType::kVectorDouble:
+      return (*reinterpret_cast<const std::vector<double>*>(offset1) ==
+              *reinterpret_cast<const std::vector<double>*>(offset2));
+#endif //INDIRECT_VALUE_SUPPORT
     default:
       if (type_info.verification == OptionVerificationType::kByName ||
           type_info.verification ==
