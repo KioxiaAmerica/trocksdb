@@ -234,7 +234,7 @@ void MutableCFOptions::Dump(Logger* log) const {
          i++) {
       ROCKS_LOG_HEADER(
           log, "                ring_compression_style[%" ROCKSDB_PRIszt
-               "]: %d",
+               "]: %s",
           i, CompressionTypeToString(ring_compression_style[i]).c_str());
     }
 #endif

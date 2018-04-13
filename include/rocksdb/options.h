@@ -297,7 +297,7 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   std::vector<int32_t> vlogring_activation_level = std::vector<int32_t>({0});
 
   //Minimum Indirect Value Size : only values this size or larger are written to the Value Log
-  std::vector<uint64_t> min_indirect_val_size = std::vector<uint64_t>({0});
+  std::vector<uint64_t> min_indirect_val_size = std::vector<uint64_t>({(0)}); //1MB
   
   //remapping fraction: During compaction, the oldest values will be copied from the tail of the VLog to the head.  This parameter tells how many:
   // 0.25=just the oldest 1/4 of the values, 0.75=the oldest 3/4

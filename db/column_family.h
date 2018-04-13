@@ -134,6 +134,10 @@ struct SuperVersion {
   autovector<MemTable*> to_delete;
 };
 
+#ifdef INDIRECT_VALUE_SUPPORT
+extern Status CheckRingCompressionSupported(const ColumnFamilyOptions& cf_options);
+#endif //INDIRECT_VALUE_SUPPORT
+
 extern Status CheckCompressionSupported(const ColumnFamilyOptions& cf_options);
 
 extern Status CheckConcurrentWritesSupported(

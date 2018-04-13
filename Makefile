@@ -524,6 +524,7 @@ PARALLEL_TEST = \
 	db_compaction_test              trocks \
 	db_properties_test              noflags \
 	db_range_del_test               noflags \
+
 #[tsan] \
 	db_compaction_test              trocks \
 	external_sst_file_test          trocks \

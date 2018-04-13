@@ -299,7 +299,7 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
          i++) {
       ROCKS_LOG_HEADER(
           log, "                   Options.ring_compression_style[%" ROCKSDB_PRIszt
-               "]: %d",
+               "]: %s",
           i, CompressionTypeToString(ring_compression_style[i]).c_str());
     }
 #endif //INDIRECT_VALUE_SUPPORT

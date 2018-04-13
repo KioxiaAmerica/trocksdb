@@ -891,6 +891,62 @@ extern ROCKSDB_LIBRARY_API void rocksdb_options_set_min_level_to_compress(
     rocksdb_options_t* opt, int level);
 
 #ifdef INDIRECT_VALUE_SUPPORT
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_vlogring_activation_level(
+    rocksdb_options_t*, int32_t* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_min_indirect_val_size(
+    rocksdb_options_t*, uint64_t* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_fraction_remapped_during_compaction(
+    rocksdb_options_t*, double* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_fraction_remapped_during_active_recycling(
+    rocksdb_options_t*, double* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_fragmentation_active_recycling_trigger(
+    rocksdb_options_t*, double* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_fragmentation_active_recycling_klaxon(
+    rocksdb_options_t*, double* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_active_recycling_sst_minct(
+    rocksdb_options_t*, int32_t* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_active_recycling_sst_maxct(
+    rocksdb_options_t*, int32_t* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_active_recycling_vlogfile_freed_min(
+    rocksdb_options_t*, int32_t* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_vlogfile_max_size(
+    rocksdb_options_t*, uint64_t* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_compaction_picker_age_importance(
+    rocksdb_options_t*, double* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_ring_compression_style(
+    rocksdb_options_t*, int32_t* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_(
+    rocksdb_options_t*, int32_t* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_(
+    rocksdb_options_t*, int32_t* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_(
+    rocksdb_options_t*, int32_t* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_(
+    rocksdb_options_t*, int32_t* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_(
+    rocksdb_options_t*, int32_t* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_(
+    rocksdb_options_t*, int32_t* values, size_t num_levels);
+#endif //INDIRECT_VALUE_SUPPORT
+#if 0
 extern ROCKSDB_LIBRARY_API void rocksdb_options_set_allow_trivial_move(
     rocksdb_options_t* opt, int allow);
 extern ROCKSDB_LIBRARY_API void rocksdb_options_set_compaction_score_limit_L0(
