@@ -149,10 +149,94 @@ void MutableCFOptions::Dump(Logger* log) const {
   ROCKS_LOG_INFO(log, "                     max_compaction_bytes: %" PRIu64,
                  max_compaction_bytes);
 #ifdef INDIRECT_VALUE_SUPPORT
-  ROCKS_LOG_INFO(log, "                 allow_trivial_move: %d",
+  ROCKS_LOG_INFO(log, "                       allow_trivial_move: %d",
                  allow_trivial_move);
-  ROCKS_LOG_INFO(log, "                 compaction_score_limit_L0: %f",
+  ROCKS_LOG_INFO(log, "                compaction_score_limit_L0: %f",
                  compaction_score_limit_L0);
+    for (size_t i = 0; i < vlogring_activation_level.size();
+         i++) {
+      ROCKS_LOG_HEADER(
+          log, "             vlogring_activation_level[%" ROCKSDB_PRIszt
+               "]: %d",
+          i, vlogring_activation_level[i]);
+    }
+    for (size_t i = 0; i < min_indirect_val_size.size();
+         i++) {
+      ROCKS_LOG_HEADER(
+          log, "                 min_indirect_val_size[%" ROCKSDB_PRIszt
+               "]: %d",
+          i, min_indirect_val_size[i]);
+    }
+    for (size_t i = 0; i < fraction_remapped_during_compaction.size();
+         i++) {
+      ROCKS_LOG_HEADER(
+          log, "   fraction_remapped_during_compaction[%" ROCKSDB_PRIszt
+               "]: %f",
+          i, fraction_remapped_during_compaction[i]);
+    }
+    for (size_t i = 0; i < fraction_remapped_during_active_recycling.size();
+         i++) {
+      ROCKS_LOG_HEADER(
+          log, "fraction_remapped_during_active_recycling[%" ROCKSDB_PRIszt
+               "]: %f",
+          i, fraction_remapped_during_active_recycling[i]);
+    }
+    for (size_t i = 0; i < fragmentation_active_recycling_trigger.size();
+         i++) {
+      ROCKS_LOG_HEADER(
+          log, "fragmentation_active_recycling_trigger[%" ROCKSDB_PRIszt
+               "]: %f",
+          i, fragmentation_active_recycling_trigger[i]);
+    }
+    for (size_t i = 0; i < fragmentation_active_recycling_klaxon.size();
+         i++) {
+      ROCKS_LOG_HEADER(
+          log, " fragmentation_active_recycling_klaxon[%" ROCKSDB_PRIszt
+               "]: %f",
+          i, fragmentation_active_recycling_klaxon[i]);
+    }
+    for (size_t i = 0; i < active_recycling_sst_minct.size();
+         i++) {
+      ROCKS_LOG_HEADER(
+          log, "            active_recycling_sst_minct[%" ROCKSDB_PRIszt
+               "]: %d",
+          i, active_recycling_sst_minct[i]);
+    }
+    for (size_t i = 0; i < active_recycling_sst_maxct.size();
+         i++) {
+      ROCKS_LOG_HEADER(
+          log, "            active_recycling_sst_maxct[%" ROCKSDB_PRIszt
+               "]: %d",
+          i, active_recycling_sst_maxct[i]);
+    }
+    for (size_t i = 0; i < active_recycling_vlogfile_freed_min.size();
+         i++) {
+      ROCKS_LOG_HEADER(
+          log, "   active_recycling_vlogfile_freed_min[%" ROCKSDB_PRIszt
+               "]: %d",
+          i, active_recycling_vlogfile_freed_min[i]);
+    }
+    for (size_t i = 0; i < vlogfile_max_size.size();
+         i++) {
+      ROCKS_LOG_HEADER(
+          log, "                     vlogfile_max_size[%" ROCKSDB_PRIszt
+               "]: %d",
+          i, vlogfile_max_size[i]);
+    }
+    for (size_t i = 0; i < compaction_picker_age_importance.size();
+         i++) {
+      ROCKS_LOG_HEADER(
+          log, "      compaction_picker_age_importance[%" ROCKSDB_PRIszt
+               "]: %f",
+          i, compaction_picker_age_importance[i]);
+    }
+    for (size_t i = 0; i < ring_compression_style.size();
+         i++) {
+      ROCKS_LOG_HEADER(
+          log, "                ring_compression_style[%" ROCKSDB_PRIszt
+               "]: %s",
+          i, CompressionTypeToString(ring_compression_style[i]).c_str());
+    }
 #endif
   ROCKS_LOG_INFO(log, "                    target_file_size_base: %" PRIu64,
                  target_file_size_base);

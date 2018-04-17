@@ -106,6 +106,22 @@ void GetIntTblPropCollectorFactory(
   int_tbl_prop_collector_factories->emplace_back(
       new InternalKeyPropertiesCollectorFactory);
 }
+#ifdef INDIRECT_VALUE_SUPPORT
+Status CheckRingCompressionSupported(const ColumnFamilyOptions& cf_options) {
+  if (!cf_options.ring_compression_style.empty()) {
+    for (size_t ring = 0; ring < cf_options.ring_compression_style.size();
+         ++ring) {
+      if (!CompressionTypeSupported(cf_options.ring_compression_style[ring])) {
+        return Status::InvalidArgument(
+            "Compression type " +
+            CompressionTypeToString(cf_options.ring_compression_style[ring]) +
+            " is not linked with the binary.");
+      }
+    }
+  }
+  return Status::OK();
+}
+#endif //INDIRECT_VALUE_SUPPORT
 
 Status CheckCompressionSupported(const ColumnFamilyOptions& cf_options) {
   if (!cf_options.compression_per_level.empty()) {
@@ -126,7 +142,11 @@ Status CheckCompressionSupported(const ColumnFamilyOptions& cf_options) {
           " is not linked with the binary.");
     }
   }
+#ifdef INDIRECT_VALUE_SUPPORT
+  return CheckRingCompressionSupported(cf_options);
+#else
   return Status::OK();
+#endif //INDIRECT_VALUE_SUPPORT
 }
 
 Status CheckConcurrentWritesSupported(const ColumnFamilyOptions& cf_options) {
@@ -277,7 +297,202 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
 
 #ifdef INDIRECT_VALUE_SUPPORT  // sanitize options
 // perform consistency checks on the new options
-#endif
+  bool vlogring_pass = true;
+// Verify the elements in vlogring_activation_level are strictly increasing
+  for (size_t i = 0; i < result.vlogring_activation_level.size();
+    ++i) {
+    if (i > 0) {
+      if (result.vlogring_activation_level[i] <= result.vlogring_activation_level[i-1]) {
+        ROCKS_LOG_WARN(db_options.info_log.get(),
+                     "vlogring_activation_level[%" ROCKSDB_PRIszt "] must be strictly increasing",i);
+        vlogring_pass = false;
+      }
+    }
+  }
+
+// Verify the first and last elements in vlogring_activation_level are set appropriately
+  for (size_t i = 0; i < result.vlogring_activation_level.size();
+    ++i) {
+    if (i == 0) {
+      if (result.vlogring_activation_level[i] < 0) {
+        ROCKS_LOG_WARN(db_options.info_log.get(),
+                     "vlogring_activation_level[%" ROCKSDB_PRIszt "] must be greater than or equal to 0",i);
+        vlogring_pass = false;
+      }
+    } else if (i == result.vlogring_activation_level.size()-1) {
+      if (result.vlogring_activation_level[i] > result.num_levels) {
+        ROCKS_LOG_WARN(db_options.info_log.get(),
+                     "vlogring_activation_level[%" ROCKSDB_PRIszt "] must be less than or equal to num_levels: %d",i,result.num_levels);
+        vlogring_pass = false;
+      }
+    }
+  }
+
+  if (!vlogring_pass) {
+    size_t len = result.vlogring_activation_level.size();
+    result.vlogring_activation_level.clear();
+    for (size_t i = 0; i < len; ++i) {
+      if (i <= (size_t)result.num_levels){
+       result.vlogring_activation_level.emplace_back((int32_t)i);
+      }
+    }
+  }
+
+  for (size_t i = 0; i < result.fraction_remapped_during_compaction.size();
+    ++i) {
+    if (result.fraction_remapped_during_compaction[i] < 0 || result.fraction_remapped_during_compaction[i] > 1) {
+      ROCKS_LOG_WARN(db_options.info_log.get(),
+                   "fraction_remapped_during_compaction[%" ROCKSDB_PRIszt "] must be between 0 and 1",i);
+      result.fraction_remapped_during_compaction[i] = 0.5;
+    }
+  }
+
+  for (size_t i = 0; i < result.fraction_remapped_during_active_recycling.size();
+    ++i) {
+    if (result.fraction_remapped_during_active_recycling[i] < 0 || result.fraction_remapped_during_active_recycling[i] > 1) {
+      ROCKS_LOG_WARN(db_options.info_log.get(),
+                   "fraction_remapped_during_active_recycling[%" ROCKSDB_PRIszt "] must be between 0 and 1",i);
+      result.fraction_remapped_during_active_recycling[i] = 0.25;
+    }
+  }
+
+  for (size_t i = 0; i < result.fragmentation_active_recycling_trigger.size();
+    ++i) {
+    if (result.fragmentation_active_recycling_trigger[i] < 0 || result.fragmentation_active_recycling_trigger[i] > 1) {
+      ROCKS_LOG_WARN(db_options.info_log.get(),
+                   "fragmentation_active_recycling_trigger[%" ROCKSDB_PRIszt "] must be between 0 and 1",i);
+      result.fragmentation_active_recycling_trigger[i] = 0.25;
+    }
+  }
+
+  for (size_t i = 0; i < result.fragmentation_active_recycling_klaxon.size();
+    ++i) {
+    if (result.fragmentation_active_recycling_klaxon[i] < 0 || result.fragmentation_active_recycling_klaxon[i] > 1) {
+      ROCKS_LOG_WARN(db_options.info_log.get(),
+                   "fragmentation_active_recycling_klaxon[%" ROCKSDB_PRIszt "] must be between 0 and 1",i);
+      result.fragmentation_active_recycling_klaxon[i] = 0.5;
+    }
+  }
+
+  if (result.fragmentation_active_recycling_trigger.size() == result.fragmentation_active_recycling_klaxon.size()) {
+    for (size_t i = 0; i < result.fragmentation_active_recycling_trigger.size();
+      ++i) {
+      if (result.fragmentation_active_recycling_trigger[i] > result.fragmentation_active_recycling_klaxon[i]) {
+        ROCKS_LOG_WARN(db_options.info_log.get(),
+                     "fragmentation_active_recycling_klaxon[%" ROCKSDB_PRIszt "] must be greater than or equal to fragmentation_active_recycling_trigger[%" ROCKSDB_PRIszt "]",i,i);
+        result.fragmentation_active_recycling_klaxon[i] = result.fragmentation_active_recycling_trigger[i];
+      }
+    }
+  }
+
+  for (size_t i = 0; i < result.active_recycling_sst_minct.size();
+    ++i) {
+    if (result.active_recycling_sst_minct[i] <= 0) {
+      ROCKS_LOG_WARN(db_options.info_log.get(),
+                   "active_recycling_sst_minct[%" ROCKSDB_PRIszt "] must be greater than 0",i);
+      result.active_recycling_sst_minct[i] = 5;
+    }
+  }
+
+  for (size_t i = 0; i < result.active_recycling_sst_maxct.size();
+    ++i) {
+    if (result.active_recycling_sst_maxct[i] <= 0) {
+      ROCKS_LOG_WARN(db_options.info_log.get(),
+                   "active_recycling_sst_maxct[%" ROCKSDB_PRIszt "] must be greater than 0",i);
+      result.active_recycling_sst_maxct[i] = 15;
+    }
+  }
+
+  if (result.active_recycling_sst_minct.size() == result.active_recycling_sst_maxct.size()) {
+    for (size_t i = 0; i < result.active_recycling_sst_maxct.size();
+      ++i) {
+      if (result.active_recycling_sst_maxct[i] < result.active_recycling_sst_minct[i]) {
+        ROCKS_LOG_WARN(db_options.info_log.get(),
+                     "active_recycling_sst_maxct[%" ROCKSDB_PRIszt "] must be greater than or equal to active_recycling_sst_minct[%" ROCKSDB_PRIszt "]",i,i);
+        result.active_recycling_sst_maxct[i] = result.active_recycling_sst_minct[i];
+      }
+    }
+  }
+  for (size_t i = 0; i < result.active_recycling_vlogfile_freed_min.size();
+    ++i) {
+    if (result.active_recycling_vlogfile_freed_min[i] < 0) {
+      ROCKS_LOG_WARN(db_options.info_log.get(),
+                   "active_recycling_vlogfile_freed_min[%" ROCKSDB_PRIszt "] must be greater than 0",i);
+      result.active_recycling_vlogfile_freed_min[i] = 7;
+    }
+  }
+
+  for (size_t i = 0; i < result.compaction_picker_age_importance.size();
+    ++i) {
+    if (result.compaction_picker_age_importance[i] < 0 || result.compaction_picker_age_importance[i] > 10) {
+      ROCKS_LOG_WARN(db_options.info_log.get(),
+                   "compaction_picker_age_importance[%" ROCKSDB_PRIszt "] must be between 0 and 10.0",i);
+      result.compaction_picker_age_importance[i] = 10.0;
+    }
+  }
+
+  for (size_t i = 0; i < result.vlogfile_max_size.size();
+    ++i) {
+    if (result.vlogfile_max_size[i] <= 0) {
+      ROCKS_LOG_WARN(db_options.info_log.get(),
+                   "vlogfile_max_size[%" ROCKSDB_PRIszt "] must be greater than 0",i);
+      result.vlogfile_max_size[i] = 40 * (1LL << 20);
+    } else if (result.vlogfile_max_size[i] < (100LL << 10)) {
+      ROCKS_LOG_WARN(db_options.info_log.get(),
+                   "vlogfile_max_size[%" ROCKSDB_PRIszt "] is recommended to be greater than to 100KB",i);
+      result.vlogfile_max_size[i] = 40 * (1LL << 20);
+    }
+  }
+
+// If vlogring_activation_level is larger than any other trocks options
+// extend those options to be the same length as vlogring_activation_level
+  if (result.vlogring_activation_level.size() > result.min_indirect_val_size.size()) {
+    while (result.vlogring_activation_level.size() > result.min_indirect_val_size.size())
+      result.min_indirect_val_size.emplace_back(0);
+  }
+  if (result.vlogring_activation_level.size() > result.fraction_remapped_during_compaction.size()) {
+    while (result.vlogring_activation_level.size() > result.fraction_remapped_during_compaction.size())
+      result.fraction_remapped_during_compaction.emplace_back(0.5);
+  }
+  if (result.vlogring_activation_level.size() > result.fraction_remapped_during_active_recycling.size()) {
+    while (result.vlogring_activation_level.size() > result.fraction_remapped_during_active_recycling.size())
+      result.fraction_remapped_during_active_recycling.emplace_back(0.25);
+  }
+  if (result.vlogring_activation_level.size() > result.fragmentation_active_recycling_trigger.size()) {
+    while (result.vlogring_activation_level.size() > result.fragmentation_active_recycling_trigger.size())
+      result.fragmentation_active_recycling_trigger.emplace_back(0.25);
+  }
+  if (result.vlogring_activation_level.size() > result.fragmentation_active_recycling_klaxon.size()) {
+    while (result.vlogring_activation_level.size() > result.fragmentation_active_recycling_klaxon.size())
+      result.fragmentation_active_recycling_klaxon.emplace_back(0.5);
+  }
+  if (result.vlogring_activation_level.size() > result.active_recycling_sst_minct.size()) {
+    while (result.vlogring_activation_level.size() > result.active_recycling_sst_minct.size())
+      result.active_recycling_sst_minct.emplace_back(5);
+  }
+  if (result.vlogring_activation_level.size() > result.active_recycling_sst_maxct.size()) {
+    while (result.vlogring_activation_level.size() > result.active_recycling_sst_maxct.size())
+      result.active_recycling_sst_maxct.emplace_back(15);
+  }
+  if (result.vlogring_activation_level.size() > result.active_recycling_vlogfile_freed_min.size()) {
+    while (result.vlogring_activation_level.size() > result.active_recycling_vlogfile_freed_min.size())
+      result.active_recycling_vlogfile_freed_min.emplace_back(7);
+  }
+  if (result.vlogring_activation_level.size() > result.vlogfile_max_size.size()) {
+    while (result.vlogring_activation_level.size() > result.vlogfile_max_size.size())
+      result.vlogfile_max_size.emplace_back(40 * (1LL << 20));
+  }
+  if (result.vlogring_activation_level.size() > result.compaction_picker_age_importance.size()) {
+    while (result.vlogring_activation_level.size() > result.compaction_picker_age_importance.size())
+      result.compaction_picker_age_importance.emplace_back(10.0);
+  }
+  if (result.vlogring_activation_level.size() > result.ring_compression_style.size()) {
+    while (result.vlogring_activation_level.size() > result.ring_compression_style.size()) {
+      result.ring_compression_style.emplace_back(kZlibCompression);
+    }
+  }
+#endif //INDIRECT_VALUE_SUPPORT
+
   return result;
 }
 

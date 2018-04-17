@@ -1022,6 +1022,47 @@ static const bool FLAGS_table_cache_numshardbits_dummy __attribute__((unused)) =
     RegisterFlagValidator(&FLAGS_table_cache_numshardbits,
                           &ValidateTableCacheNumshardbits);
 
+#ifdef INDIRECT_VALUE_SUPPORT
+DEFINE_bool(allow_trivial_move, false, "Set to allow trivial move.  This does not update the VLogs and is used only to allow tests to run.");
+DEFINE_double(compaction_score_limit_L0, 1000.0, "Compaction limit for L0.  The calculated compaction priority is (level size/desired level size)."
+             "When the host Put()s faster than the system can compact, L0 starts to fill.  Its compaction priority gors."
+             "L0->L1 compactions start to have priority.  L1 grows too, but L0 grows faster.  Eventually the database is upside-down, with L1 larger than the lower levels."
+             "This problem is especially bad when there are indirect values, because the scheme for recycling them requires orderly picking of compactions from the oldest files."
+             "This parameter gives the maximum compaction priority that L0 can have."
+             "Setting a value such as, say, 2.0 will limit L1 to twice its natural size and cause compactions to be scheduled for lower levels."
+             "Default is to leave L0 unlimited");
+DEFINE_int32(vlogring_activation_level, 1, "Activation Level : values coming into this level are written to the ring. Level 1 is the smallest level on disk."
+             "Activation level should be in increasing order.  Values greater than 0 indicate the level; values less than 0 are relative to the END of the ring AT THE TIME THE VLOG IS CREATED, i. e."
+             "a value of -1 means 'the last level'");
+
+DEFINE_uint64(min_indirect_val_size , 0, "Minimum Indirect Value Size : only values this size or larger are written to the Value Log");
+
+DEFINE_double(fraction_remapped_during_compaction, 0.5,"remapping fraction: During compaction, the oldest values will be copied from the tail of the VLog to the head.  This parameter tells how many:"
+             "0.25=just the oldest 1/4 of the values, 0.75=the oldest 3/4");
+
+DEFINE_double(fraction_remapped_during_active_recycling, 0.25,"same idea, but the fraction to remap during active recycling."
+             "Usually smaller, to minimize the amount of fragmentation added"
+             "outside of the files being freed");
+
+DEFINE_double(fragmentation_active_recycling_trigger,0.25,"Fragmentation Trigger : start Active Recycling if the fragmentation in the VLog exceeds this fraction of the VLog size");
+
+DEFINE_double(fragmentation_active_recycling_klaxon,0.5,"Fragmentation Klaxon : apply emergency measures if fragmentation exceeds this");
+
+DEFINE_int32(active_recycling_sst_minct,5,"AR SST min: minimum number of SSTs to include in an active-recycling compaction");
+
+DEFINE_int32(active_recycling_sst_maxct,15,"AR SST max: maximum number of SSTs to include in an active-recycling compaction");
+
+DEFINE_int32(active_recycling_vlogfile_freed_min,7,"AR VLogFile min # freed: minimum number of VLogFiles to free per AR pass");
+
+DEFINE_uint64(vlogfile_max_size,{40 * (1LL < 20)},"Max VLog Filesize : recommended limit in bytes for a Vlog file");
+
+DEFINE_double(compaction_picker_age_importance,10.0,"Age over Size preference: use during compaction picking.  When 0, the age of the VLogFiles referred to by the SST is ignored, and size is the criterion.  The larger this number,"
+             "the more age matters.  A value of 10 make age matter much more than size");
+
+// kZlibCompression=0x2
+DEFINE_int32(ring_compression_style,0x2,"Ring Compression Style: indicates what kind of compression will be applied to the data");
+#endif //INDIRECT_VALUE_SUPPORT
+
 namespace rocksdb {
 
 namespace {

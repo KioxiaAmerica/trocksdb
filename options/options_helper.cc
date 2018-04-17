@@ -163,6 +163,67 @@ ColumnFamilyOptions BuildColumnFamilyOptions(
       mutable_cf_options.allow_trivial_move;
   cf_opts.compaction_score_limit_L0 =
       mutable_cf_options.compaction_score_limit_L0;
+
+  cf_opts.vlogring_activation_level.clear();
+  for (auto value :
+       mutable_cf_options.vlogring_activation_level) {
+    cf_opts.vlogring_activation_level.emplace_back(value);
+  }
+  cf_opts.min_indirect_val_size.clear();
+  for (auto value :
+       mutable_cf_options.min_indirect_val_size) {
+    cf_opts.min_indirect_val_size.emplace_back(value);
+  }
+  cf_opts.fraction_remapped_during_compaction.clear();
+  for (auto value :
+       mutable_cf_options.fraction_remapped_during_compaction) {
+    cf_opts.fraction_remapped_during_compaction.emplace_back(value);
+  }
+  cf_opts.fraction_remapped_during_active_recycling.clear();
+  for (auto value :
+       mutable_cf_options.fraction_remapped_during_active_recycling) {
+    cf_opts.fraction_remapped_during_active_recycling.emplace_back(value);
+  }
+  cf_opts.fragmentation_active_recycling_trigger.clear();
+  for (auto value :
+       mutable_cf_options.fragmentation_active_recycling_trigger) {
+    cf_opts.fragmentation_active_recycling_trigger.emplace_back(value);
+  }
+  cf_opts.fragmentation_active_recycling_klaxon.clear();
+  for (auto value :
+       mutable_cf_options.fragmentation_active_recycling_klaxon) {
+    cf_opts.fragmentation_active_recycling_klaxon.emplace_back(value);
+  }
+  cf_opts.active_recycling_sst_minct.clear();
+  for (auto value :
+       mutable_cf_options.active_recycling_sst_minct) {
+    cf_opts.active_recycling_sst_minct.emplace_back(value);
+  }
+  cf_opts.active_recycling_sst_maxct.clear();
+  for (auto value :
+       mutable_cf_options.active_recycling_sst_maxct) {
+    cf_opts.active_recycling_sst_maxct.emplace_back(value);
+  }
+  cf_opts.active_recycling_vlogfile_freed_min.clear();
+  for (auto value :
+       mutable_cf_options.active_recycling_vlogfile_freed_min) {
+    cf_opts.active_recycling_vlogfile_freed_min.emplace_back(value);
+  }
+  cf_opts.vlogfile_max_size.clear();
+  for (auto value :
+       mutable_cf_options.vlogfile_max_size) {
+    cf_opts.vlogfile_max_size.emplace_back(value);
+  }
+  cf_opts.compaction_picker_age_importance.clear();
+  for (auto value :
+       mutable_cf_options.compaction_picker_age_importance) {
+    cf_opts.compaction_picker_age_importance.emplace_back(value);
+  }
+  cf_opts.ring_compression_style.clear();
+  for (auto value :
+       mutable_cf_options.ring_compression_style) {
+    cf_opts.ring_compression_style.emplace_back(value);
+  }
 #endif
 
   cf_opts.max_bytes_for_level_multiplier_additional.clear();
@@ -385,6 +446,14 @@ bool ParseOptionHelper(char* opt_address, const OptionType& opt_type,
       return ParseEnum<InfoLogLevel>(
           info_log_level_string_map, value,
           reinterpret_cast<InfoLogLevel*>(opt_address));
+#ifdef INDIRECT_VALUE_SUPPORT
+    case OptionType::kVectorDouble:
+      *reinterpret_cast<std::vector<double>*>(opt_address) = ParseVectorDouble(value);
+      break;
+    case OptionType::kVectorInt64:
+      *reinterpret_cast<std::vector<uint64_t>*>(opt_address) = ParseVectorInt64(value);
+      break;
+#endif //INDIRECT_VALUE_SUPPORT
     default:
       return false;
   }
@@ -549,6 +618,16 @@ bool SerializeSingleOptionHelper(const char* opt_address,
       return SerializeEnum<InfoLogLevel>(
           info_log_level_string_map,
           *reinterpret_cast<const InfoLogLevel*>(opt_address), value);
+#ifdef INDIRECT_VALUE_SUPPORT
+    case OptionType::kVectorDouble:
+      return SerializeVectorDouble(
+          *(reinterpret_cast<const std::vector<double>*>(opt_address)), value);
+      break;
+    case OptionType::kVectorInt64:
+      return SerializeVectorInt64(
+          *(reinterpret_cast<const std::vector<uint64_t>*>(opt_address)), value);
+      break;
+#endif //INDIRECT_VALUE_SUPPORT
     default:
       return false;
   }

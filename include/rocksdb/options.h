@@ -297,7 +297,7 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   std::vector<int32_t> vlogring_activation_level = std::vector<int32_t>({0});
 
   //Minimum Indirect Value Size : only values this size or larger are written to the Value Log
-  std::vector<size_t> min_indirect_val_size = std::vector<size_t>({0});
+  std::vector<uint64_t> min_indirect_val_size = std::vector<uint64_t>({(0)}); //1MB
   
   //remapping fraction: During compaction, the oldest values will be copied from the tail of the VLog to the head.  This parameter tells how many:
   // 0.25=just the oldest 1/4 of the values, 0.75=the oldest 3/4
@@ -314,13 +314,13 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   std::vector<double> fragmentation_active_recycling_klaxon = std::vector<double>({0.5});
   
   //AR SST min: minimum number of SSTs to include in an active-recycling compaction
-  std::vector<size_t> active_recycling_sst_minct = std::vector<size_t>({5});
+  std::vector<int32_t> active_recycling_sst_minct = std::vector<int32_t>({5});
   
   //AR SST max: maximum number of SSTs to include in an active-recycling compaction
-  std::vector<size_t> active_recycling_sst_maxct = std::vector<size_t>({15});
+  std::vector<int32_t> active_recycling_sst_maxct = std::vector<int32_t>({15});
   
   //AR VLogFile min # freed: minimum number of VLogFiles to free per AR pass
-  std::vector<size_t> active_recycling_vlogfile_freed_min = std::vector<size_t>({7});
+  std::vector<int32_t> active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
   
   //Max VLog Filesize : recommended limit in bytes for a Vlog file
   std::vector<uint64_t> vlogfile_max_size = std::vector<uint64_t>({40 * (1LL << 20)});  // 40MB

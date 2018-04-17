@@ -326,6 +326,31 @@ int ParseInt(const std::string& value) {
   return num;
 }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+int64_t ParseInt64(const std::string& value) {
+  size_t endchar;
+#ifndef CYGWIN
+  uint64_t num = std::stoi(value.c_str(), &endchar);
+#else
+  char* endptr;
+  uint64_t num = std::strtoul(value.c_str(), &endptr, 0);
+  endchar = endptr - value.c_str();
+#endif
+
+  if (endchar < value.length()) {
+    char c = value[endchar];
+    if (c == 'k' || c == 'K')
+      num <<= 10;
+    else if (c == 'm' || c == 'M')
+      num <<= 20;
+    else if (c == 'g' || c == 'G')
+      num <<= 30;
+  }
+
+  return num;
+}
+#endif //INDIRECT_VALUE_SUPPORT
+
 double ParseDouble(const std::string& value) {
 #ifndef CYGWIN
   return std::stod(value);
@@ -354,6 +379,40 @@ std::vector<int> ParseVectorInt(const std::string& value) {
   return result;
 }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+std::vector<uint64_t> ParseVectorInt64(const std::string& value) {
+  std::vector<uint64_t> result;
+  size_t start = 0;
+  while (start < value.size()) {
+    size_t end = value.find(':', start);
+    if (end == std::string::npos) {
+      result.push_back(ParseInt64(value.substr(start)));
+      break;
+    } else {
+      result.push_back(ParseInt64(value.substr(start, end - start)));
+      start = end + 1;
+    }
+  }
+  return result;
+}
+
+std::vector<double> ParseVectorDouble(const std::string& value) {
+  std::vector<double> result;
+  size_t start = 0;
+  while (start < value.size()) {
+    size_t end = value.find(':', start);
+    if (end == std::string::npos) {
+      result.push_back(ParseDouble(value.substr(start)));
+      break;
+    } else {
+      result.push_back(ParseDouble(value.substr(start, end - start)));
+      start = end + 1;
+    }
+  }
+  return result;
+}
+#endif //INDIRECT_VALUE_SUPPORT
+
 bool SerializeIntVector(const std::vector<int>& vec, std::string* value) {
   *value = "";
   for (size_t i = 0; i < vec.size(); ++i) {
@@ -364,5 +423,29 @@ bool SerializeIntVector(const std::vector<int>& vec, std::string* value) {
   }
   return true;
 }
+
+#ifdef INDIRECT_VALUE_SUPPORT
+bool SerializeVectorInt64(const std::vector<uint64_t>& vec, std::string* value) {
+  *value = "";
+  for (size_t i = 0; i < vec.size(); ++i) {
+    if (i > 0) {
+      *value += ":";
+    }
+    *value += ToString(vec[i]);
+  }
+  return true;
+}
+
+bool SerializeVectorDouble(const std::vector<double>& vec, std::string* value) {
+  *value = "";
+  for (size_t i = 0; i < vec.size(); ++i) {
+    if (i > 0) {
+      *value += ":";
+    }
+    *value += ToString(vec[i]);
+  }
+  return true;
+}
+#endif //INDIRECT_VALUE_SUPPORT
 
 }  // namespace rocksdb

@@ -132,7 +132,7 @@ printf("\n");
     std::string compressiondict;  // scaf need initial dict
 
     // Get the minimum mapped size for the output level we are writing into
-    size_t minindirectlen = compaction->mutable_cf_options()->min_indirect_val_size[outputringno];
+    size_t minindirectlen = (size_t)compaction->mutable_cf_options()->min_indirect_val_size[outputringno];
 
     // For AR, create the list of number of records in each input file.
     filecumreccnts.clear(); if(recyciter!=nullptr)filecumreccnts.resize((const_cast<Compaction *>(compaction))->inputs()->size());
