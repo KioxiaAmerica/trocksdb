@@ -756,6 +756,7 @@ if(WITH_TESTS)
         db/version_builder_test.cc
         db/version_edit_test.cc
         db/version_set_test.cc
+        db/vlog_files_test.cc
         db/wal_manager_test.cc
         db/write_batch_test.cc
         db/write_callback_test.cc

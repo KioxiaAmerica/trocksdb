@@ -2448,12 +2448,18 @@ VersionSet::~VersionSet() {
     // The SST is about to be deleted.  Remove it from any VLog queues it is attached to.
     // We have to do this explicitly rather than in a destructor because FileMetaData blocks get copied & put on queues
     // with no regard for ownership.  Rather than try to enforce no-copy semantics everywhere we root out all the delete calls and put this there
-    if(file->vlog&&file->vlog->cfd_exists())file->vlog->VLogSstDelete(*file);
+    if(file->vlog){
+      file->vlog->AcquireLock();
+        if(file->vlog->cfd_exists())file->vlog->VLogSstDelete(*file);
+      file->vlog->ReleaseLock();
+    }
     // The test for cfd_exists() is to cover a sporadic problem when the database closes while a file is waiting to be deleted.
     // The cfd may be removed before we mark the VLogRings, and then we crash if we try to mark the VLogRings, because that refers to
     // the cfd.  It is safe to ignore the deletion, because when the database is recovered it will simply not contain the file.
     // No such protection is needed lest the VLog be deleted before the cfd, because we use shared_ptrs for the VLog, and the file
     // is holding one; thus the VLog cannot go away early.
+    //
+    // In case the CF is being deleted at the same time we try to remove this file, we use the lock on the VLog to prevent a race.
     //
     // it is possible that files on the added list were never actually added to the rings.  Those files will
     // not have a vlog pointer so we won't try to take them off the rings.

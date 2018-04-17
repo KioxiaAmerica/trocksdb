@@ -500,7 +500,7 @@ private:
     do{
       uint32_t expected_atomic_value = 0;
       if(atomics.writelock.compare_exchange_weak(expected_atomic_value,1,std::memory_order_acq_rel))break;
-    }while(1);  // get lock on file
+    }while(1);  // get lock on ring
   }
 
   // Release the lock
@@ -651,20 +651,6 @@ private:
   std::atomic<uint32_t> writelock;  // 0 normally, 1 when the ring headers are being modified
   const ImmutableDBOptions *immdbopts_;  // options at time of creation
 
-  // Acquire write lock on the VLog.  Won't happen often, and only for a short time
-// scaf  should use timed_mutex, provided that generates PAUSE instr
-  void AcquireLock() {
-    do{
-      uint32_t expected_atomic_value = 0;
-      if(writelock.compare_exchange_weak(expected_atomic_value,1,std::memory_order_acq_rel))break;
-    }while(1);  // get lock on file
-  }
-
-  // Release the lock
-  void ReleaseLock() {
-  writelock.store(0,std::memory_order_release);
-  }
-
 public:
   VLog(
     // the info for the column family
@@ -674,7 +660,7 @@ public:
   std::vector<std::unique_ptr<VLogRing>>& rings() { return rings_; }
   int starting_level_for_ring(int ringno) { return starting_level_for_ring_[ringno]; }
   bool cfd_exists() { return cfd_ != nullptr; }   // id the cfd still valid?
-  void cfd_clear() { cfd_ = nullptr; }
+  void cfd_clear() { AcquireLock(); cfd_ = nullptr; ReleaseLock(); }  // clear CF pointer under lock in case it is being used
 
   // No copying
   VLog(VLog const&) = delete;
@@ -683,6 +669,20 @@ public:
 #if DEBLEVEL&0x400
   ~VLog() { printf("Destroying VLog %p\n",this); }
 #endif
+
+  // Acquire write lock on the VLog.  Won't happen often, and only for a short time
+// scaf  should use timed_mutex, provided that generates PAUSE instr
+  void AcquireLock() {
+    do{
+      uint32_t expected_atomic_value = 0;
+      if(writelock.compare_exchange_weak(expected_atomic_value,1,std::memory_order_acq_rel))break;
+    }while(1);  // get lock on VLog
+  }
+
+  // Release the lock
+  void ReleaseLock() {
+  writelock.store(0,std::memory_order_release);
+  }
 
   // Initialize each ring to make it ready for reading and writing.
   // It would be better to do this when the ring is created, but with the existing interfaces there is
