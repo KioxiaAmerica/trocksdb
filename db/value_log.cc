@@ -1198,9 +1198,10 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
   std::vector<VLogRingRefFileLen> existing_vlog_sizes_for_cf;  // corresponding file sizes
   std::string columnsuffix = "." + kRocksDbVLogFileExt + cfd_->GetName();  // suffix for this CF's vlog files
   for(uint32_t i = 0;i<vlg_filenames.size();++i){
-    if(vlg_filenames[i].size()>columnsuffix.size() && 0==vlg_filenames[i].substr(vlg_filenames[i].size()-columnsuffix.size()).compare(columnsuffix))
+    if(vlg_filenames[i].size()>columnsuffix.size() && 0==vlg_filenames[i].substr(vlg_filenames[i].size()-columnsuffix.size()).compare(columnsuffix)){
       existing_vlog_files_for_cf.emplace_back(vlg_filenames[i]);  // if suffix matches, keep the filename
       existing_vlog_sizes_for_cf.push_back(vlg_filesizes[i]);   // and size
+    }
   }
 
   // For each ring, allocate & initialize the ring, and save the resulting object address
