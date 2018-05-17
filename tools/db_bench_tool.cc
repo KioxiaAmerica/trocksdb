@@ -1037,16 +1037,16 @@ DEFINE_int32(vlogring_activation_level, 1, "Activation Level : values coming int
 
 DEFINE_uint64(min_indirect_val_size , 0, "Minimum Indirect Value Size : only values this size or larger are written to the Value Log");
 
-DEFINE_double(fraction_remapped_during_compaction, 0.5,"remapping fraction: During compaction, the oldest values will be copied from the tail of the VLog to the head.  This parameter tells how many:"
-             "0.25=just the oldest 1/4 of the values, 0.75=the oldest 3/4");
+DEFINE_int32(fraction_remapped_during_compaction, 50,"remapping fraction: During compaction, the oldest values will be copied from the tail of the VLog to the head.  This parameter tells how many:"
+             "25=just the oldest 1/4 of the values, 75=the oldest 3/4");
 
-DEFINE_double(fraction_remapped_during_active_recycling, 0.25,"same idea, but the fraction to remap during active recycling."
+DEFINE_int32(fraction_remapped_during_active_recycling, 25,"same idea, but the fraction to remap during active recycling."
              "Usually smaller, to minimize the amount of fragmentation added"
              "outside of the files being freed");
 
-DEFINE_double(fragmentation_active_recycling_trigger,0.25,"Fragmentation Trigger : start Active Recycling if the fragmentation in the VLog exceeds this fraction of the VLog size");
+DEFINE_int32(fragmentation_active_recycling_trigger,25,"Fragmentation Trigger : start Active Recycling if the fragmentation in the VLog exceeds this fraction of the VLog size");
 
-DEFINE_double(fragmentation_active_recycling_klaxon,0.5,"Fragmentation Klaxon : apply emergency measures if fragmentation exceeds this");
+DEFINE_int32(fragmentation_active_recycling_klaxon,50,"Fragmentation Klaxon : apply emergency measures if fragmentation exceeds this");
 
 DEFINE_int32(active_recycling_sst_minct,5,"AR SST min: minimum number of SSTs to include in an active-recycling compaction");
 
@@ -1056,8 +1056,8 @@ DEFINE_int32(active_recycling_vlogfile_freed_min,7,"AR VLogFile min # freed: min
 
 DEFINE_uint64(vlogfile_max_size,{40 * (1LL < 20)},"Max VLog Filesize : recommended limit in bytes for a Vlog file");
 
-DEFINE_double(compaction_picker_age_importance,10.0,"Age over Size preference: use during compaction picking.  When 0, the age of the VLogFiles referred to by the SST is ignored, and size is the criterion.  The larger this number,"
-             "the more age matters.  A value of 10 make age matter much more than size");
+DEFINE_int32(compaction_picker_age_importance,100,"Age over Size preference: use during compaction picking.  When 0, the age of the VLogFiles referred to by the SST is ignored, and size is the criterion.  The larger this number,"
+             "the more age matters.  A value of 100 makes age matter much more than size");
 
 // kZlibCompression=0x2
 DEFINE_int32(ring_compression_style,0x2,"Ring Compression Style: indicates what kind of compression will be applied to the data");

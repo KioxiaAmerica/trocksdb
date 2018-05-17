@@ -73,3 +73,4 @@ fbcode/
 fbcode
 buckifier/*.pyc
 
+/.gitattributes

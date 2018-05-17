@@ -1038,7 +1038,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
 #ifdef INDIRECT_VALUE_SUPPORT
       // Install the earliest-file-refs that were encountered for the file being closed, and reset that value for the next file
       std::vector<uint64_t> ref0;  // vector of file-refs
-      value_iter->ref0(ref0,false /* include_last */);  // false because we have read 1 key ahead in the iterator
+      value_iter->ref0(ref0,false /* include_last */);  // pick up refs that apply to this file
 #if DEBLEVEL&512
   if(our_ref0[0]!=ref0[0])
     printf("Mismatched ref0\n");
@@ -1115,7 +1115,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
     assert(sub_compact->compaction->compaction_reason() != CompactionReason::kActiveRecycling);  // if AR, we must have matched the keys exactly
     // Install the earliest-file-refs that were encountered for the file being closed, and reset that value for the next file
     std::vector<uint64_t> ref0;  // vector of file-refs
-    value_iter->ref0(ref0, true /* include_last */);  // true to pick up the very last key
+    value_iter->ref0(ref0, true /* include_last */);  // true to pick up the very last key, which will not have been included in the file because we didn't know the file was ending
 #if DEBLEVEL&512
   if(our_ref0[0]!=ref0[0])
     printf("Mismatched ref0\n");

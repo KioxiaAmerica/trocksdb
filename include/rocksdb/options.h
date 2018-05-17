@@ -300,18 +300,18 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   std::vector<uint64_t> min_indirect_val_size = std::vector<uint64_t>({(0)}); //1MB
   
   //remapping fraction: During compaction, the oldest values will be copied from the tail of the VLog to the head.  This parameter tells how many:
-  // 0.25=just the oldest 1/4 of the values, 0.75=the oldest 3/4
-  std::vector<double> fraction_remapped_during_compaction = std::vector<double>({0.5});
+  // 25=just the oldest 1/4 of the values, 75=the oldest 3/4
+  std::vector<int32_t> fraction_remapped_during_compaction = std::vector<int32_t>({50});
   
   //same idea, but the fraction to remap during active recycling.  Usually smaller, to minimize the amount of fragmentation added
   // outside of the files being freed
-  std::vector<double> fraction_remapped_during_active_recycling = std::vector<double>({0.25});
+  std::vector<int32_t> fraction_remapped_during_active_recycling = std::vector<int32_t>({25});
   
   //Fragmentation Trigger : start Active Recycling if the fragmentation in the VLog exceeds this fraction of the VLog size
-  std::vector<double> fragmentation_active_recycling_trigger = std::vector<double>({0.25});
+  std::vector<int32_t> fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
   
   //Fragmentation Klaxon : apply emergency measures if fragmentation exceeds this
-  std::vector<double> fragmentation_active_recycling_klaxon = std::vector<double>({0.5});
+  std::vector<int32_t> fragmentation_active_recycling_klaxon = std::vector<int32_t>({50});
   
   //AR SST min: minimum number of SSTs to include in an active-recycling compaction
   std::vector<int32_t> active_recycling_sst_minct = std::vector<int32_t>({5});
@@ -326,8 +326,8 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   std::vector<uint64_t> vlogfile_max_size = std::vector<uint64_t>({40 * (1LL << 20)});  // 40MB
 
   //Age over Size preference: use during compaction picking.  When 0, the age of the VLogFiles referred to by the SST is ignored, and size is the criterion.  The larger this number,
-  // the more age matters.  A value of 10 make age matter much more than size
-  std::vector<double> compaction_picker_age_importance = std::vector<double>({10.0});
+  // the more age matters.  A value of 100 makes age matter much more than size
+  std::vector<int32_t> compaction_picker_age_importance = std::vector<int32_t>({100});
   
   //Ring Compression Style: indicates what kind of compression will be applied to the data
   std::vector<CompressionType> ring_compression_style = std::vector<CompressionType>({kZlibCompression});

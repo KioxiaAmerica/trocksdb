@@ -447,9 +447,9 @@ bool ParseOptionHelper(char* opt_address, const OptionType& opt_type,
           info_log_level_string_map, value,
           reinterpret_cast<InfoLogLevel*>(opt_address));
 #ifdef INDIRECT_VALUE_SUPPORT
-    case OptionType::kVectorDouble:
-      *reinterpret_cast<std::vector<double>*>(opt_address) = ParseVectorDouble(value);
-      break;
+// obsolete     case OptionType::kVectorDouble:
+// obsolete       *reinterpret_cast<std::vector<double>*>(opt_address) = ParseVectorDouble(value);
+// obsolete       break;
     case OptionType::kVectorInt64:
       *reinterpret_cast<std::vector<uint64_t>*>(opt_address) = ParseVectorInt64(value);
       break;

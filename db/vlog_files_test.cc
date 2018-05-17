@@ -221,6 +221,24 @@ TEST_P(DBVLogTestWithParam, CompactionDeletionTrigger) {
   }
 }
 #endif
+static void ListVLogFileSizes(DBVLogTest *db, std::vector<uint64_t>& vlogfilesizes){
+    // Get the list of file in the DB, cull that down to VLog files
+    std::vector<std::string> filenames;
+    ASSERT_OK(db->env_->GetChildren(db->db_->GetOptions().db_paths.back().path, &filenames));
+    for (size_t i = 0; i < filenames.size(); i++) {
+      uint64_t number;
+      FileType type;
+      if (ParseFileName(filenames[i], &number, &type)) {
+        if (type == kVLogFile) {
+          // vlog file.  Extract the CF id from the file extension
+          size_t dotpos=filenames[i].find_last_of('.');  // find start of extension
+          std::string cfname(filenames[i].substr(dotpos+1+kRocksDbVLogFileExt.size()));
+          uint64_t file_size; db->env_->GetFileSize(db->db_->GetOptions().db_paths.back().path+"/"+filenames[i], &file_size);
+          vlogfilesizes.emplace_back(file_size);
+        }
+      }
+    }
+}
 
 TEST_F(DBVLogTest, VlogFileSizeTest) {
   Options options = CurrentOptions();
@@ -239,14 +257,14 @@ TEST_F(DBVLogTest, VlogFileSizeTest) {
 
   options.vlogring_activation_level = std::vector<int32_t>({0});
   options.min_indirect_val_size = std::vector<size_t>({0});
-  options.fraction_remapped_during_compaction = std::vector<double>({0.5});
-  options.fraction_remapped_during_active_recycling = std::vector<double>({0.25});
-  options.fragmentation_active_recycling_trigger = std::vector<double>({0.25});
-  options.fragmentation_active_recycling_klaxon = std::vector<double>({0.5});
-  options.active_recycling_sst_minct = std::vector<size_t>({5});
-  options.active_recycling_sst_maxct = std::vector<size_t>({15});
-  options.active_recycling_vlogfile_freed_min = std::vector<size_t>({7});
-  options.compaction_picker_age_importance = std::vector<double>({10.0});
+  options.fraction_remapped_during_compaction = std::vector<int32_t>({50});
+  options.fraction_remapped_during_active_recycling = std::vector<int32_t>({25});
+  options.fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
+  options.fragmentation_active_recycling_klaxon = std::vector<int32_t>({50});
+  options.active_recycling_sst_minct = std::vector<int32_t>({5});
+  options.active_recycling_sst_maxct = std::vector<int32_t>({15});
+  options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
+  options.compaction_picker_age_importance = std::vector<int32_t>({100});
   options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
   options.vlogfile_max_size = std::vector<uint64_t>({4LL << 20});  // 4MB
 
@@ -257,7 +275,7 @@ TEST_F(DBVLogTest, VlogFileSizeTest) {
   // Write keys 4MB+multiples of 1MB; Compact them to L1; count files & sizes.
   // # files should be correct, and files should be close to the same size
   for(size_t nkeys = options.vlogfile_max_size[0]/value_size; nkeys<10*options.vlogfile_max_size[0]/value_size; nkeys += (1LL<<20)/value_size){
-printf("%zd\n",nkeys);
+printf("%zd\n",nkeys); break;    // scaf for speedup
     DestroyAndReopen(options);
     // write the kvs
     for(int key = 0;key<nkeys;++key){
@@ -273,23 +291,8 @@ printf("%zd\n",nkeys);
     ASSERT_OK(db_->CompactRange(compact_options, nullptr, nullptr));
     // 1 file in L1, after compaction
     ASSERT_EQ("0,1", FilesPerLevel(0));
-    // Get the list of file in the DB, cull that down to VLog files
-    std::vector<std::string> filenames;
-    ASSERT_OK(env_->GetChildren(db_->GetOptions().db_paths.back().path, &filenames));
     std::vector<uint64_t> vlogfilesizes;  // sizes of all the VLog files
-    for (size_t i = 0; i < filenames.size(); i++) {
-      uint64_t number;
-      FileType type;
-      if (ParseFileName(filenames[i], &number, &type)) {
-        if (type == kVLogFile) {
-          // vlog file.  Extract the CF id from the file extension
-          size_t dotpos=filenames[i].find_last_of('.');  // find start of extension
-          std::string cfname(filenames[i].substr(dotpos+1+kRocksDbVLogFileExt.size()));
-          uint64_t file_size; env_->GetFileSize(db_->GetOptions().db_paths.back().path+"/"+filenames[i], &file_size);
-          vlogfilesizes.emplace_back(file_size);
-        }
-      }
-    }
+    ListVLogFileSizes(this,vlogfilesizes);
     // verify number of files is correct
     uint64_t expfiles = (uint64_t)std::max(std::ceil(vsize/((double)options.vlogfile_max_size[0]*1.25)),std::floor(vsize/((double)options.vlogfile_max_size[0])));
     ASSERT_EQ(expfiles, vlogfilesizes.size());
@@ -445,6 +448,250 @@ for(int32_t k=0;k<10;++k) {
   ASSERT_GT(old_num_files, new_num_files);
 #endif
 }
+
+TEST_F(DBVLogTest, MinIndirectValSizeTest) {
+  Options options = CurrentOptions();
+  options.write_buffer_size = 100 * 1024 * 1024;  // 100MB write buffer: hold all keys
+  options.num_levels = 4;
+  options.level0_file_num_compaction_trigger = 3;
+  options.level0_slowdown_writes_trigger = 5;
+  options.level0_stop_writes_trigger = 11;
+  options.max_background_compactions = 3;
+  options.max_bytes_for_level_base = 100 * (1LL<<20);  // keep level1 big too
+  options.max_bytes_for_level_multiplier = 10;
+
+  const int32_t key_size = 100;
+  const int32_t value_size_incr = 10;  // k+v=16KB
+  const int32_t nkeys = 2000;  // k+v=16KB
+  options.target_file_size_base = 100LL << 20;  // high limit for compaction result, so we don't subcompact
+
+  options.vlogring_activation_level = std::vector<int32_t>({0});
+  options.min_indirect_val_size = std::vector<size_t>({0});
+  options.fraction_remapped_during_compaction = std::vector<int32_t>({50});
+  options.fraction_remapped_during_active_recycling = std::vector<int32_t>({25});
+  options.fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
+  options.fragmentation_active_recycling_klaxon = std::vector<int32_t>({50});
+  options.active_recycling_sst_minct = std::vector<int32_t>({5});
+  options.active_recycling_sst_maxct = std::vector<int32_t>({15});
+  options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
+  options.compaction_picker_age_importance = std::vector<int32_t>({100});
+  options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
+  options.vlogfile_max_size = std::vector<uint64_t>({4LL << 20});  // 4MB
+
+  Random rnd(301);
+  // Key of 100 bytes, kv of 16KB
+  // Set filesize to 4MB
+  // Write keys 4MB+multiples of 1MB; Compact them to L1; count files & sizes.
+  // total # bytes in files should go down as the minimum remapping size goes up
+  for(size_t minsize=0; minsize<nkeys*value_size_incr; minsize+=500){
+printf("%zd\n",minsize); break;  // scaf speedup
+    options.min_indirect_val_size[0]=minsize;
+    DestroyAndReopen(options);
+    // write the kvs
+    int value_size=0;  // we remember the ending value
+    for(int key = 0;key<nkeys;++key){
+      ASSERT_OK(Put(Key(key), RandomString(&rnd, value_size)));
+      value_size += value_size_incr;
+    }
+    // compact them
+    ASSERT_OK(Flush());
+    // Compact them into L1, which will write the VLog files
+    CompactRangeOptions compact_options;
+    compact_options.change_level = true;
+    compact_options.target_level = 1;
+    ASSERT_OK(db_->CompactRange(compact_options, nullptr, nullptr));
+    // 1 file in L1, after compaction
+    ASSERT_EQ("0,1", FilesPerLevel(0));
+    std::vector<uint64_t> vlogfilesizes;  // sizes of all the VLog files
+    ListVLogFileSizes(this,vlogfilesizes);
+    // verify total file size is correct for the keys we remapped
+    int64_t totalsize=0;  // place to build file stats
+    for(size_t i=0;i<vlogfilesizes.size();++i){
+     totalsize += vlogfilesizes[i];
+    }
+    // mapped size = #mapped rcds * average size of rcd
+    int64_t nmappedkeys = nkeys * (value_size - minsize) / value_size;
+    int64_t expmappedsize = nmappedkeys * ((minsize + value_size)+5) / 2;  // 5 for compression header
+    ASSERT_LT(std::abs(expmappedsize-totalsize), 2*value_size);
+  }
+}
+
+TEST_F(DBVLogTest, RemappingFractionTest) {
+  Options options = CurrentOptions();
+  options.write_buffer_size = 100 * 1024 * 1024;  // 100MB write buffer: hold all keys
+  options.num_levels = 4;
+  options.level0_file_num_compaction_trigger = 3;
+  options.level0_slowdown_writes_trigger = 5;
+  options.level0_stop_writes_trigger = 11;
+  options.max_background_compactions = 3;
+  options.max_bytes_for_level_base = 100 * (1LL<<20);  // keep level1 big too
+  options.max_bytes_for_level_multiplier = 10;
+
+  const int32_t key_size = 100;
+  const int32_t value_size = 16384;  // k+v=16KB
+  const int32_t nkeys = 100;  // number of files
+  options.target_file_size_base = 100LL << 20;  // high limit for compaction result, so we don't subcompact
+
+  options.vlogring_activation_level = std::vector<int32_t>({0});
+  options.min_indirect_val_size = std::vector<size_t>({0});
+  options.fraction_remapped_during_compaction = std::vector<int32_t>({50});
+  options.fraction_remapped_during_active_recycling = std::vector<int32_t>({25});
+  options.fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
+  options.fragmentation_active_recycling_klaxon = std::vector<int32_t>({50});
+  options.active_recycling_sst_minct = std::vector<int32_t>({5});
+  options.active_recycling_sst_maxct = std::vector<int32_t>({15});
+  options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
+  options.compaction_picker_age_importance = std::vector<int32_t>({100});
+  options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
+  options.vlogfile_max_size = std::vector<uint64_t>({4LL << 20});  // 4MB
+
+  Random rnd(301);
+  // Key of 100 bytes, kv of 16KB
+  // Set filesize to 4MB
+
+
+  for(int32_t mappct=20; mappct<=40; mappct+= 5){
+    double mapfrac = mappct * 0.01;
+printf("%f\n",mapfrac);  // scaf speedup break;
+    // turn off remapping
+    options.fraction_remapped_during_compaction = std::vector<int32_t>({mappct});
+    DestroyAndReopen(options);
+    // write 100 files in key order, flushing each to give it a VLog file
+    std::string val0string;
+    for(int key = 0;key<nkeys;++key){
+      std::string keystring = Key(key);
+      Slice keyslice = keystring;  // the key we will add
+      std::string valstring = RandomString(&rnd, value_size);
+      if(key==0)val0string = valstring;
+      Slice valslice = valstring;
+      ASSERT_OK(Put(keyslice, valslice));
+      ASSERT_EQ(valslice, Get(Key(key)));
+      // Flush into L0
+      ASSERT_OK(Flush());
+      // Compact into L1, which will write the VLog files.  At this point there is nothing to remap
+      CompactRangeOptions compact_options;
+      compact_options.change_level = true;
+      compact_options.target_level = 1;
+      ASSERT_OK(db_->CompactRange(compact_options, &keyslice, &keyslice));
+    }
+    // Verify 100 SSTs and 100 VLog files
+    ASSERT_EQ("0,100", FilesPerLevel(0));
+    std::vector<uint64_t> vlogfilesizes;  // sizes of all the VLog files
+    ListVLogFileSizes(this,vlogfilesizes);
+    ASSERT_EQ(100, vlogfilesizes.size());
+    // Verify total file size is pretty close to right
+    int64_t totalsize=0;  // place to build file stats
+    for(size_t i=0;i<vlogfilesizes.size();++i){
+     totalsize += vlogfilesizes[i];
+    }
+    ASSERT_GT(1000, std::abs(totalsize-(value_size+5)*nkeys));
+    // set remapping fraction to n
+    // compact n-5% to n+5%
+    CompactRangeOptions remap_options;
+    remap_options.change_level = true;
+    remap_options.target_level = 1;
+    remap_options.bottommost_level_compaction = BottommostLevelCompaction::kForce;
+    ASSERT_OK(db_->CompactRange(remap_options, &Slice(Key((int)(nkeys*(mapfrac-0.05)))), &Slice(Key((int)(nkeys*(mapfrac+0.05))))));
+    // verify that the VLog file total has grown by 5%
+    vlogfilesizes.clear();  // reinit list of files
+    ListVLogFileSizes(this,vlogfilesizes);
+    int64_t newtotalsize=0;  // place to build file stats
+    for(size_t i=0;i<vlogfilesizes.size();++i){
+     newtotalsize += vlogfilesizes[i];
+    }
+    ASSERT_GT(value_size+500, (int64_t)std::abs(newtotalsize-totalsize*1.05));  // not a tight match, but if it works throughout the range it's OK
+  }
+}
+
+
+TEST_F(DBVLogTest, ActiveRecycleTriggerTest) {
+  Options options = CurrentOptions();
+  options.write_buffer_size = 100 * 1024 * 1024;  // 100MB write buffer: hold all keys
+  options.num_levels = 4;
+  options.level0_file_num_compaction_trigger = 3;
+  options.level0_slowdown_writes_trigger = 5;
+  options.level0_stop_writes_trigger = 11;
+  options.max_background_compactions = 3;
+  options.max_bytes_for_level_base = 100 * (1LL<<20);  // keep level1 big too
+  options.max_bytes_for_level_multiplier = 10;
+
+  const int32_t key_size = 100;
+  const int32_t value_size = 16384;  // k+v=16KB
+  const int32_t nkeys = 100;  // number of files
+  options.target_file_size_base = 100LL << 20;  // high limit for compaction result, so we don't subcompact
+
+  options.vlogring_activation_level = std::vector<int32_t>({0});
+  options.min_indirect_val_size = std::vector<size_t>({0});
+  options.fraction_remapped_during_compaction = std::vector<int32_t>({50});
+  options.fraction_remapped_during_active_recycling = std::vector<int32_t>({25});
+  options.fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
+  options.fragmentation_active_recycling_klaxon = std::vector<int32_t>({50});
+  options.active_recycling_sst_minct = std::vector<int32_t>({5});
+  options.active_recycling_sst_maxct = std::vector<int32_t>({15});
+  options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
+  options.compaction_picker_age_importance = std::vector<int32_t>({100});
+  options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
+  options.vlogfile_max_size = std::vector<uint64_t>({4LL << 20});  // 4MB
+
+  Random rnd(301);
+  // Key of 100 bytes, kv of 16KB
+  // Set filesize to 4MB
+
+
+  for(int32_t mappct=20; mappct<=50; mappct+= 5){
+    double mapfrac = mappct * 0.01;
+printf("%f\n",mapfrac);  // scaf speedup break;
+    // turn off remapping
+    options.fraction_remapped_during_compaction = std::vector<int32_t>({mappct});
+    DestroyAndReopen(options);
+    // write 100 files in key order, flushing each to give it a VLog file
+    std::string val0string;
+    for(int key = 0;key<nkeys;++key){
+      std::string keystring = Key(key);
+      Slice keyslice = keystring;  // the key we will add
+      std::string valstring = RandomString(&rnd, value_size);
+      if(key==0)val0string = valstring;
+      Slice valslice = valstring;
+      ASSERT_OK(Put(keyslice, valslice));
+      ASSERT_EQ(valslice, Get(Key(key)));
+      // Flush into L0
+      ASSERT_OK(Flush());
+      // Compact into L1, which will write the VLog files.  At this point there is nothing to remap
+      CompactRangeOptions compact_options;
+      compact_options.change_level = true;
+      compact_options.target_level = 1;
+      ASSERT_OK(db_->CompactRange(compact_options, &keyslice, &keyslice));
+    }
+    // Verify 100 SSTs and 100 VLog files
+    ASSERT_EQ("0,100", FilesPerLevel(0));
+    std::vector<uint64_t> vlogfilesizes;  // sizes of all the VLog files
+    ListVLogFileSizes(this,vlogfilesizes);
+    ASSERT_EQ(100, vlogfilesizes.size());
+    // Verify total file size is pretty close to right
+    int64_t totalsize=0;  // place to build file stats
+    for(size_t i=0;i<vlogfilesizes.size();++i){
+     totalsize += vlogfilesizes[i];
+    }
+    ASSERT_GT(1000, std::abs(totalsize-(value_size+5)*nkeys));
+    // set remapping fraction to n
+    // compact n-5% to n+5%
+    CompactRangeOptions remap_options;
+    remap_options.change_level = true;
+    remap_options.target_level = 1;
+    remap_options.bottommost_level_compaction = BottommostLevelCompaction::kForce;
+    ASSERT_OK(db_->CompactRange(remap_options, &Slice(Key((int)(nkeys*(mapfrac-0.05)))), &Slice(Key((int)(nkeys*(mapfrac+0.05))))));
+    printf("%s\n", FilesPerLevel(0).c_str());  // scaf
+    // verify that the VLog file total has grown by 5%
+    vlogfilesizes.clear();  // reinit list of files
+    ListVLogFileSizes(this,vlogfilesizes);
+    int64_t newtotalsize=0;  // place to build file stats
+    for(size_t i=0;i<vlogfilesizes.size();++i){
+     newtotalsize += vlogfilesizes[i];
+    }
+    ASSERT_GT(value_size+500, (int64_t)std::abs(newtotalsize-totalsize*1.05));  // not a tight match, but if it works throughout the range it's OK
+  }
+}
+
 #if 0
 TEST_F(DBVLogTest, SkipStatsUpdateTest) {
   // This test verify UpdateAccumulatedStats is not on

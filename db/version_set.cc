@@ -1701,7 +1701,7 @@ printf("files by level:"); for (int level = 0; level < num_levels(); level++)pri
 #ifdef INDIRECT_VALUE_SUPPORT
         {
         // see if the current CF has VLogs, and get the scope of the result ring if so
-        int ring; VLogRingRefFileno file0; VLogRingRefFileno nfiles; double age_importance;
+        int ring; VLogRingRefFileno file0; VLogRingRefFileno nfiles; int32_t age_importance;
         GetVLogReshapingParms(level, &ring, &file0, &nfiles, &age_importance);
         if(file0) {
           // if there are rings for this level, include the file numbers that will be freed in the computation of which file to compact

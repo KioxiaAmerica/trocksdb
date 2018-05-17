@@ -236,28 +236,28 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
          i++) {
       ROCKS_LOG_HEADER(
           log, "      Options.fraction_remapped_during_compaction[%" ROCKSDB_PRIszt
-               "]: %f",
+               "]: %d",
           i, fraction_remapped_during_compaction[i]);
     }
     for (size_t i = 0; i < fraction_remapped_during_active_recycling.size();
          i++) {
       ROCKS_LOG_HEADER(
           log, "Options.fraction_remapped_during_active_recycling[%" ROCKSDB_PRIszt
-               "]: %f",
+               "]: %d",
           i, fraction_remapped_during_active_recycling[i]);
     }
     for (size_t i = 0; i < fragmentation_active_recycling_trigger.size();
          i++) {
       ROCKS_LOG_HEADER(
           log, "   Options.fragmentation_active_recycling_trigger[%" ROCKSDB_PRIszt
-               "]: %f",
+               "]: %d",
           i, fragmentation_active_recycling_trigger[i]);
     }
     for (size_t i = 0; i < fragmentation_active_recycling_klaxon.size();
          i++) {
       ROCKS_LOG_HEADER(
           log, "    Options.fragmentation_active_recycling_klaxon[%" ROCKSDB_PRIszt
-               "]: %f",
+               "]: %d",
           i, fragmentation_active_recycling_klaxon[i]);
     }
     for (size_t i = 0; i < active_recycling_sst_minct.size();
@@ -292,7 +292,7 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
          i++) {
       ROCKS_LOG_HEADER(
           log, "         Options.compaction_picker_age_importance[%" ROCKSDB_PRIszt
-               "]: %f",
+               "]: %d",
           i, compaction_picker_age_importance[i]);
     }
     for (size_t i = 0; i < ring_compression_style.size();

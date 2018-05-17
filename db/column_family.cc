@@ -340,37 +340,37 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
 
   for (size_t i = 0; i < result.fraction_remapped_during_compaction.size();
     ++i) {
-    if (result.fraction_remapped_during_compaction[i] < 0 || result.fraction_remapped_during_compaction[i] > 1) {
+    if (result.fraction_remapped_during_compaction[i] < 0 || result.fraction_remapped_during_compaction[i] > 100) {
       ROCKS_LOG_WARN(db_options.info_log.get(),
-                   "fraction_remapped_during_compaction[%" ROCKSDB_PRIszt "] must be between 0 and 1",i);
-      result.fraction_remapped_during_compaction[i] = 0.5;
+                   "fraction_remapped_during_compaction[%" ROCKSDB_PRIszt "] must be between 0 and 100",i);
+      result.fraction_remapped_during_compaction[i] = 50;
     }
   }
 
   for (size_t i = 0; i < result.fraction_remapped_during_active_recycling.size();
     ++i) {
-    if (result.fraction_remapped_during_active_recycling[i] < 0 || result.fraction_remapped_during_active_recycling[i] > 1) {
+    if (result.fraction_remapped_during_active_recycling[i] < 0 || result.fraction_remapped_during_active_recycling[i] > 100) {
       ROCKS_LOG_WARN(db_options.info_log.get(),
-                   "fraction_remapped_during_active_recycling[%" ROCKSDB_PRIszt "] must be between 0 and 1",i);
-      result.fraction_remapped_during_active_recycling[i] = 0.25;
+                   "fraction_remapped_during_active_recycling[%" ROCKSDB_PRIszt "] must be between 0 and 100",i);
+      result.fraction_remapped_during_active_recycling[i] = 25;
     }
   }
 
   for (size_t i = 0; i < result.fragmentation_active_recycling_trigger.size();
     ++i) {
-    if (result.fragmentation_active_recycling_trigger[i] < 0 || result.fragmentation_active_recycling_trigger[i] > 1) {
+    if (result.fragmentation_active_recycling_trigger[i] < 0 || result.fragmentation_active_recycling_trigger[i] > 100) {
       ROCKS_LOG_WARN(db_options.info_log.get(),
-                   "fragmentation_active_recycling_trigger[%" ROCKSDB_PRIszt "] must be between 0 and 1",i);
-      result.fragmentation_active_recycling_trigger[i] = 0.25;
+                   "fragmentation_active_recycling_trigger[%" ROCKSDB_PRIszt "] must be between 0 and 100",i);
+      result.fragmentation_active_recycling_trigger[i] = 25;
     }
   }
 
   for (size_t i = 0; i < result.fragmentation_active_recycling_klaxon.size();
     ++i) {
-    if (result.fragmentation_active_recycling_klaxon[i] < 0 || result.fragmentation_active_recycling_klaxon[i] > 1) {
+    if (result.fragmentation_active_recycling_klaxon[i] < 0 || result.fragmentation_active_recycling_klaxon[i] > 100) {
       ROCKS_LOG_WARN(db_options.info_log.get(),
-                   "fragmentation_active_recycling_klaxon[%" ROCKSDB_PRIszt "] must be between 0 and 1",i);
-      result.fragmentation_active_recycling_klaxon[i] = 0.5;
+                   "fragmentation_active_recycling_klaxon[%" ROCKSDB_PRIszt "] must be between 0 and 100",i);
+      result.fragmentation_active_recycling_klaxon[i] = 50;
     }
   }
 
@@ -424,10 +424,10 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
 
   for (size_t i = 0; i < result.compaction_picker_age_importance.size();
     ++i) {
-    if (result.compaction_picker_age_importance[i] < 0 || result.compaction_picker_age_importance[i] > 10) {
+    if (result.compaction_picker_age_importance[i] < 0 || result.compaction_picker_age_importance[i] > 100) {
       ROCKS_LOG_WARN(db_options.info_log.get(),
-                   "compaction_picker_age_importance[%" ROCKSDB_PRIszt "] must be between 0 and 10.0",i);
-      result.compaction_picker_age_importance[i] = 10.0;
+                   "compaction_picker_age_importance[%" ROCKSDB_PRIszt "] must be between 0 and 100",i);
+      result.compaction_picker_age_importance[i] = 100;
     }
   }
 
@@ -452,19 +452,19 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
   }
   if (result.vlogring_activation_level.size() > result.fraction_remapped_during_compaction.size()) {
     while (result.vlogring_activation_level.size() > result.fraction_remapped_during_compaction.size())
-      result.fraction_remapped_during_compaction.emplace_back(0.5);
+      result.fraction_remapped_during_compaction.emplace_back(50);
   }
   if (result.vlogring_activation_level.size() > result.fraction_remapped_during_active_recycling.size()) {
     while (result.vlogring_activation_level.size() > result.fraction_remapped_during_active_recycling.size())
-      result.fraction_remapped_during_active_recycling.emplace_back(0.25);
+      result.fraction_remapped_during_active_recycling.emplace_back(25);
   }
   if (result.vlogring_activation_level.size() > result.fragmentation_active_recycling_trigger.size()) {
     while (result.vlogring_activation_level.size() > result.fragmentation_active_recycling_trigger.size())
-      result.fragmentation_active_recycling_trigger.emplace_back(0.25);
+      result.fragmentation_active_recycling_trigger.emplace_back(25);
   }
   if (result.vlogring_activation_level.size() > result.fragmentation_active_recycling_klaxon.size()) {
     while (result.vlogring_activation_level.size() > result.fragmentation_active_recycling_klaxon.size())
-      result.fragmentation_active_recycling_klaxon.emplace_back(0.5);
+      result.fragmentation_active_recycling_klaxon.emplace_back(50);
   }
   if (result.vlogring_activation_level.size() > result.active_recycling_sst_minct.size()) {
     while (result.vlogring_activation_level.size() > result.active_recycling_sst_minct.size())
@@ -484,7 +484,7 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
   }
   if (result.vlogring_activation_level.size() > result.compaction_picker_age_importance.size()) {
     while (result.vlogring_activation_level.size() > result.compaction_picker_age_importance.size())
-      result.compaction_picker_age_importance.emplace_back(10.0);
+      result.compaction_picker_age_importance.emplace_back(100);
   }
   if (result.vlogring_activation_level.size() > result.ring_compression_style.size()) {
     while (result.vlogring_activation_level.size() > result.ring_compression_style.size()) {
@@ -1062,7 +1062,7 @@ void ColumnFamilyData::CheckForActiveRecycle(std::vector<CompactionInputFiles>& 
   for(size_t i = vlog_->rings().size();i>0;) {
     --i;
     // See if this ring needs to be recycled: if it is large enough and its fragmentation is high enough
-    if(vlog_info[i].fragfrac<=compoptions.fragmentation_active_recycling_trigger[i])continue;  // scaf check for min # files.  If there is not enough fragmentation, don't AR
+    if(vlog_info[i].fragfrac<=0.01*compoptions.fragmentation_active_recycling_trigger[i])continue;  // scaf check for min # files.  If there is not enough fragmentation, don't AR.  convert pct to frac
     // AR found - fetch the files to be recycled and return them
     compaction_inputs.reserve(compoptions.active_recycling_sst_maxct[i]);  // handle quite a few files at once.  The capacity of the ring tells the max # result SSTs
     vlog_->rings()[i]->VLogRingFindLaggingSsts(compoptions.active_recycling_vlogfile_freed_min[i],compoptions.active_recycling_sst_minct[i],compaction_inputs,lastfileno);  //  find out what to recycle  min 5 vlog files, min 7 SSTs

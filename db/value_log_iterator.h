@@ -93,13 +93,15 @@ public:
   // We initialize the references to high_value for ease in comparison; but when we return to the user we replace
   // high_value by 0 to indicate 'no reference' to that ring
   // Because of the way this is called from the compaction loop, Next() is called to look ahead one key before
-  // closing the output file.  So, ref0_ does not include the last fileref that was returned.  On the very last file, we need to
-  // include that key
+  // closing the output file.  So, ref0_ runs one key behind Valid().  On the very last file, the last call to Next() that
+  // returns invalid will pick up the last key, ensuring no key is lost.  BUT if there is an error, and we have to
+  // close the last file unexpectedly, we need to include the deferred key. 
   void ref0(std::vector<uint64_t>& result, bool include_last) {
     if(!use_indirects_){result = std::vector<uint64_t>(); return; }  // return null value if no indirects
-    if(include_last)  // include the last key only for the last file
+    if(include_last){  // include the last key only for the last file
       if(ref0_[prevringfno.ringno]>prevringfno.fileno)
         ref0_[prevringfno.ringno]=prevringfno.fileno;  // if current > new, switch to new
+    }
     result = ref0_; for(size_t i=0;i<ref0_.size();++i){if(result[i]==high_value)result[i]=0; ref0_[i]=high_value;}
 #if DEBLEVEL&4
 printf("Iterator file info (include_last=%d): ",include_last);

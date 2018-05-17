@@ -113,9 +113,9 @@ printf("Creating iterator for level=%d, earliest_passthrough=",level);
     if(head>tail)head-=tail; else head=0;  // change 'head' to head-tail.  It would be possible for tail to pass head, on an
            // empty ring.  What happens then doesn't matter, but to keep things polite we check for it rather than overflowing the unsigned subtraction.
     earliest_passthrough = (VLogRingRefFileno)(tail + 
-                                                    ((recyciter==nullptr) ? compaction->mutable_cf_options()->fraction_remapped_during_active_recycling
-                                                                          : compaction->mutable_cf_options()->fraction_remapped_during_compaction)[outputringno]
-                                                    * head);  // calc file# before which we remap
+                                                    0.01 * ((recyciter!=nullptr) ? compaction->mutable_cf_options()->fraction_remapped_during_active_recycling
+                                                                                 : compaction->mutable_cf_options()->fraction_remapped_during_compaction)[outputringno]
+                                                    * head);  // calc file# before which we remap.  fraction is expressed as percentage
         // scaf bug this creates one passthrough for all rings during AR, whilst they might have different thresholds
     // For Active Recycling, since the aim is to free old files, we make sure we remap everything in the files we are going to delete.  More than that is a tuning parameter.
     if(recyciter!=nullptr)earliest_passthrough = std::max(earliest_passthrough,compaction->lastfileno()+4);   // AR   scaf constant, which is max # data files per compaction
@@ -404,6 +404,13 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
     // If this table type doesn't support indirects, revert to the standard compaction iterator
     if(!use_indirects_){ c_iter_->Next(); return; }
     // Here indirects are supported.  If we have returned all the keys, set this one as invalid
+  
+    // Include the previous key's file/ring in the current result (because the compaction job calls Next() before closing
+    // the current output file).  We do this even if the current key is invalid, because it is the previous key that we have to
+    // include in the current file
+    if(ref0_[prevringfno.ringno]>prevringfno.fileno)
+      ref0_[prevringfno.ringno]=prevringfno.fileno;  // if current > new, switch to new
+
     if((valid_ = keyno_ < valueclass.size())) {
       // There is another key to return.  Retrieve the key info and parse it
 
@@ -420,11 +427,6 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
 
       size_t keyx = keyno_ ? keylens[keyno_-1] : 0;  // starting position of previous key
       ParseInternalKey(Slice((char *)keys.data()+keyx,keylens[keyno_] - keyx),&ikey_);  // Fill in the parsed result area
-
-      // Include the previous key's file/ring in the current result (because the compaction job calls Next() before closing
-      // the current output file)
-      if(ref0_[prevringfno.ringno]>prevringfno.fileno)
-        ref0_[prevringfno.ringno]=prevringfno.fileno;  // if current > new, switch to new
 
       prevringfno = RingFno{0,rocksdb::high_value};  // set to no indirect ref here
       // Create its info based on its class

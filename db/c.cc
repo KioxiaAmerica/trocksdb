@@ -3146,28 +3146,28 @@ void rocksdb_options_set_min_indirect_val_size(
   }
 }
 void rocksdb_options_set_fraction_remapped_during_compaction(
-    rocksdb_options_t* opt, double* values, size_t num_levels) {
+    rocksdb_options_t* opt, int32_t* values, size_t num_levels) {
   opt->rep.fraction_remapped_during_compaction.resize(num_levels);
   for (size_t i = 0; i < num_levels; ++i) {
     opt->rep.fraction_remapped_during_compaction[i] = values[i];
   }
 }
 void rocksdb_options_set_fraction_remapped_during_active_recycling(
-    rocksdb_options_t* opt, double* values, size_t num_levels) {
+    rocksdb_options_t* opt, int32_t* values, size_t num_levels) {
   opt->rep.fraction_remapped_during_active_recycling.resize(num_levels);
   for (size_t i = 0; i < num_levels; ++i) {
     opt->rep.fraction_remapped_during_active_recycling[i] = values[i];
   }
 }
 void rocksdb_options_set_fragmentation_active_recycling_trigger(
-    rocksdb_options_t* opt, double* values, size_t num_levels) {
+    rocksdb_options_t* opt, int32_t* values, size_t num_levels) {
   opt->rep.fragmentation_active_recycling_trigger.resize(num_levels);
   for (size_t i = 0; i < num_levels; ++i) {
     opt->rep.fragmentation_active_recycling_trigger[i] = values[i];
   }
 }
 void rocksdb_options_set_fragmentation_active_recycling_klaxon(
-    rocksdb_options_t* opt, double* values, size_t num_levels) {
+    rocksdb_options_t* opt, int32_t* values, size_t num_levels) {
   opt->rep.fragmentation_active_recycling_klaxon.resize(num_levels);
   for (size_t i = 0; i < num_levels; ++i) {
     opt->rep.fragmentation_active_recycling_klaxon[i] = values[i];
@@ -3202,7 +3202,7 @@ void rocksdb_options_set_vlogfile_max_size(
   }
 }
 void rocksdb_options_set_compaction_picker_age_importance(
-    rocksdb_options_t* opt, double* values, size_t num_levels) {
+    rocksdb_options_t* opt, int32_t* values, size_t num_levels) {
   opt->rep.compaction_picker_age_importance.resize(num_levels);
   for (size_t i = 0; i < num_levels; ++i) {
     opt->rep.compaction_picker_age_importance[i] = values[i];
