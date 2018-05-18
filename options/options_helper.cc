@@ -447,9 +447,6 @@ bool ParseOptionHelper(char* opt_address, const OptionType& opt_type,
           info_log_level_string_map, value,
           reinterpret_cast<InfoLogLevel*>(opt_address));
 #ifdef INDIRECT_VALUE_SUPPORT
-// obsolete     case OptionType::kVectorDouble:
-// obsolete       *reinterpret_cast<std::vector<double>*>(opt_address) = ParseVectorDouble(value);
-// obsolete       break;
     case OptionType::kVectorInt64:
       *reinterpret_cast<std::vector<uint64_t>*>(opt_address) = ParseVectorInt64(value);
       break;
@@ -619,10 +616,6 @@ bool SerializeSingleOptionHelper(const char* opt_address,
           info_log_level_string_map,
           *reinterpret_cast<const InfoLogLevel*>(opt_address), value);
 #ifdef INDIRECT_VALUE_SUPPORT
-    case OptionType::kVectorDouble:
-      return SerializeVectorDouble(
-          *(reinterpret_cast<const std::vector<double>*>(opt_address)), value);
-      break;
     case OptionType::kVectorInt64:
       return SerializeVectorInt64(
           *(reinterpret_cast<const std::vector<uint64_t>*>(opt_address)), value);

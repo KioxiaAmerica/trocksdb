@@ -325,8 +325,10 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   //Max VLog Filesize : recommended limit in bytes for a Vlog file
   std::vector<uint64_t> vlogfile_max_size = std::vector<uint64_t>({40 * (1LL << 20)});  // 40MB
 
-  //Age over Size preference: use during compaction picking.  When 0, the age of the VLogFiles referred to by the SST is ignored, and size is the criterion.  The larger this number,
-  // the more age matters.  A value of 100 makes age matter much more than size
+  //Age over Size preference: use during compaction picking.  When 0, the age
+  // of the VLogFiles referred to by the SST is ignored, and size is the
+  // criterion.  The larger this number, the more age matters.  A value of 100
+  // makes age matter much more than size
   std::vector<int32_t> compaction_picker_age_importance = std::vector<int32_t>({100});
   
   //Ring Compression Style: indicates what kind of compression will be applied to the data
