@@ -354,6 +354,8 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
        sizeof(std::vector<int32_t>)},
       {offset_of(&ColumnFamilyOptions::active_recycling_vlogfile_freed_min),
        sizeof(std::vector<int32_t>)},
+      {offset_of(&ColumnFamilyOptions::active_recycling_size_trigger),
+       sizeof(std::vector<int64_t>)},
       {offset_of(&ColumnFamilyOptions::vlogfile_max_size),
        sizeof(std::vector<uint64_t>)},
       {offset_of(&ColumnFamilyOptions::compaction_picker_age_importance),

@@ -3194,6 +3194,13 @@ void rocksdb_options_set_active_recycling_vlogfile_freed_min(
     opt->rep.active_recycling_vlogfile_freed_min[i] = values[i];
   }
 }
+void rocksdb_options_set_active_recycling_size_trigger(
+    rocksdb_options_t* opt, int64_t* values, size_t num_levels) {
+  opt->rep.active_recycling_size_trigger.resize(num_levels);
+  for (size_t i = 0; i < num_levels; ++i) {
+    opt->rep.active_recycling_size_trigger[i] = values[i];
+  }
+}
 void rocksdb_options_set_vlogfile_max_size(
     rocksdb_options_t* opt, uint64_t* values, size_t num_levels) {
   opt->rep.vlogfile_max_size.resize(num_levels);

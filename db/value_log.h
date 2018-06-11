@@ -119,8 +119,9 @@ extern CompressionType CompressForVLog(const std::string& raw,  // input to be c
 
 static const std::string kRocksDbVLogFileExt = "vlg";   // extension for vlog files is vlgxxx when xxx is CF name
 static const VLogRingRefFileno high_value = ((VLogRingRefFileno)-1)>>1;  // biggest positive value
-static const float expansion_fraction = 0.25;  // fraction of valid files to leave for expansion when sizing the VLog
+static const float expansion_fraction = (float)0.25;  // fraction of valid files to leave for expansion when sizing the VLog
 static const int expansion_minimum = 10;  // minimum number of expansion files   // scaf 100
+static const float ARdesired_Vlog_files_per_SST = (float)0.20;  // For picking AR, we take another SST as long as we are getting this many VLog files per SST processed
 
 // The deletion deadband is the number of files at the end of the VLog that are protected from deletion.  The problem is that files added to the
 // VLog are unreferenced (and unprotected by earlier references) until the Version has started being created.  If the tail pointer gets to such a file while

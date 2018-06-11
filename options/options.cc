@@ -281,6 +281,13 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
                "]: %d",
           i, active_recycling_vlogfile_freed_min[i]);
     }
+    for (size_t i = 0; i < active_recycling_size_trigger.size();
+         i++) {
+      ROCKS_LOG_HEADER(
+          log, "   Options.active_recycling_size_trigger[%" ROCKSDB_PRIszt
+               "]: %" PRIu64 ,
+          i, active_recycling_size_trigger[i]);
+    }
     for (size_t i = 0; i < vlogfile_max_size.size();
          i++) {
       ROCKS_LOG_HEADER(

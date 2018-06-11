@@ -228,7 +228,7 @@ void VLogRingRestartInfo::Coalesce(const VLogRingRestartInfo& sec,  // the stats
 )
 {
   // merge the byte counts
-  size += sec.size;  frag += sec.frag; fragfrac = (double)frag/std::max((double)size,1.0e10);  // scaf const  don't AR until DB is 10GB
+  size += sec.size;  frag += sec.frag; fragfrac = (double)frag/std::max((double)size,1.0);   // avoid ZDIV
   // set up indexes to use to scan through inputs
   size_t thisx = 0, secx = 0;  // scan pointer within inputs
   // create output area
@@ -1036,8 +1036,8 @@ printf("\n");
 // otherwise we would have to use memory-acquire ordering on reads from the sst chain fields, lest there be a problem with store
 // ordering when another thread is writing to the chains
 void VLogRing::VLogRingFindLaggingSsts(
-  size_t minfreevlogfiles,  // minimum number of files to free up
-  size_t minssts,   // minimum number of SSTs to put into the compaction
+  size_t minfreevlogfiles,  // minimum number of files to free up.  0 is a debugging mode: we stop checking for SSTs as soon as the minimum SST count is reached
+  size_t minssts,   // minimum number of SSTs to put into the compaction.  0 is a debugging mode, stopping SST search
   std::vector<CompactionInputFiles>& laggingssts,  // result: vector of SSTs that should be recycled.  The capacity on entry is the maximum size allowed
   VLogRingRefFileno& lastfile   // result: the last VLog file that is being freed
 ) {
@@ -1066,7 +1066,7 @@ void VLogRing::VLogRingFindLaggingSsts(
 
   // There has to be enough room between the recycling queue pointer and the head to actually allow files to be deleted; otherwise
   // we just grind away trying to recycle but never getting anywhere
-  if(headfile<=atomics.fd_ring_queued_fileno.load(std::memory_order_acquire)+deletion_deadband+minfreevlogfiles)return;
+  if(headfile<=atomics.fd_ring_queued_fileno.load(std::memory_order_acquire)+deletion_deadband+minfreevlogfiles){lastfile = currentfile; return;}
 
   // Loop until we have collected enough references.  Stop if we have run out of files to look at
   while(laggingssts.size()<laggingssts.capacity()) {
@@ -1083,9 +1083,6 @@ void VLogRing::VLogRingFindLaggingSsts(
       // if we have processed all the deletable files, exit.   In fact, stop one file early for safety
       if(currentfile+deletion_deadband>=headfile){ReleaseLock(); break;}  // *** early loop exit, must release lock
 
-      // Tell caller what file we stopped on.  We may have stopped one before, but that's no problem
-      lastfile = currentfile;
-
       // Chase the chain.  If the chain is empty, and we are processing queued_fileno, increment queued_fileno
       size_t slotx = Ringx(*vlogringbase,currentfile);    // get slot number for the file we are working on
       FileMetaData *chainptr = (*vlogringbase)[slotx].queue;  // first SST in chain
@@ -1094,12 +1091,11 @@ void VLogRing::VLogRingFindLaggingSsts(
       if(chainptr!=nullptr && startingnonemptyfile==0)startingnonemptyfile = currentfile;
       bool nonemptychain = chainptr!=nullptr;  // was this chain nonempty?
 
-      for(;chainptr!=nullptr;chainptr=chainptr->ringfwdchain[ringno_]) {
+      for(;chainptr!=nullptr&&laggingssts.size()<laggingssts.capacity();chainptr=chainptr->ringfwdchain[ringno_]) {
         // If the file is not marked as being compacted, copy it to the result area
         if(!chainptr->being_compacted)laggingssts.emplace_back(*chainptr);
-        // If the result area is full, stop chasing
-        if(laggingssts.size()==laggingssts.capacity())break;
       }
+      // at the end of the loop chainptr is null if we were able to all the SSTs for the file
 
     // release lock
     ReleaseLock();
@@ -1112,9 +1108,9 @@ void VLogRing::VLogRingFindLaggingSsts(
     // (1) we have not freed up the minimum # files
     // (2) we have not processed the minimum # SSTs
     // (3) we got all the SST files for the last VLog file, and the ratio of files/SST is acceptable
-    if(  (currentfile-startingnonemptyfile+1<minfreevlogfiles)  // file requirement not satisfied yet
-      || (laggingssts.size()<minssts)      // SST requirement not satisfied
-      || (chainptr==nullptr && (currentfile-startingnonemptyfile+1)>((double)laggingssts.size()*0.15)) ) {  // getting 1 data file for every 3 SSTs   scaf the constant
+    if(  (currentfile-startingnonemptyfile+1<=minfreevlogfiles)  // VLog file minimum requirement not exceeded by the new file
+      || (laggingssts.size()<=minssts)      // SST minimum requirement requirement not exceeded by the new file
+      || (chainptr==nullptr && minssts!=0 && minfreevlogfiles!=0 && (currentfile-startingnonemptyfile+1)>((float)laggingssts.size()*ARdesired_Vlog_files_per_SST)) ) {  // getting enough VLog files for the SSTs we are processing - not if debug
       // The current solution is viable.  Save it so we can revert to it if we don't get anything better
       lastfile = currentfile;  // save the last VLog file being freed, in the result
       viablesstct = laggingssts.size();   // save the corresponding # input files
@@ -1122,7 +1118,7 @@ void VLogRing::VLogRingFindLaggingSsts(
      // (if the result buffer exactly fills up, we will not stick around to see if a run of following empty files would make the
      // solution viable.  That's no great loss.)
 
-    // continue looking if there is more room for results
+    // continue looking if there is more room for results.  If minfreevlogfiles==0 we could stop now, but that's for debug only.  Normally we check up to the max # SSTs to see how many we can take
   }
 
   // if there is a viable solution point saved, revert to it; otherwise use all we collected

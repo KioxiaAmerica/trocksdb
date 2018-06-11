@@ -209,6 +209,11 @@ ColumnFamilyOptions BuildColumnFamilyOptions(
        mutable_cf_options.active_recycling_vlogfile_freed_min) {
     cf_opts.active_recycling_vlogfile_freed_min.emplace_back(value);
   }
+  cf_opts.active_recycling_size_trigger.clear();
+  for (auto value :
+       mutable_cf_options.active_recycling_size_trigger) {
+    cf_opts.active_recycling_size_trigger.emplace_back(value);
+  }
   cf_opts.vlogfile_max_size.clear();
   for (auto value :
        mutable_cf_options.vlogfile_max_size) {

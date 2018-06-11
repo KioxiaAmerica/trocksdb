@@ -307,20 +307,23 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   // outside of the files being freed
   std::vector<int32_t> fraction_remapped_during_active_recycling = std::vector<int32_t>({25});
   
-  //Fragmentation Trigger : start Active Recycling if the fragmentation in the VLog exceeds this fraction of the VLog size
+  //Fragmentation Trigger : start Active Recycling if the fragmentation in the VLog exceeds this fraction of the VLog size (and the size trigger is met)
   std::vector<int32_t> fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
   
   //Fragmentation Klaxon : apply emergency measures if fragmentation exceeds this
   std::vector<int32_t> fragmentation_active_recycling_klaxon = std::vector<int32_t>({50});
   
-  //AR SST min: minimum number of SSTs to include in an active-recycling compaction
+  //AR SST min: minimum number of SSTs to include in an active-recycling compaction  Should be >0 (0 is used for testing)
   std::vector<int32_t> active_recycling_sst_minct = std::vector<int32_t>({5});
   
   //AR SST max: maximum number of SSTs to include in an active-recycling compaction
   std::vector<int32_t> active_recycling_sst_maxct = std::vector<int32_t>({15});
   
-  //AR VLogFile min # freed: minimum number of VLogFiles to free per AR pass
+  //AR VLogFile min # freed: minimum number of VLogFiles to free per AR pass.  Should be >0 (0 is used for testing)
   std::vector<int32_t> active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
+  
+  //Fragmentation Trigger : start Active Recycling if the VLog is at least this big, and the fragmentation trigger is met
+  std::vector<int64_t> active_recycling_size_trigger = std::vector<int64_t>({1LL<<30});  // default 1GB
   
   //Max VLog Filesize : recommended limit in bytes for a Vlog file
   std::vector<uint64_t> vlogfile_max_size = std::vector<uint64_t>({40 * (1LL << 20)});  // 40MB

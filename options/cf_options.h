@@ -165,6 +165,7 @@ struct MutableCFOptions {
         active_recycling_sst_minct(options.active_recycling_sst_minct),
         active_recycling_sst_maxct(options.active_recycling_sst_maxct),
         active_recycling_vlogfile_freed_min(options.active_recycling_vlogfile_freed_min),
+        active_recycling_size_trigger(options.active_recycling_size_trigger),
         vlogfile_max_size(options.vlogfile_max_size),
         compaction_picker_age_importance(options.compaction_picker_age_importance),
         ring_compression_style(options.ring_compression_style),
@@ -210,6 +211,7 @@ struct MutableCFOptions {
         active_recycling_sst_minct(std::vector<int32_t>({0})),
         active_recycling_sst_maxct(std::vector<int32_t>({0})),
         active_recycling_vlogfile_freed_min(std::vector<int32_t>({0})),
+        active_recycling_size_trigger(std::vector<int64_t>({0})),
         vlogfile_max_size(std::vector<uint64_t>({0})),
         compaction_picker_age_importance(std::vector<int32_t>({0})),
     //Ring Compression Style: indicates what kind of compression will be applied to the data
@@ -276,6 +278,7 @@ struct MutableCFOptions {
   std::vector<int32_t> active_recycling_sst_minct;
   std::vector<int32_t> active_recycling_sst_maxct;
   std::vector<int32_t> active_recycling_vlogfile_freed_min;
+  std::vector<int64_t> active_recycling_size_trigger;
   std::vector<uint64_t> vlogfile_max_size;
   std::vector<int32_t> compaction_picker_age_importance;
   std::vector<CompressionType> ring_compression_style;

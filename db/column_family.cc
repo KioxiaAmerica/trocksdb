@@ -413,6 +413,16 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
       }
     }
   }
+
+  for (size_t i = 0; i < result.active_recycling_size_trigger.size();
+    ++i) {
+    if (result.active_recycling_size_trigger[i] < 0) {
+      ROCKS_LOG_WARN(db_options.info_log.get(),
+                   "active_recycling_size_trigger[%" ROCKSDB_PRIszt "] must be nonnegative",i);
+      result.active_recycling_size_trigger[i] = 1LL<<30;
+    }
+  }
+
   for (size_t i = 0; i < result.active_recycling_vlogfile_freed_min.size();
     ++i) {
     if (result.active_recycling_vlogfile_freed_min[i] < 0) {
@@ -477,6 +487,10 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
   if (result.vlogring_activation_level.size() > result.active_recycling_vlogfile_freed_min.size()) {
     while (result.vlogring_activation_level.size() > result.active_recycling_vlogfile_freed_min.size())
       result.active_recycling_vlogfile_freed_min.emplace_back(7);
+  }
+  if (result.vlogring_activation_level.size() > result.active_recycling_size_trigger.size()) {
+    while (result.vlogring_activation_level.size() > result.active_recycling_size_trigger.size())
+      result.active_recycling_size_trigger.emplace_back(1LL<<30);
   }
   if (result.vlogring_activation_level.size() > result.vlogfile_max_size.size()) {
     while (result.vlogring_activation_level.size() > result.vlogfile_max_size.size())
@@ -1062,7 +1076,7 @@ void ColumnFamilyData::CheckForActiveRecycle(std::vector<CompactionInputFiles>& 
   for(size_t i = vlog_->rings().size();i>0;) {
     --i;
     // See if this ring needs to be recycled: if it is large enough and its fragmentation is high enough
-    if(vlog_info[i].fragfrac<=0.01*compoptions.fragmentation_active_recycling_trigger[i])continue;  // scaf check for min # files.  If there is not enough fragmentation, don't AR.  convert pct to frac
+    if(vlog_info[i].size<compoptions.active_recycling_size_trigger[i] || vlog_info[i].fragfrac<=0.01*compoptions.fragmentation_active_recycling_trigger[i])continue;  // scaf check for min # files.  If there is not enough fragmentation, don't AR.  convert pct to frac
     // AR found - fetch the files to be recycled and return them
     compaction_inputs.reserve(compoptions.active_recycling_sst_maxct[i]);  // handle quite a few files at once.  The capacity of the ring tells the max # result SSTs
     vlog_->rings()[i]->VLogRingFindLaggingSsts(compoptions.active_recycling_vlogfile_freed_min[i],compoptions.active_recycling_sst_minct[i],compaction_inputs,lastfileno);  //  find out what to recycle  min 5 vlog files, min 7 SSTs

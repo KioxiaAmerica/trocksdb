@@ -919,6 +919,9 @@ extern ROCKSDB_LIBRARY_API void
 rocksdb_options_set_active_recycling_vlogfile_freed_min(
     rocksdb_options_t*, int32_t* values, size_t num_levels);
 extern ROCKSDB_LIBRARY_API void
+rocksdb_options_set_active_recycling_size_trigger(
+    rocksdb_options_t*, int64_t* values, size_t num_levels);
+extern ROCKSDB_LIBRARY_API void
 rocksdb_options_set_vlogfile_max_size(
     rocksdb_options_t*, uint64_t* values, size_t num_levels);
 extern ROCKSDB_LIBRARY_API void
