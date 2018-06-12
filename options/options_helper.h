@@ -90,7 +90,6 @@ enum class OptionType {
   kAccessHint,
   kInfoLogLevel,
 #ifdef INDIRECT_VALUE_SUPPORT
-  kVectorDouble,
   kVectorInt64,
 #endif //INDIRECT_VALUE_SUPPORT
   kUnknown

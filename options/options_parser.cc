@@ -591,9 +591,6 @@ bool AreEqualOptions(
     case OptionType::kVectorInt64:
       return (*reinterpret_cast<const std::vector<uint64_t>*>(offset1) ==
               *reinterpret_cast<const std::vector<uint64_t>*>(offset2));
-    case OptionType::kVectorDouble:
-      return (*reinterpret_cast<const std::vector<double>*>(offset1) ==
-              *reinterpret_cast<const std::vector<double>*>(offset2));
 #endif //INDIRECT_VALUE_SUPPORT
     default:
       if (type_info.verification == OptionVerificationType::kByName ||
