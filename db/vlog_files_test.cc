@@ -340,7 +340,7 @@ TEST_F(DBVLogTest, VlogFileSizeTest) {
   // Write keys 4MB+multiples of 1MB; Compact them to L1; count files & sizes.
   // # files should be correct, and files should be close to the same size
   for(size_t nkeys = options.vlogfile_max_size[0]/value_size; nkeys<10*options.vlogfile_max_size[0]/value_size; nkeys += (1LL<<20)/value_size){
-printf("%zd\n",nkeys);   // scaf for speedup break; 
+// scaf for speedup printf("%zd\n",nkeys);    break; 
     DestroyAndReopen(options);
     // write the kvs
     for(int key = 0;key<nkeys;++key){
@@ -549,7 +549,7 @@ TEST_F(DBVLogTest, MinIndirectValSizeTest) {
   // Write keys 4MB+multiples of 1MB; Compact them to L1; count files & sizes.
   // total # bytes in files should go down as the minimum remapping size goes up
   for(size_t minsize=0; minsize<nkeys*value_size_incr; minsize+=500){
-printf("%zd\n",minsize); break;  // scaf speedup
+// scaf speedup printf("%zd\n",minsize); break;  
     options.min_indirect_val_size[0]=minsize;
     DestroyAndReopen(options);
     // write the kvs
@@ -709,7 +709,7 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
 
   for(int32_t mappct=20; mappct<=40; mappct+= 5){
     double mapfrac = mappct * 0.01;
-printf("%f\n",mapfrac);   break;  // scaf speedup
+// scaf speedup printf("%f\n",mapfrac);   break;  
     // set remapping fraction to n
     options.fraction_remapped_during_compaction = std::vector<int32_t>({mappct});
     DestroyAndReopen(options);
@@ -799,7 +799,7 @@ void DBVLogTest::SetUpForActiveRecycleTest() {
 
   int32_t mappct=20;
   double mapfrac = mappct * 0.01;
-printf("%f\n",mapfrac);  // scaf speedup break;
+// scaf speedup printf("%f\n",mapfrac);  break;
   // turn off remapping
   options.fraction_remapped_during_compaction = std::vector<int32_t>({mappct});
   options.fragmentation_active_recycling_trigger = std::vector<int32_t>({10});
@@ -843,7 +843,7 @@ printf("%f\n",mapfrac);  // scaf speedup break;
   remap_options.exclusive_manual_compaction = false;
   ASSERT_OK(db_->CompactRange(remap_options, &Slice(Key((int)(nkeys*0.05))), &Slice(Key((int)(nkeys*0.20)))));
   // The user compaction and the AR compaction should both run.
-  printf("%s\n", FilesPerLevel(0).c_str());  // scaf
+  // scaf  printf("%s\n", FilesPerLevel(0).c_str());
 
   NewVersionStorage(6, kCompactionStyleLevel);
   UpdateVersionStorageInfo();
