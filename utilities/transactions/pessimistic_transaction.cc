@@ -197,7 +197,8 @@ Status PessimisticTransaction::Prepare() {
     s = PrepareInternal();
     if (s.ok()) {
       assert(log_number_ != 0);
-      dbimpl_->MarkLogAsContainingPrepSection(log_number_);
+      dbimpl_->logs_with_prep_tracker()->MarkLogAsContainingPrepSection(
+          log_number_);
       txn_state_.store(PREPARED);
     }
   } else if (txn_state_ == LOCKS_STOLEN) {
@@ -284,7 +285,8 @@ Status PessimisticTransaction::Commit() {
     // to determine what prep logs must be kept around,
     // not the prep section heap.
     assert(log_number_ > 0);
-    dbimpl_->MarkLogAsHavingPrepSectionFlushed(log_number_);
+    dbimpl_->logs_with_prep_tracker()->MarkLogAsHavingPrepSectionFlushed(
+        log_number_);
     txn_db_impl_->UnregisterTransaction(this);
 
     Clear();
@@ -307,7 +309,7 @@ Status WriteCommittedTxn::CommitWithoutPrepareInternal() {
   return s;
 }
 
-Status WriteCommittedTxn::CommitBatchInternal(WriteBatch* batch) {
+Status WriteCommittedTxn::CommitBatchInternal(WriteBatch* batch, size_t) {
   Status s = db_->Write(write_options_, batch);
   return s;
 }
@@ -341,7 +343,8 @@ Status PessimisticTransaction::Rollback() {
     if (s.ok()) {
       // we do not need to keep our prepared section around
       assert(log_number_ > 0);
-      dbimpl_->MarkLogAsHavingPrepSectionFlushed(log_number_);
+      dbimpl_->logs_with_prep_tracker()->MarkLogAsHavingPrepSectionFlushed(
+          log_number_);
       Clear();
       txn_state_.store(ROLLEDBACK);
     }
@@ -512,7 +515,7 @@ Status PessimisticTransaction::TryLock(ColumnFamilyHandle* column_family,
     if (tracked_at_seq == kMaxSequenceNumber) {
       // Since we haven't checked a snapshot, we only know this key has not
       // been modified since after we locked it.
-      // Note: when allocate_seq_only_for_data_==false this is less than the
+      // Note: when last_seq_same_as_publish_seq_==false this is less than the
       // latest allocated seq but it is ok since i) this is just a heuristic
       // used only as a hint to avoid actual check for conflicts, ii) this would
       // cause a false positive only if the snapthot is taken right after the

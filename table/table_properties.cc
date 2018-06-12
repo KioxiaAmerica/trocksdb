@@ -90,7 +90,12 @@ std::string TableProperties::ToString(
                  prop_delim, kv_delim);
 
   AppendProperty(result, "data block size", data_size, prop_delim, kv_delim);
-  AppendProperty(result, "index block size", index_size, prop_delim, kv_delim);
+  char index_block_size_str[80];
+  snprintf(index_block_size_str, sizeof(index_block_size_str),
+           "index block size (user-key? %d)",
+           static_cast<int>(index_key_is_user_key));
+  AppendProperty(result, index_block_size_str, index_size, prop_delim,
+                 kv_delim);
   if (index_partitions != 0) {
     AppendProperty(result, "# index partitions", index_partitions, prop_delim,
                    kv_delim);
@@ -106,6 +111,11 @@ std::string TableProperties::ToString(
       result, "filter policy name",
       filter_policy_name.empty() ? std::string("N/A") : filter_policy_name,
       prop_delim, kv_delim);
+
+  AppendProperty(result, "prefix extractor name",
+                 prefix_extractor_name.empty() ? std::string("N/A")
+                                               : prefix_extractor_name,
+                 prop_delim, kv_delim);
 
   AppendProperty(result, "column family ID",
                  column_family_id == rocksdb::TablePropertiesCollectorFactory::
@@ -150,6 +160,7 @@ void TableProperties::Add(const TableProperties& tp) {
   index_size += tp.index_size;
   index_partitions += tp.index_partitions;
   top_level_index_size += tp.top_level_index_size;
+  index_key_is_user_key += tp.index_key_is_user_key;
   filter_size += tp.filter_size;
   raw_key_size += tp.raw_key_size;
   raw_value_size += tp.raw_value_size;
@@ -165,6 +176,8 @@ const std::string TablePropertiesNames::kIndexPartitions =
     "rocksdb.index.partitions";
 const std::string TablePropertiesNames::kTopLevelIndexSize =
     "rocksdb.top-level.index.size";
+const std::string TablePropertiesNames::kIndexKeyIsUserKey =
+    "rocksdb.index.key.is.user.key";
 const std::string TablePropertiesNames::kFilterSize =
     "rocksdb.filter.size";
 const std::string TablePropertiesNames::kRawKeySize =
@@ -215,8 +228,9 @@ Status SeekToPropertiesBlock(InternalIterator* meta_iter, bool* is_found) {
 
 // Seek to the compression dictionary block.
 // Return true if it successfully seeks to that block.
-Status SeekToCompressionDictBlock(InternalIterator* meta_iter, bool* is_found) {
-  return SeekToMetaBlock(meta_iter, kCompressionDictBlock, is_found);
+Status SeekToCompressionDictBlock(InternalIterator* meta_iter, bool* is_found,
+                                  BlockHandle* block_handle) {
+  return SeekToMetaBlock(meta_iter, kCompressionDictBlock, is_found, block_handle);
 }
 
 Status SeekToRangeDelBlock(InternalIterator* meta_iter, bool* is_found,

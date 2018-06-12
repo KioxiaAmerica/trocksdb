@@ -87,6 +87,14 @@ struct CompactionOptionsFIFO {
 
 // Compression options for different compression algorithms like Zlib
 struct CompressionOptions {
+  // RocksDB's generic default compression level. Internally it'll be translated
+  // to the default compression level specific to the library being used (see
+  // comment above `ColumnFamilyOptions::compression`).
+  //
+  // The default value is the max 16-bit int as it'll be written out in OPTIONS
+  // file, which should be portable.
+  const static int kDefaultCompressionLevel = 32767;
+
   int window_bits;
   int level;
   int strategy;
@@ -120,7 +128,7 @@ struct CompressionOptions {
 
   CompressionOptions()
       : window_bits(-14),
-        level(-1),
+        level(kDefaultCompressionLevel),
         strategy(0),
         max_dict_bytes(0),
         zstd_max_train_bytes(0) {}
@@ -253,7 +261,7 @@ struct AdvancedColumnFamilyOptions {
   // if prefix_extractor is set and memtable_prefix_bloom_size_ratio is not 0,
   // create prefix bloom for memtable with the size of
   // write_buffer_size * memtable_prefix_bloom_size_ratio.
-  // If it is larger than 0.25, it is santinized to 0.25.
+  // If it is larger than 0.25, it is sanitized to 0.25.
   //
   // Default: 0 (disable)
   //
@@ -560,7 +568,7 @@ struct AdvancedColumnFamilyOptions {
   // Default: false
   bool paranoid_file_checks = false;
 
-  // In debug mode, RocksDB run consistency checks on the LSM everytime the LSM
+  // In debug mode, RocksDB run consistency checks on the LSM every time the LSM
   // change (Flush, Compaction, AddFile). These checks are disabled in release
   // mode, use this option to enable them in release mode as well.
   // Default: false
@@ -569,6 +577,13 @@ struct AdvancedColumnFamilyOptions {
   // Measure IO stats in compactions and flushes, if true.
   // Default: false
   bool report_bg_io_stats = false;
+
+  // Non-bottom-level files older than TTL will go through the compaction
+  // process. This needs max_open_files to be set to -1.
+  // Enabled only for level compaction for now.
+  //
+  // Default: 0 (disabled)
+  uint64_t ttl = 0;
 
   // Create ColumnFamilyOptions with default values for all fields
   AdvancedColumnFamilyOptions();
