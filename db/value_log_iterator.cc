@@ -153,13 +153,13 @@ printf("\n");
     remappeddatalen = 0;  // number of bytes that were read & rewritten to a new VLog position
     bytesintocompression = 0;  // number of bytes split off to go to VLog
 
-
     // initialize the vectors to reduce later reallocation and copying
     keys.reserve((uint64_t)(std::min(10000000.0,1.2*compaction->max_compaction_bytes()))); diskdata.reserve(50000000);  // scaf size the diskdata better, depending on level
     passthroughrecl.reserve(10000); passthroughdata.reserve(10000*VLogRingRef::sstrefsize);  // reserve space for passthrough data and lengths
     diskrecl.reserve(10000); keylens.reserve(10000); valueclass.reserve(10000);  // scaf const  number of keys in an ordinary compaction
 
     size_t totalsstlen=0;  // total length so far that will be written to the SST
+    size_t bytesresvindiskdata=0;  // total length that we will write to disk.  diskdata contains a mixture of references and actual data
     while(c_iter->Valid() && 
            !(recyciter==nullptr && end != nullptr && pcfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0)) {
       // process this kv.  It is valid and the key is not past the specified ending key
@@ -192,7 +192,6 @@ printf("\n");
       sstvaluelen = val.size();  // if value passes through, its length will go to the SST
       if(IsTypeDirect(c_iter->ikey().type) && recyciter==nullptr && val.size() > minindirectlen ) {  // remap Direct type if length is big enough - but never if AR
         // direct value that should be indirected
-        vclass += vIndirectFirstMap;  // indicate the conversion
         bytesintocompression += val.size();  // count length into compression
         std::string compresseddata;  // place the compressed string will go
         // Compress the data.  This will never fail; if there is an error, we just get uncompressed data
@@ -208,8 +207,9 @@ printf("\n");
         // of compiler/architecture variations.  Instead, we treat everything as bytes.  We put the CRC out littlendian here
         for(int i = 0;i<4;++i){diskdata.push_back((char)crcint); crcint>>=8;}
 
+        vclass += vIndirectFirstMap;  // indicate the conversion.  We always have a value in diskrecl when we set this vclass
         // We have built the compressed/CRCd record.  save its length
-        diskrecl.push_back(diskdata.size());   // write running sum of record lengths, i. e. current total size of diskdata
+        diskrecl.push_back(bytesresvindiskdata += diskdata.size()-ctypeindex);   // write running sum of record lengths, i. e. current total allocated size after we add this record
         sstvaluelen = VLogRingRef::sstrefsize;  // what we write to the SST will be a reference
       } else if(IsTypeIndirect(c_iter->ikey().type)) {  // is indirect ref?
         // value is indirect; does it need to be remapped?
@@ -223,7 +223,6 @@ printf("\n");
             vclass += vHasError;  // indicate that this key now carries error status...
             val = Slice();   // expunge the errant reference.  This will be treated as a passthrough below
             sstvaluelen = 0;  // the value now has 0 length.  Non-erroneous indirects keep their length from the file
-// scaf log it?
           }
         } else {
           // Valid indirect reference.  See if it needs to be remapped: too old, or not in our output ring
@@ -239,57 +238,15 @@ printf("\n");
               sstvaluelen = 0;  // the value now has 0 length.  Non-erroneous indirects keep their length from the file
             }
           } else if(ref.Ringno()!=outputringno || ref.Fileno()<earliest_passthrough) {  // file number is too low to pass through
-            // indirect value being remapped.  Replace val with the data from disk
-            vclass += vIndirectRemapped;  // indicate remapping
-            // read the data of the reference.  We don't decompress it or check CRC; we just pass it on.  We know that
-            // the compression/CRC do not depend on anything outside the actual value
-            reserveatleast(diskdata,ref.Len());  // make sure there is room for the new data
-            char *bufend = (char *)diskdata.data()+diskdata.size();   // address of place to put new data
-            diskdata.resize(diskdata.size()+ref.Len());  // advance end pointer past end of new data
-            // point to the fdring to use for reading indirect values.  Whatever value is current now will be sufficient to translate any indirect that we find
-            // in this compaction; however, the ring may be resized while we are using it, so we have to look out for that.  We could set this at the beginning
-            // and change only on a change of ring, but we don't take the trouble
+            // indirect value being remapped.  Reserve enough space for the data in diskrecl, but move only the reference to diskdata.
+            // When we go to write out the data we will copy it from the VLog.  That way we don't have to buffer up lots of copied values,
+            // which is important if the compaction is very large, as can happen with Active Recycling
+            vclass += vIndirectRemapped;  // indicate remapping     We always have a value in diskrecl when we set this vclass
+            appendtovector(diskdata,val);  // write the reference to the disk-data area
             remappeddatalen += ref.Len();  // add to count of remapped bytes
-#if DELAYPROB
-ProbDelay();
-#endif 
-            std::vector<VLogRingFile> *fdring = current_vlog->rings_[ref.Ringno()]->fd_ring + current_vlog->rings_[ref.Ringno()]->atomics.currentarrayx.load(std::memory_order_acquire);
-#if DELAYPROB
-ProbDelay();
-#endif 
-            // Get the pointer to the file
-            RandomAccessFile *fileptr = (*fdring)[current_vlog->rings_[ref.Ringno()]->Ringx(*fdring,ref.Fileno())].filepointer.get();
-#if DELAYPROB
-ProbDelay();
-#endif 
-            if(fileptr==nullptr){
-              // Retry the above with the new ring.  It's ugly to repeat the code, but this is the price we pay for allowing references to the possibly-changing
-              // ring from outside a lock
-#if DELAYPROB
-ProbDelay();
-#endif 
-              current_vlog->rings_[ref.Ringno()]->AcquireLock();
-                fdring = current_vlog->rings_[ref.Ringno()]->fd_ring + current_vlog->rings_[ref.Ringno()]->atomics.currentarrayx.load(std::memory_order_acquire);
-                fileptr = (*fdring)[current_vlog->rings_[ref.Ringno()]->Ringx(*fdring,ref.Fileno())].filepointer.get();
-              current_vlog->rings_[ref.Ringno()]->ReleaseLock();
-            }
-            if(fileptr!=nullptr && fileptr->Read(ref.Offset(), ref.Len(), &val, bufend).ok()){  // read the data
-              // Here the data was read with no error.  It was probably read straight into the buffer, but in case not, move it there
-              if(bufend!=val.data())memcpy(bufend,val.data(),val.size());
-            } else {
-              if(fileptr==nullptr)ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
-                "During compaction: reference to file %zd in ring %d, but that file is not open",ref.Fileno(),ref.Ringno());
-              else ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
-                "During compaction: error reading indirect reference to file %zd in ring %d",ref.Fileno(),ref.Ringno());  // LOG_ERROR requires constant string
-              // Here there was an error reading from the file.  Report the error, and reset the data to empty
-              if(vclass<vHasError){   // Don't create an error for this key if it carries one already
-                inputerrorstatus.push_back(Status::IOError("error reading indirect reference."));
-                vclass += vHasError;  // indicate that this key now carries error status...
-              }
-              diskdata.resize(diskdata.size()-ref.Len());  // error: just pretend the reference was to an empty string.  Take back the space for the disk record
-            }
-            // move in the record length of the new data
-            diskrecl.push_back(diskdata.size());   // write running sum of record lengths, i. e. current total size of diskdata
+
+            // move in the record length of the reference
+            diskrecl.push_back(bytesresvindiskdata += ref.Len());   // write running sum of record lengths, i. e. current total size of diskdata
           } else {
             // indirect value, passed through (normal case).  Mark it as a passthrough, and install the file number in the
             // reference for the ring so it can contribute to the earliest-ref for this file
@@ -343,11 +300,11 @@ ProbDelay();
     // automatically sorted during compaction.  Perhaps we could merge by level.
 
     // Allocate space in the Value Log and write the values out, and save the information for assigning references
-    outputring->VLogRingWrite(diskdata,diskrecl,compaction->mutable_cf_options()->vlogfile_max_size[outputringno],firstdiskref,fileendoffsets,outputerrorstatus);
+    outputring->VLogRingWrite(current_vlog,diskdata,diskrecl,valueclass,compaction->mutable_cf_options()->vlogfile_max_size[outputringno],firstdiskref,fileendoffsets,outputerrorstatus);
     nextdiskref = firstdiskref;    // remember where we start, and initialize the running pointer to the disk data
 
     // save what we need to return to stats
-    diskdatalen = diskdata.size();  // save # bytes written for stats report
+    diskdatalen = bytesresvindiskdata;  // save # bytes written for stats report
 #if DEBLEVEL&4
 printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.size());
 #endif

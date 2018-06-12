@@ -220,7 +220,7 @@ TEST_P(DBCompactionTestWithParam, CompactionDeletionTrigger) {
   }
 }
 #ifdef INDIRECT_VALUE_SUPPORT
-#if 1  // turn on for long r/w test.  This is the TRocks random-load test
+#if 0  // turn on for long r/w test.  This is the TRocks random-load test
 static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
 TEST_F(DBCompactionTest, IndirectTest) {
   Options options = CurrentOptions();

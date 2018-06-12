@@ -92,10 +92,11 @@ public:
 typedef uint64_t VLogRingRefFileno;
 typedef int64_t VLogRingRefFileOffset;   // signed because negative values are used to indicate error
 typedef uint64_t VLogRingRefFileLen;
+enum valtype : int { vNone=0, vIndirectRemapped=1, vPassthroughDirect=2, vIndirectFirstMap=4, vPassthroughIndirect=8, vHasError=16 };
 
 // routine to split a bunch of records into file-sized pieces.  Used for allocating records to SSTs and values to VLog files.  For SSt allocation,
 // there is extra grandparent information, perhaps
-extern void BreakRecordsIntoFiles(
+extern VLogRingRefFileOffset BreakRecordsIntoFiles(
   std::vector<size_t>& filecumreccnts,  // (result) running total of input records assigned to a file
   std::vector<VLogRingRefFileOffset>& rcdend,  // running total of input record lengths
   int64_t maxfilesize,   // max size of an individual output file
@@ -579,8 +580,10 @@ uint64_t ResizeRingIfNecessary(VLogRingRefFileno tailfile, VLogRingRefFileno hea
 // number of bytes written to each file
 // We housekeep the end-of-VLogRing information
 void VLogRingWrite(
+std::shared_ptr<VLog> current_vlog,  // The vlog this ring belongs to
 std::vector<NoInitChar>& bytes,   // The bytes to be written, jammed together
-std::vector<VLogRingRefFileOffset>& rcdend,  // The running length of all records up to and including this one
+std::vector<VLogRingRefFileOffset>& rcdend,  // The running length on disk of all records up to and including this one
+std::vector<char>& valueclass,  // record type of all records - the ones with diskdata and the others too
 int64_t maxfilesize,   // recommended maximum VLogFile size - may be exceeded up to 25%
 VLogRingRef& firstdataref,   // result: reference to the first value written
 std::vector<VLogRingRefFileOffset>& fileendoffsets,   // result: ending offset of the data written to each file.  The file numbers written are sequential
@@ -645,6 +648,7 @@ friend void DetectVLogDeletions(ColumnFamilyData *, std::vector<VLogRingRestartI
 
 private:
   friend class IndirectIterator;
+  friend class VLogRing;
   std::vector<std::unique_ptr<VLogRing>> rings_;  // the VLogRing objects for this CF
   std::vector<int> starting_level_for_ring_;
   ColumnFamilyData *cfd_;
@@ -653,6 +657,7 @@ private:
   const ImmutableDBOptions *immdbopts_;  // options at time of creation
 
 public:
+
   VLog(
     // the info for the column family
     ColumnFamilyData *cfd

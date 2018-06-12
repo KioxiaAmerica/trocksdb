@@ -87,7 +87,8 @@ extern CompressionType CompressForVLog(const std::string& raw,
 
 // given the running-sum of record-lengths rcdend, and the maximum filesize, break the input into chunks of approximately equal size
 // result is given in filecumreccnts which is the list of record counts per file
-extern void BreakRecordsIntoFiles(
+// explicit result is the size of the largest allocation encountered
+extern VLogRingRefFileOffset BreakRecordsIntoFiles(
   std::vector<size_t>& filecumreccnts,  // (result) running total of input records assigned to a file
   std::vector<VLogRingRefFileOffset>& rcdend,  // running total of input record lengths
   int64_t maxfsize,   // max size of an individual output file
@@ -98,6 +99,7 @@ extern void BreakRecordsIntoFiles(
   const InternalKeyComparator *icmp,  // (optional) comparison function for this CF
   uint64_t maxcompsize  // (optional)  the maximum size of a compaction, including the file being created here and any grandchildren that overlap with it
   ) {
+  VLogRingRefFileOffset maxfilesizecreated = 0;   // will accumulate the largest file size
   filecumreccnts.clear(); filecumreccnts.reserve(32); // clear the result area; reserve more space than we figure to need
   // split the input into file-sized pieces
   // Loop till we have processed all the inputs
@@ -143,7 +145,7 @@ extern void BreakRecordsIntoFiles(
       Slice key0((char *)(*keys).data()+key0x, (*keylens)[firstrcdinfile]-key0x);  // first key in new output file.
       // skip over grandparent files that are entirely before the current output file
       while(grandparentx<(*grandparents).size() && icmp->user_comparator()->Compare((*grandparents)[grandparentx]->largest.user_key(),ExtractUserKey(key0))<0)++grandparentx;  // skip if grandparent all before output
-      // We have collected as many keys as we can, but we must also ensure that when this file is eventually compacted, it doesn't overlap so many brandparent files
+      // We have collected as many keys as we can, but we must also ensure that when this file is eventually compacted, it doesn't overlap so many grandparent files
       // that it creates too large a compaction.  We code this on the assumption that this limit is rarely triggered.
       // We go through the grandparents, accumulating the length of the grandparents that overlap the putative output record.  If all of them can be included in the
       // compaction along with the keys in the output record, we can keep all the keys. (normal case)
@@ -204,8 +206,10 @@ extern void BreakRecordsIntoFiles(
     }
     // rcdx is the index of the last record in the new file
     filecumreccnts.push_back(rcdx+1);  // push cumulative # records in output file
+    maxfilesizecreated=std::max(maxfilesizecreated,rcdend[rcdx]-prevbytes);   // keep track of the largest file created
     prevbytes = rcdend[rcdx];  // update total # bytes written
   }
+  return maxfilesizecreated;
 }
 
 // Convert a filename, which is known to be a valid vlg filename, to the ring and filenumber in this VLog
@@ -521,8 +525,10 @@ ProbDelay();
 // We use release-acquire ordering for the VLogRing file and offset to avoid needing a Mutex in the reader
 // If the circular buffer gets full we have to relocate it, so we use release-acquire
 void VLogRing::VLogRingWrite(
+std::shared_ptr<VLog> current_vlog,  // The vlog this ring belongs to
 std::vector<NoInitChar>& bytes,   // The bytes to be written, jammed together
-std::vector<VLogRingRefFileOffset>& rcdend,  // The running length of all records up to and including this one
+std::vector<VLogRingRefFileOffset>& rcdend,  // The running length on disk of all records up to and including this one
+std::vector<char>& valueclass,  // record type of all records - the ones with diskdata and the others too
 int64_t maxfilesize,   // recommended maximum VLogFile size - may be exceeded up to 25%
 VLogRingRef& firstdataref,   // result: reference to the first value written
 std::vector<VLogRingRefFileOffset>& fileendoffsets,   // result: ending offset of the data written to each file.  The file numbers written are sequential
@@ -547,7 +553,8 @@ std::vector<Status>& resultstatus   // result: place to save error status.  For 
 
   std::vector<size_t> filecumreccnts;  // this will hold the # records in each file
 
-  BreakRecordsIntoFiles(filecumreccnts, rcdend, maxfilesize,   nullptr,nullptr,nullptr,nullptr,0);  // calculate filecumreccnts.  SST grandparent info not used
+  VLogRingRefFileOffset maxallosize = BreakRecordsIntoFiles(filecumreccnts, rcdend, maxfilesize,   nullptr,nullptr,nullptr,nullptr,0);  // calculate filecumreccnts.  SST grandparent info not used
+    // remember the size of the largest allocation
   fileendoffsets.clear(); fileendoffsets.reserve(filecumreccnts.size());  //clear output area and give it the correct size
 
 
@@ -575,7 +582,7 @@ ProbDelay();
     // Allocate file#s for this write.
     VLogRingRefFileno fileno_for_writing = headfile+1;
   
-    // Move the reservation pointer in the file.  Does not have to be atomic with the read, since we have acquired writelock
+    // Move the head pointer in the ring.  This reserves the files we are skipping over for us to use.  Does not have to be atomic with the read, since we have acquired writelock
     atomics.fd_ring_head_fileno.store(headfile+filecumreccnts.size(),std::memory_order_release);
 #if DELAYPROB
 ProbDelay();
@@ -608,24 +615,105 @@ printf("Head pointer set; pointers=%lld %lld\n",atomics.fd_ring_tail_fileno.load
   std::vector<std::string> pathnames;   // the names of the files we create
   std::vector<std::unique_ptr<RandomAccessFile>> filepointers;  // pointers to the files, as random-access
 
-  size_t startofnextfile = 0;  // starting position of the next file.  Starts at beginning, advances by file-length
+// obsolete  size_t startofnextfile = 0;  // starting position of the next file.  Starts at beginning, advances by file-length
 
 #if DEBLEVEL&2
 printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.size(),rcdend.size(), bytes.size());
 #endif
 
   // Loop for each file: create it, reopen as random-access
-  for(uint32_t i=0;i<filecumreccnts.size();++i) {
+
+  // filecumreccnts contains the cumulative record-counts for the files, from which we can recover the number of records in each file.
+  // The data for the records is in diskdata, but it is a mixture of compressed data for new values and references to remapped values.
+  // We traverse the records, copying them to filedata, reading from disk to resolve references.  We use the valueclass vector to
+  // tell which records require reading.  Many of the valueclass entries are for other key types; we skip them.
+  std::vector<NoInitChar> filebuffer(maxallosize);  // this is where we build the records to disk
+  size_t runningvaluex=0;   // index of next valueclass entry to examine
+  size_t runningbytesx=0;   // index of next byte of bytes to be used
+  size_t runningrcdx=0;  // index of next rcdend entry to be used
+
+  for(uint32_t i=0;i<filecumreccnts.size();++i) {   // Loop to create each file
     Status iostatus;  // where we save status from the file I/O
-    size_t lenofthisfile = rcdend[filecumreccnts[i]-1] - startofnextfile;  // total len up through new file, minus starting position
+    int remappingerror = 0;  // set if we get an error remapping a value
+// obsolete    size_t lenofthisfile = rcdend[filecumreccnts[i]-1] - startofnextfile;  // total len up through new file, minus starting position
 
     // Pass aligned buffer when use_direct_io() returns true.   scaf ??? what do we do for direct_io?
+
     // Create filename for the file to write
 // scaf can't we get by with just one pathname?
     pathnames.push_back(VLogFileName(immdbopts_->db_paths,
       VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber(), (uint32_t)immdbopts_->db_paths.size()-1, cfd_->GetName()));
 
-    // Create the file as sequential, and write it out
+    // Buffer up the data for the file.  We copy each file's data to the output area; if the data is being moved from the
+    // VLog for defrag, read it from the VLog into the buffer.  By delaying till now we avoid having to keep all the recycled data in memory.
+    size_t rcdendx = filecumreccnts[i];  // index of last+1 record in the current file
+    size_t filebufferx = 0;  // write pointer into the file buffer
+    for(;runningrcdx<rcdendx;++runningrcdx){
+      // Move the records one by one, reading references from disk
+      // Get the length that will be added to filebuffer
+      size_t valuelen = rcdend[runningrcdx] - (runningrcdx==0?0:rcdend[runningrcdx-1]);  // length allocated in file for this record slot
+      char valuetype;   // this will hold the type of the next record
+      // find the type of the next record, by going through valueclass until we come to the next one
+      while(!((valuetype=valueclass[runningvaluex++])&(vIndirectRemapped|vIndirectFirstMap)));  // skip types without diskdata
+      if(valuetype&vIndirectFirstMap){
+        // Here the data itself is in 'bytes'.  Move it.
+        memcpy((char *)filebuffer.data()+filebufferx,(char *)bytes.data()+runningbytesx,valuelen);
+        runningbytesx += valuelen;  // indicate that we have moved all those bytes out of 'bytes'
+      }else{
+        // The data is indirect, being remapped.  Read it from the Value Log into the filebuffer
+        // We don't decompress it or check CRC; we just pass it on.  We know that
+        // the compression/CRC do not depend on anything outside the actual value
+        VLogRingRef ref((char *)bytes.data()+runningbytesx);   // analyze the reference
+
+        // point to the fdring to use for reading indirect values.  Whatever value is current now will be sufficient to translate any indirect that we find
+        // in this compaction; however, the ring may be resized while we are using it, so we have to look out for that.  We could set this at the beginning
+        // and change only on a change of ring, but we don't take the trouble
+#if DELAYPROB
+ProbDelay();
+#endif 
+        std::vector<VLogRingFile> *fdring = current_vlog->rings_[ref.Ringno()]->fd_ring + current_vlog->rings_[ref.Ringno()]->atomics.currentarrayx.load(std::memory_order_acquire);
+#if DELAYPROB
+ProbDelay();
+#endif 
+        // Get the pointer to the file
+        RandomAccessFile *fileptr = (*fdring)[current_vlog->rings_[ref.Ringno()]->Ringx(*fdring,ref.Fileno())].filepointer.get();
+#if DELAYPROB
+ProbDelay();
+#endif 
+        if(fileptr==nullptr){
+          // Retry the above with the new ring.  It's ugly to repeat the code, but this is the price we pay for allowing references to the possibly-changing
+          // ring from outside a lock
+#if DELAYPROB
+ProbDelay();
+#endif 
+          current_vlog->rings_[ref.Ringno()]->AcquireLock();
+            fdring = current_vlog->rings_[ref.Ringno()]->fd_ring + current_vlog->rings_[ref.Ringno()]->atomics.currentarrayx.load(std::memory_order_acquire);
+            fileptr = (*fdring)[current_vlog->rings_[ref.Ringno()]->Ringx(*fdring,ref.Fileno())].filepointer.get();
+          current_vlog->rings_[ref.Ringno()]->ReleaseLock();
+        }
+
+        // We have found the file, now read the data into filebuffer
+
+        Slice val;  // where we find out what was read
+        if(fileptr!=nullptr && fileptr->Read(ref.Offset(), ref.Len(), &val, (char *)filebuffer.data()+filebufferx).ok()){  // read the data
+          // Here the data was read with no error.  It was probably read straight into the buffer, but in case not, move it there
+          if((char *)filebuffer.data()+filebufferx!=val.data())memcpy((char *)filebuffer.data()+filebufferx,val.data(),val.size());
+        } else {
+          if(fileptr==nullptr)ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+            "During compaction: reference to file %zd in ring %d, but that file is not open",ref.Fileno(),ref.Ringno());
+          else ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+            "During compaction: error reading indirect reference to file %zd in ring %d",ref.Fileno(),ref.Ringno());  // LOG_ERROR requires constant string
+          memset((char *)filebuffer.data()+filebufferx,0,ref.Len());  // error: zero the value
+          remappingerror = 1;  // indicate error remapping the file
+        }
+
+        // Housekeep for next iteration
+        runningbytesx += VLogRingRef::sstrefsize;  // indicate that we have moved the reference out of 'bytes'
+      }
+      filebufferx += valuelen;  // advance the output pointer to the next location to fill
+    }
+
+    // Buffer has been built.  Create the file as sequential, and write it out
     {
       unique_ptr<WritableFile> writable_file;
       iostatus = immdbopts_->env->NewWritableFile(pathnames.back(),&writable_file,envopts_);  // open the file
@@ -638,7 +726,7 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
 #endif
 
       if(iostatus.ok()) {
-        iostatus = writable_file->Append(Slice((char *)bytes.data()+startofnextfile,lenofthisfile));  // write out the data
+        iostatus = writable_file->Append(Slice((char *)filebuffer.data(),filebufferx));  // write out the data
         if(!iostatus.ok()) {
           ROCKS_LOG_ERROR(immdbopts_->info_log,
             "Error writing to VLog file %s",pathnames.back().c_str());
@@ -670,16 +758,18 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
 
     filepointers.push_back(std::move(fp));  // push one fp, even if null, for every file slot
 
-    // if there was an I/O error on the file, return the error, localized to the file by a negative offset in the return area.
+    // File errors take priority over remapping errors.  If there are only remapping errors, create a status for them
+    if(remappingerror && iostatus.ok())iostatus =  Status::Corruption("Errors remapping values during compaction");
+
+    // if there was an I/O error, return the error, localized to the file by a negative offset in the return area.
     // (the offset can never be zero)
-    VLogRingRefFileOffset reportedlen = lenofthisfile;
+    VLogRingRefFileOffset reportedlen = filebufferx;
     if(!iostatus.ok()) {
       resultstatus.push_back(iostatus);  // save the error details
       reportedlen = -reportedlen;  // flag the offending file
     }
 
     fileendoffsets.push_back(reportedlen);
-    startofnextfile += lenofthisfile;  // advance write pointer to position for next file
   }
 
   // Files are written and reopened.  Transfer them to the fd_ring under lock.

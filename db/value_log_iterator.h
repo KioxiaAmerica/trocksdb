@@ -195,7 +195,6 @@ struct RingFno {
   size_t remappeddatalen;  // number of bytes that were read & rewritten to a new VLog position
   size_t bytesintocompression;  // number of bytes split off to go to VLog
 
-enum valtype : int { vNone=0, vIndirectRemapped=1, vPassthroughDirect=2, vIndirectFirstMap=3, vPassthroughIndirect=4, vHasError=8 };
 
 };
 
