@@ -52,6 +52,7 @@ class Status;
 class Slice;
 class VLogRing;
 class VersionStorageInfo;
+class VLog;
 
 // class that can be used to create a vector of chars that doesn't initialize when you resize
 class NoInitChar {
