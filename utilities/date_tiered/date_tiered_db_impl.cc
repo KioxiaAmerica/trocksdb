@@ -32,6 +32,7 @@ DateTieredDBImpl::DateTieredDBImpl(
     : db_(db),
       cf_options_(ColumnFamilyOptions(options)),
       ioptions_(ImmutableCFOptions(options)),
+      moptions_(MutableCFOptions(options)),
       icomp_(cf_options_.comparator),
       ttl_(ttl),
       column_family_interval_(column_family_interval),
@@ -379,8 +380,9 @@ Iterator* DateTieredDBImpl::NewIterator(const ReadOptions& opts) {
   DBImpl* db_impl = reinterpret_cast<DBImpl*>(db_);
 
   auto db_iter = NewArenaWrappedDbIterator(
-      db_impl->GetEnv(), opts, ioptions_, kMaxSequenceNumber,
-      cf_options_.max_sequential_skip_in_iterations, 0);
+      db_impl->GetEnv(), opts, ioptions_, moptions_, kMaxSequenceNumber,
+      cf_options_.max_sequential_skip_in_iterations, 0,
+      nullptr /*read_callback*/);
 
   auto arena = db_iter->GetArena();
   MergeIteratorBuilder builder(&icomp_, arena);

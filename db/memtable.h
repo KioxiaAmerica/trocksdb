@@ -36,11 +36,9 @@ class MemTableIterator;
 class MergeContext;
 class InternalIterator;
 
-struct MemTableOptions {
-  explicit MemTableOptions(
-      const ImmutableCFOptions& ioptions,
-      const MutableCFOptions& mutable_cf_options);
-  size_t write_buffer_size;
+struct ImmutableMemTableOptions {
+  explicit ImmutableMemTableOptions(const ImmutableCFOptions& ioptions,
+                                    const MutableCFOptions& mutable_cf_options);
   size_t arena_block_size;
   uint32_t memtable_prefix_bloom_bits;
   size_t memtable_huge_page_size;
@@ -66,7 +64,7 @@ struct MemTablePostProcessInfo {
 };
 
 // Note:  Many of the methods in this class have comments indicating that
-// external synchromization is required as these methods are not thread-safe.
+// external synchronization is required as these methods are not thread-safe.
 // It is up to higher layers of code to decide how to prevent concurrent
 // invokation of these methods.  This is usually done by acquiring either
 // the db mutex or the single writer thread.
@@ -86,7 +84,7 @@ class MemTable {
     virtual int operator()(const char* prefix_len_key1,
                            const char* prefix_len_key2) const override;
     virtual int operator()(const char* prefix_len_key,
-                           const Slice& key) const override;
+                           const DecodedType& key) const override;
   };
 
   // MemTables are reference counted.  The initial reference count
@@ -169,7 +167,10 @@ class MemTable {
   //
   // REQUIRES: if allow_concurrent = false, external synchronization to prevent
   // simultaneous operations on the same MemTable.
-  void Add(SequenceNumber seq, ValueType type, const Slice& key,
+  //
+  // Returns false if MemTableRepFactory::CanHandleDuplicatedKey() is true and
+  // the <key, seq> already exists.
+  bool Add(SequenceNumber seq, ValueType type, const Slice& key,
            const Slice& value, bool allow_concurrent = false,
            MemTablePostProcessInfo* post_process_info = nullptr);
 
@@ -262,6 +263,18 @@ class MemTable {
     return num_deletes_.load(std::memory_order_relaxed);
   }
 
+  // Dynamically change the memtable's capacity. If set below the current usage,
+  // the next key added will trigger a flush. Can only increase size when
+  // memtable prefix bloom is disabled, since we can't easily allocate more
+  // space.
+  void UpdateWriteBufferSize(size_t new_write_buffer_size) {
+    if (prefix_bloom_ == nullptr ||
+        new_write_buffer_size < write_buffer_size_) {
+      write_buffer_size_.store(new_write_buffer_size,
+                               std::memory_order_relaxed);
+    }
+  }
+
   // Returns the edits area that is needed for flushing the memtable
   VersionEdit* GetEdits() { return &edit_; }
 
@@ -350,7 +363,18 @@ class MemTable {
     return comparator_.comparator;
   }
 
-  const MemTableOptions* GetMemTableOptions() const { return &moptions_; }
+  const ImmutableMemTableOptions* GetImmutableMemTableOptions() const {
+    return &moptions_;
+  }
+
+  uint64_t ApproximateOldestKeyTime() const {
+    return oldest_key_time_.load(std::memory_order_relaxed);
+  }
+
+  // REQUIRES: db_mutex held.
+  void SetID(uint64_t id) { id_ = id; }
+
+  uint64_t GetID() const { return id_; }
 
  private:
   enum FlushStateEnum { FLUSH_NOT_REQUESTED, FLUSH_REQUESTED, FLUSH_SCHEDULED };
@@ -360,7 +384,7 @@ class MemTable {
   friend class MemTableList;
 
   KeyComparator comparator_;
-  const MemTableOptions moptions_;
+  const ImmutableMemTableOptions moptions_;
   int refs_;
   const size_t kArenaBlockSize;
   AllocTracker mem_tracker_;
@@ -373,6 +397,9 @@ class MemTable {
   std::atomic<uint64_t> data_size_;
   std::atomic<uint64_t> num_entries_;
   std::atomic<uint64_t> num_deletes_;
+
+  // Dynamically changeable memtable option
+  std::atomic<size_t> write_buffer_size_;
 
   // These are used to manage memtable flushes to storage
   bool flush_in_progress_; // started the flush
@@ -415,11 +442,19 @@ class MemTable {
   // Insert hints for each prefix.
   std::unordered_map<Slice, void*, SliceHasher> insert_hints_;
 
+  // Timestamp of oldest key
+  std::atomic<uint64_t> oldest_key_time_;
+
+  // Memtable id to track flush.
+  uint64_t id_ = 0;
+
   // Returns a heuristic flush decision
   bool ShouldFlushNow() const;
 
   // Updates flush_state_ using ShouldFlushNow()
   void UpdateFlushState();
+
+  void UpdateOldestKeyTime();
 
   // No copying allowed
   MemTable(const MemTable&);
