@@ -330,10 +330,10 @@ int ParseInt(const std::string& value) {
 int64_t ParseInt64(const std::string& value) {
   size_t endchar;
 #ifndef CYGWIN
-  uint64_t num = std::stoi(value.c_str(), &endchar);
+  int64_t num = std::stoll(value.c_str(), &endchar);
 #else
   char* endptr;
-  uint64_t num = std::strtoul(value.c_str(), &endptr, 0);
+  int64_t num = std::strtoull(value.c_str(), &endptr, 0);
   endchar = endptr - value.c_str();
 #endif
 
