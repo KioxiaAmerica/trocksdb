@@ -29,7 +29,8 @@ class MockedBlockBasedTable : public BlockBasedTable {
 
   virtual CachableEntry<FilterBlockReader> GetFilter(
       FilePrefetchBuffer*, const BlockHandle& filter_blk_handle,
-      const bool /* unused */, bool /* unused */) const override {
+      const bool /* unused */, bool /* unused */, GetContext* /* unused */,
+      const SliceTransform* /* unused */) const override {
     Slice slice = slices[filter_blk_handle.offset()];
     auto obj = new FullFilterBlockReader(
         nullptr, true, BlockContents(slice, false, kNoCompression),
@@ -75,7 +76,8 @@ class PartitionedFilterBlockTest : public testing::Test {
     auto partition_size =
         filter_bits_reader->CalculateSpace(num_keys, &dont_care1, &dont_care2);
     delete filter_bits_reader;
-    return partition_size + table_options_.block_size_deviation;
+    return partition_size +
+               partition_size * table_options_.block_size_deviation / 100;
   }
 
   int last_offset = 10;
@@ -94,8 +96,10 @@ class PartitionedFilterBlockTest : public testing::Test {
       PartitionedIndexBuilder* const p_index_builder) {
     assert(table_options_.block_size_deviation <= 100);
     auto partition_size = static_cast<uint32_t>(
-        table_options_.metadata_block_size *
-        ( 100 - table_options_.block_size_deviation));
+             ((table_options_.metadata_block_size *
+               (100 - table_options_.block_size_deviation)) +
+              99) /
+             100);
     partition_size = std::max(partition_size, static_cast<uint32_t>(1));
     return new PartitionedFilterBlockBuilder(
         nullptr, table_options_.whole_key_filtering,
@@ -107,7 +111,7 @@ class PartitionedFilterBlockTest : public testing::Test {
   std::unique_ptr<MockedBlockBasedTable> table;
 
   PartitionedFilterBlockReader* NewReader(
-      PartitionedFilterBlockBuilder* builder) {
+      PartitionedFilterBlockBuilder* builder, PartitionedIndexBuilder* pib) {
     BlockHandle bh;
     Status status;
     Slice slice;
@@ -117,40 +121,46 @@ class PartitionedFilterBlockTest : public testing::Test {
     } while (status.IsIncomplete());
     const Options options;
     const ImmutableCFOptions ioptions(options);
+    const MutableCFOptions moptions(options);
     const EnvOptions env_options;
     table.reset(new MockedBlockBasedTable(new BlockBasedTable::Rep(
         ioptions, env_options, table_options_, icomp, false)));
     auto reader = new PartitionedFilterBlockReader(
         nullptr, true, BlockContents(slice, false, kNoCompression), nullptr,
-        nullptr, *icomp.user_comparator(), table.get());
+        nullptr, icomp, table.get(), pib->seperator_is_key_plus_seq());
     return reader;
   }
 
   void VerifyReader(PartitionedFilterBlockBuilder* builder,
-                    bool empty = false) {
-    std::unique_ptr<PartitionedFilterBlockReader> reader(NewReader(builder));
+                    PartitionedIndexBuilder* pib, bool empty = false) {
+    std::unique_ptr<PartitionedFilterBlockReader> reader(
+        NewReader(builder, pib));
     // Querying added keys
     const bool no_io = true;
     for (auto key : keys) {
       auto ikey = InternalKey(key, 0, ValueType::kTypeValue);
       const Slice ikey_slice = Slice(*ikey.rep());
-      ASSERT_TRUE(reader->KeyMayMatch(key, kNotValid, !no_io, &ikey_slice));
+      ASSERT_TRUE(
+          reader->KeyMayMatch(key, nullptr, kNotValid, !no_io, &ikey_slice));
     }
     {
       // querying a key twice
       auto ikey = InternalKey(keys[0], 0, ValueType::kTypeValue);
       const Slice ikey_slice = Slice(*ikey.rep());
-      ASSERT_TRUE(reader->KeyMayMatch(keys[0], kNotValid, !no_io, &ikey_slice));
+      ASSERT_TRUE(reader->KeyMayMatch(keys[0], nullptr, kNotValid, !no_io,
+                                      &ikey_slice));
     }
     // querying missing keys
     for (auto key : missing_keys) {
       auto ikey = InternalKey(key, 0, ValueType::kTypeValue);
       const Slice ikey_slice = Slice(*ikey.rep());
       if (empty) {
-        ASSERT_TRUE(reader->KeyMayMatch(key, kNotValid, !no_io, &ikey_slice));
+        ASSERT_TRUE(
+            reader->KeyMayMatch(key, nullptr, kNotValid, !no_io, &ikey_slice));
       } else {
         // assuming a good hash function
-        ASSERT_FALSE(reader->KeyMayMatch(key, kNotValid, !no_io, &ikey_slice));
+        ASSERT_FALSE(
+            reader->KeyMayMatch(key, nullptr, kNotValid, !no_io, &ikey_slice));
       }
     }
   }
@@ -173,7 +183,7 @@ class PartitionedFilterBlockTest : public testing::Test {
     builder->Add(keys[i]);
     CutABlock(pib.get(), keys[i]);
 
-    VerifyReader(builder.get());
+    VerifyReader(builder.get(), pib.get());
     return CountNumOfIndexPartitions(pib.get());
   }
 
@@ -193,7 +203,7 @@ class PartitionedFilterBlockTest : public testing::Test {
     builder->Add(keys[i]);
     CutABlock(pib.get(), keys[i]);
 
-    VerifyReader(builder.get());
+    VerifyReader(builder.get(), pib.get());
   }
 
   void TestBlockPerAllKeys() {
@@ -211,7 +221,7 @@ class PartitionedFilterBlockTest : public testing::Test {
     builder->Add(keys[i]);
     CutABlock(pib.get(), keys[i]);
 
-    VerifyReader(builder.get());
+    VerifyReader(builder.get(), pib.get());
   }
 
   void CutABlock(PartitionedIndexBuilder* builder,
@@ -252,7 +262,7 @@ TEST_F(PartitionedFilterBlockTest, EmptyBuilder) {
   std::unique_ptr<PartitionedIndexBuilder> pib(NewIndexBuilder());
   std::unique_ptr<PartitionedFilterBlockBuilder> builder(NewBuilder(pib.get()));
   const bool empty = true;
-  VerifyReader(builder.get(), empty);
+  VerifyReader(builder.get(), pib.get(), empty);
 }
 
 TEST_F(PartitionedFilterBlockTest, OneBlock) {

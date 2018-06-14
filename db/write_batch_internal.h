@@ -102,7 +102,8 @@ class WriteBatchInternal {
   static Status PutBlobIndex(WriteBatch* batch, uint32_t column_family_id,
                              const Slice& key, const Slice& value);
 
-  static Status MarkEndPrepare(WriteBatch* batch, const Slice& xid);
+  static Status MarkEndPrepare(WriteBatch* batch, const Slice& xid,
+                               const bool write_after_commit = true);
 
   static Status MarkRollback(WriteBatch* batch, const Slice& xid);
 
@@ -116,10 +117,10 @@ class WriteBatchInternal {
   // Set the count for the number of entries in the batch.
   static void SetCount(WriteBatch* batch, int n);
 
-  // Return the seqeunce number for the start of this batch.
+  // Return the sequence number for the start of this batch.
   static SequenceNumber Sequence(const WriteBatch* batch);
 
-  // Store the specified number as the seqeunce number for the start of
+  // Store the specified number as the sequence number for the start of
   // this batch.
   static void SetSequence(WriteBatch* batch, SequenceNumber seq);
 
@@ -136,6 +137,9 @@ class WriteBatchInternal {
   }
 
   static Status SetContents(WriteBatch* batch, const Slice& contents);
+
+  static Status CheckSlicePartsLength(const SliceParts& key,
+                                      const SliceParts& value);
 
   // Inserts batches[i] into memtable, for i in 0..num_batches-1 inclusive.
   //
@@ -164,7 +168,7 @@ class WriteBatchInternal {
                            bool seq_per_batch = false);
 
   // Convenience form of InsertInto when you have only one batch
-  // next_seq returns the seq after last sequnce number used in MemTable insert
+  // next_seq returns the seq after last sequence number used in MemTable insert
   static Status InsertInto(const WriteBatch* batch,
                            ColumnFamilyMemTables* memtables,
                            FlushScheduler* flush_scheduler,
@@ -180,7 +184,8 @@ class WriteBatchInternal {
                            FlushScheduler* flush_scheduler,
                            bool ignore_missing_column_families = false,
                            uint64_t log_number = 0, DB* db = nullptr,
-                           bool concurrent_memtable_writes = false);
+                           bool concurrent_memtable_writes = false,
+                           bool seq_per_batch = false, size_t batch_cnt = 0);
 
   static Status Append(WriteBatch* dst, const WriteBatch* src,
                        const bool WAL_only = false);
@@ -188,6 +193,11 @@ class WriteBatchInternal {
   // Returns the byte size of appending a WriteBatch with ByteSize
   // leftByteSize and a WriteBatch with ByteSize rightByteSize
   static size_t AppendedByteSize(size_t leftByteSize, size_t rightByteSize);
+
+  // This write batch includes the latest state that should be persisted. Such
+  // state meant to be used only during recovery.
+  static void SetAsLastestPersistentState(WriteBatch* b);
+  static bool IsLatestPersistentState(const WriteBatch* b);
 };
 
 // LocalSavePoint is similar to a scope guard

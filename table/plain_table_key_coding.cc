@@ -148,7 +148,7 @@ Status PlainTableKeyEncoder::AppendKey(const Slice& key,
   // For value size as varint32 (up to 5 bytes).
   // If the row is of value type with seqId 0, flush the special flag together
   // in this buffer to safe one file append call, which takes 1 byte.
-  if (parsed_key.sequence == 0 && parsed_key.type == kTypeValue) {
+  if (parsed_key.sequence == 0 && IsTypeValue(parsed_key.type)) {
     Status s =
         file->Append(Slice(key_to_write.data(), key_to_write.size() - 8));
     if (!s.ok()) {
@@ -288,7 +288,7 @@ Status PlainTableKeyDecoder::NextPlainEncodingKey(uint32_t start_offset,
                                                   ParsedInternalKey* parsed_key,
                                                   Slice* internal_key,
                                                   uint32_t* bytes_read,
-                                                  bool* seekable) {
+                                                  bool* /*seekable*/) {
   uint32_t user_key_size = 0;
   Status s;
   if (fixed_user_key_len_ != kPlainTableVariableLength) {

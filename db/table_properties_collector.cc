@@ -12,8 +12,8 @@
 namespace rocksdb {
 
 Status InternalKeyPropertiesCollector::InternalAdd(const Slice& key,
-                                                   const Slice& value,
-                                                   uint64_t file_size) {
+                                                   const Slice& /*value*/,
+                                                   uint64_t /*file_size*/) {
   ParsedInternalKey ikey;
   if (!ParseInternalKey(key, &ikey)) {
     return Status::InvalidArgument("Invalid internal key");
@@ -59,6 +59,7 @@ InternalKeyPropertiesCollector::GetReadableProperties() const {
 
 namespace {
 
+#if 0 // scaf obsolete conflict
 EntryType GetEntryType(ValueType value_type) {
   switch (value_type) {
 #ifdef INDIRECT_VALUE_SUPPORT   // treat indirect value as value for stats purposes
@@ -79,9 +80,10 @@ EntryType GetEntryType(ValueType value_type) {
       return kEntryOther;
   }
 }
+#endif
 
 uint64_t GetUint64Property(const UserCollectedProperties& props,
-                           const std::string property_name,
+                           const std::string& property_name,
                            bool* property_present) {
   auto pos = props.find(property_name);
   if (pos == props.end()) {

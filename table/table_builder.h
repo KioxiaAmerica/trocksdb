@@ -27,16 +27,19 @@ class Status;
 struct TableReaderOptions {
   // @param skip_filters Disables loading/accessing the filter block
   TableReaderOptions(const ImmutableCFOptions& _ioptions,
+                     const SliceTransform* _prefix_extractor,
                      const EnvOptions& _env_options,
                      const InternalKeyComparator& _internal_comparator,
                      bool _skip_filters = false, int _level = -1)
       : ioptions(_ioptions),
+        prefix_extractor(_prefix_extractor),
         env_options(_env_options),
         internal_comparator(_internal_comparator),
         skip_filters(_skip_filters),
         level(_level) {}
 
   const ImmutableCFOptions& ioptions;
+  const SliceTransform* prefix_extractor;
   const EnvOptions& env_options;
   const InternalKeyComparator& internal_comparator;
   // This is only used for BlockBasedTable (reader)
@@ -47,7 +50,7 @@ struct TableReaderOptions {
 
 struct TableBuilderOptions {
   TableBuilderOptions(
-      const ImmutableCFOptions& _ioptions,
+      const ImmutableCFOptions& _ioptions, const MutableCFOptions& _moptions,
       const InternalKeyComparator& _internal_comparator,
       const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
           _int_tbl_prop_collector_factories,
@@ -55,8 +58,9 @@ struct TableBuilderOptions {
       const CompressionOptions& _compression_opts,
       const std::string* _compression_dict, bool _skip_filters,
       const std::string& _column_family_name, int _level,
-      const uint64_t _creation_time = 0)
+      const uint64_t _creation_time = 0, const int64_t _oldest_key_time = 0)
       : ioptions(_ioptions),
+        moptions(_moptions),
         internal_comparator(_internal_comparator),
         int_tbl_prop_collector_factories(_int_tbl_prop_collector_factories),
         compression_type(_compression_type),
@@ -65,8 +69,10 @@ struct TableBuilderOptions {
         skip_filters(_skip_filters),
         column_family_name(_column_family_name),
         level(_level),
-        creation_time(_creation_time) {}
+        creation_time(_creation_time),
+        oldest_key_time(_oldest_key_time) {}
   const ImmutableCFOptions& ioptions;
+  const MutableCFOptions& moptions;
   const InternalKeyComparator& internal_comparator;
   const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
       int_tbl_prop_collector_factories;
@@ -78,6 +84,7 @@ struct TableBuilderOptions {
   const std::string& column_family_name;
   int level; // what level this table/file is on, -1 for "not set, don't know"
   const uint64_t creation_time;
+  const int64_t oldest_key_time;
 };
 
 // TableBuilder provides the interface used to build a Table

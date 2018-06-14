@@ -14,6 +14,7 @@
 #include "db/merge_helper.h"
 #include "db/pinned_iterators_manager.h"
 #include "db/range_del_aggregator.h"
+#include "db/snapshot_checker.h"
 #include "options/cf_options.h"
 #include "rocksdb/compaction_filter.h"
 #ifdef INDIRECT_VALUE_SUPPORT
@@ -21,8 +22,6 @@
 #endif
 
 namespace rocksdb {
-
-class CompactionEventListener;
 
 class CompactionIterator {
  public:
@@ -34,7 +33,7 @@ class CompactionIterator {
         : compaction_(compaction) {}
 
     virtual ~CompactionProxy() = default;
-    virtual int level(size_t compaction_input_level = 0) const {
+    virtual int level(size_t /*compaction_input_level*/ = 0) const {
       return compaction_->level();
     }
     virtual bool KeyNotExistsBeyondOutputLevel(
@@ -51,6 +50,9 @@ class CompactionIterator {
     virtual bool allow_ingest_behind() const {
       return compaction_->immutable_cf_options()->allow_ingest_behind;
     }
+    virtual bool preserve_deletes() const {
+      return compaction_->immutable_cf_options()->preserve_deletes;
+    }
 #ifdef INDIRECT_VALUE_SUPPORT
     virtual CompactionReason compaction_reason() { return const_cast<Compaction*>(compaction_)->compaction_reason(); }
 #endif
@@ -65,25 +67,27 @@ class CompactionIterator {
   CompactionIterator(InternalIterator* input, const Comparator* cmp,
                      MergeHelper* merge_helper, SequenceNumber last_sequence,
                      std::vector<SequenceNumber>* snapshots,
-                     SequenceNumber earliest_write_conflict_snapshot, Env* env,
+                     SequenceNumber earliest_write_conflict_snapshot,
+                     const SnapshotChecker* snapshot_checker, Env* env,
                      bool expect_valid_internal_key,
                      RangeDelAggregator* range_del_agg,
                      const Compaction* compaction = nullptr,
                      const CompactionFilter* compaction_filter = nullptr,
-                     CompactionEventListener* compaction_listener = nullptr,
-                     const std::atomic<bool>* shutting_down = nullptr);
+                     const std::atomic<bool>* shutting_down = nullptr,
+                     const SequenceNumber preserve_deletes_seqnum = 0);
 
   // Constructor with custom CompactionProxy, used for tests.
   CompactionIterator(InternalIterator* input, const Comparator* cmp,
                      MergeHelper* merge_helper, SequenceNumber last_sequence,
                      std::vector<SequenceNumber>* snapshots,
-                     SequenceNumber earliest_write_conflict_snapshot, Env* env,
+                     SequenceNumber earliest_write_conflict_snapshot,
+                     const SnapshotChecker* snapshot_checker, Env* env,
                      bool expect_valid_internal_key,
                      RangeDelAggregator* range_del_agg,
                      std::unique_ptr<CompactionProxy> compaction,
                      const CompactionFilter* compaction_filter = nullptr,
-                     CompactionEventListener* compaction_listener = nullptr,
-                     const std::atomic<bool>* shutting_down = nullptr);
+                     const std::atomic<bool>* shutting_down = nullptr,
+                     const SequenceNumber preserve_deletes_seqnum = 0);
 
   ~CompactionIterator();
 
@@ -120,6 +124,9 @@ class CompactionIterator {
   // compression.
   void PrepareOutput();
 
+  // Invoke compaction filter if needed.
+  void InvokeFilterIfNeeded(bool* need_skip, Slice* skip_until);
+
   // Given a sequence number, return the sequence number of the
   // earliest snapshot that this sequence number is visible in.
   // The snapshots themselves are arranged in ascending order of
@@ -129,20 +136,24 @@ class CompactionIterator {
   inline SequenceNumber findEarliestVisibleSnapshot(
       SequenceNumber in, SequenceNumber* prev_snapshot);
 
+  // Checks whether the currently seen ikey_ is needed for
+  // incremental (differential) snapshot and hence can't be dropped
+  // or seqnum be zero-ed out even if all other conditions for it are met.
+  inline bool ikeyNotNeededForIncrementalSnapshot();
+
   InternalIterator* input_;
   const Comparator* cmp_;
   MergeHelper* merge_helper_;
   const std::vector<SequenceNumber>* snapshots_;
   const SequenceNumber earliest_write_conflict_snapshot_;
+  const SnapshotChecker* const snapshot_checker_;
   Env* env_;
   bool expect_valid_internal_key_;
   RangeDelAggregator* range_del_agg_;
   std::unique_ptr<CompactionProxy> compaction_;
   const CompactionFilter* compaction_filter_;
-#ifndef ROCKSDB_LITE
-  CompactionEventListener* compaction_listener_;
-#endif  // ROCKSDB_LITE
   const std::atomic<bool>* shutting_down_;
+  const SequenceNumber preserve_deletes_seqnum_;
   bool bottommost_level_;
   bool valid_ = false;
   bool visible_at_tip_;
@@ -201,6 +212,10 @@ class CompactionIterator {
   std::vector<int64_t> ring_bytes_refd_;  // for each ring, the total number of bytes referred to in the ring.  This represents all the indirect data going into compaction.  Anything that is not passed through becomes fragmentation
   void CountIndirectRefs(ValueType keytype, Slice& value);
 #endif
+
+  // Used to avoid purging uncommitted values. The application can specify
+  // uncommitted values by providing a SnapshotChecker object.
+  bool current_key_committed_;
 
   bool IsShuttingDown() {
     // This is a best-effort facility, so memory_order_relaxed is sufficient.

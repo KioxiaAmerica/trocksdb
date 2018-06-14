@@ -140,6 +140,29 @@ bool RangeDelAggregator::ShouldDeleteImpl(
   return parsed.sequence < tombstone_map_iter->second.seq_;
 }
 
+bool RangeDelAggregator::IsRangeOverlapped(const Slice& start,
+                                           const Slice& end) {
+  // so far only implemented for non-collapsed mode since file ingestion (only
+  //  client) doesn't use collapsing
+  assert(!collapse_deletions_);
+  if (rep_ == nullptr) {
+    return false;
+  }
+  for (const auto& seqnum_and_tombstone_map : rep_->stripe_map_) {
+    for (const auto& start_key_and_tombstone :
+         seqnum_and_tombstone_map.second.raw_map) {
+      const auto& tombstone = start_key_and_tombstone.second;
+      if (icmp_.user_comparator()->Compare(start, tombstone.end_key_) < 0 &&
+          icmp_.user_comparator()->Compare(tombstone.start_key_, end) <= 0 &&
+          icmp_.user_comparator()->Compare(tombstone.start_key_,
+                                           tombstone.end_key_) < 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 bool RangeDelAggregator::ShouldAddTombstones(
     bool bottommost_level /* = false */) {
   // TODO(andrewkr): can we just open a file and throw it away if it ends up
@@ -172,6 +195,10 @@ Status RangeDelAggregator::AddTombstones(
   input->SeekToFirst();
   bool first_iter = true;
   while (input->Valid()) {
+    // The tombstone map holds slices into the iterator's memory. This assert
+    // ensures pinning the iterator also pins the keys/values.
+    assert(input->IsKeyPinned() && input->IsValuePinned());
+
     if (first_iter) {
       if (rep_ == nullptr) {
         InitRep({upper_bound_});
@@ -511,6 +538,13 @@ bool RangeDelAggregator::IsEmpty() {
     }
   }
   return true;
+}
+
+bool RangeDelAggregator::AddFile(uint64_t file_number) {
+  if (rep_ == nullptr) {
+    return true;
+  }
+  return rep_->added_files_.emplace(file_number).second;
 }
 
 }  // namespace rocksdb

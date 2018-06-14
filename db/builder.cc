@@ -39,7 +39,7 @@ namespace rocksdb {
 class TableFactory;
 
 TableBuilder* NewTableBuilder(
-    const ImmutableCFOptions& ioptions,
+    const ImmutableCFOptions& ioptions, const MutableCFOptions& moptions,
     const InternalKeyComparator& internal_comparator,
     const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
         int_tbl_prop_collector_factories,
@@ -47,15 +47,16 @@ TableBuilder* NewTableBuilder(
     WritableFileWriter* file, const CompressionType compression_type,
     const CompressionOptions& compression_opts, int level,
     const std::string* compression_dict, const bool skip_filters,
-    const uint64_t creation_time) {
+    const uint64_t creation_time, const uint64_t oldest_key_time) {
   assert((column_family_id ==
           TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
          column_family_name.empty());
   return ioptions.table_factory->NewTableBuilder(
-      TableBuilderOptions(ioptions, internal_comparator,
+      TableBuilderOptions(ioptions, moptions, internal_comparator,
                           int_tbl_prop_collector_factories, compression_type,
                           compression_opts, compression_dict, skip_filters,
-                          column_family_name, level, creation_time),
+                          column_family_name, level, creation_time,
+                          oldest_key_time),
       column_family_id, file);
 }
 
@@ -70,12 +71,12 @@ Status BuildTable(
     uint32_t column_family_id, const std::string& column_family_name,
     std::vector<SequenceNumber> snapshots,
     SequenceNumber earliest_write_conflict_snapshot,
-    const CompressionType compression,
+    SnapshotChecker* snapshot_checker, const CompressionType compression,
     const CompressionOptions& compression_opts, bool paranoid_file_checks,
     InternalStats* internal_stats, TableFileCreationReason reason,
     EventLogger* event_logger, int job_id, const Env::IOPriority io_priority,
-    TableProperties* table_properties, int level,
-    const uint64_t creation_time) {
+    TableProperties* table_properties, int level, const uint64_t creation_time,
+    const uint64_t oldest_key_time, Env::WriteLifeTimeHint write_hint) {
   assert((column_family_id ==
           TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
          column_family_name.empty());
@@ -92,7 +93,7 @@ Status BuildTable(
     return s;
   }
 
-  std::string fname = TableFileName(ioptions.db_paths, meta->fd.GetNumber(),
+  std::string fname = TableFileName(ioptions.cf_paths, meta->fd.GetNumber(),
                                     meta->fd.GetPathId());
 #ifndef ROCKSDB_LITE
   EventHelpers::NotifyTableFileCreationStarted(
@@ -117,25 +118,27 @@ Status BuildTable(
         return s;
       }
       file->SetIOPriority(io_priority);
+      file->SetWriteLifeTimeHint(write_hint);
 
       file_writer.reset(new WritableFileWriter(std::move(file), env_options,
                                                ioptions.statistics));
-
       builder = NewTableBuilder(
-          ioptions, internal_comparator, int_tbl_prop_collector_factories,
-          column_family_id, column_family_name, file_writer.get(), compression,
-          compression_opts, level, nullptr /* compression_dict */,
-          false /* skip_filters */, creation_time);
+          ioptions, mutable_cf_options, internal_comparator,
+          int_tbl_prop_collector_factories, column_family_id,
+          column_family_name, file_writer.get(), compression, compression_opts,
+          level, nullptr /* compression_dict */, false /* skip_filters */,
+          creation_time, oldest_key_time);
     }
 
     MergeHelper merge(env, internal_comparator.user_comparator(),
                       ioptions.merge_operator, nullptr, ioptions.info_log,
                       true /* internal key corruption is not ok */,
-                      snapshots.empty() ? 0 : snapshots.back());
+                      snapshots.empty() ? 0 : snapshots.back(),
+                      snapshot_checker);
 
     CompactionIterator c_iter(
         iter, internal_comparator.user_comparator(), &merge, kMaxSequenceNumber,
-        &snapshots, earliest_write_conflict_snapshot, env,
+        &snapshots, earliest_write_conflict_snapshot, snapshot_checker, env,
         true /* internal key corruption is not ok */, range_del_agg.get());
     c_iter.SeekToFirst();
     for (; c_iter.Valid(); c_iter.Next()) {
@@ -194,7 +197,8 @@ Status BuildTable(
       // to cache it here for further user reads
       std::unique_ptr<InternalIterator> it(table_cache->NewIterator(
           ReadOptions(), env_options, internal_comparator, meta->fd,
-          nullptr /* range_del_agg */, nullptr,
+          nullptr /* range_del_agg */,
+          mutable_cf_options.prefix_extractor.get(), nullptr,
           (internal_stats == nullptr) ? nullptr
                                       : internal_stats->GetFileReadHist(0),
           false /* for_compaction */, nullptr /* arena */,

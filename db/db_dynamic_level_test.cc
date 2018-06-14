@@ -194,7 +194,7 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBase2) {
   // Hold compaction jobs to make sure
   rocksdb::SyncPoint::GetInstance()->SetCallBack(
       "CompactionJob::Run():Start",
-      [&](void* arg) { env_->SleepForMicroseconds(100000); });
+      [&](void* /*arg*/) { env_->SleepForMicroseconds(100000); });
   rocksdb::SyncPoint::GetInstance()->EnableProcessing();
   ASSERT_OK(dbfull()->SetOptions({
       {"disable_auto_compactions", "true"},
@@ -381,7 +381,7 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBaseInc) {
   int non_trivial = 0;
   rocksdb::SyncPoint::GetInstance()->SetCallBack(
       "DBImpl::BackgroundCompaction:NonTrivial",
-      [&](void* arg) { non_trivial++; });
+      [&](void* /*arg*/) { non_trivial++; });
   rocksdb::SyncPoint::GetInstance()->EnableProcessing();
 
   Random rnd(301);
@@ -505,6 +505,8 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 #else
+  (void) argc;
+  (void) argv;
   return 0;
 #endif
 }

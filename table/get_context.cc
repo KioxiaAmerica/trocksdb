@@ -29,6 +29,10 @@ void appendToReplayLog(std::string* replay_log, ValueType type, Slice value) {
     replay_log->push_back(type);
     PutLengthPrefixedSlice(replay_log, value);
   }
+#else
+  (void)replay_log;
+  (void)type;
+  (void)value;
 #endif  // ROCKSDB_LITE
 }
 
@@ -77,7 +81,7 @@ void GetContext::MarkKeyMayExist() {
   }
 }
 
-void GetContext::SaveValue(const Slice& value, SequenceNumber seq) {
+void GetContext::SaveValue(const Slice& value, SequenceNumber /*seq*/) {
   assert(state_ == kNotFound);
   appendToReplayLog(replay_log_, kTypeValue, value);
 
@@ -87,14 +91,24 @@ void GetContext::SaveValue(const Slice& value, SequenceNumber seq) {
   }
 }
 
+void GetContext::RecordCounters(Tickers ticker, size_t val) {
+  if (ticker == Tickers::TICKER_ENUM_MAX) {
+    return;
+  }
+  tickers_value[ticker] += static_cast<uint64_t>(val);
+}
+
 bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
-                           const Slice& value, Cleanable* value_pinner) {
+                           const Slice& value, bool* matched,
+                           Cleanable* value_pinner) {
+  assert(matched);
 #ifdef INDIRECT_VALUE_SUPPORT
   std::string resolved_value;  // place to read value into.  Persists through this function; the value must be copied before return
 #endif
   assert((state_ != kMerge && !IsTypeMerge(parsed_key.type)) ||
          merge_context_ != nullptr);
   if (ucmp_->Equal(parsed_key.user_key, user_key_)) {
+    *matched = true;
     // If the value is not in the snapshot, skip it
     if (!CheckCallback(parsed_key.sequence)) {
       return true;  // to continue to the next seq
@@ -244,13 +258,18 @@ void replayGetContextLog(const Slice& replay_log, const Slice& user_key,
     assert(ret);
     (void)ret;
 
+    bool dont_care __attribute__((__unused__));
     // Since SequenceNumber is not stored and unknown, we will use
     // kMaxSequenceNumber.
     get_context->SaveValue(
         ParsedInternalKey(user_key, kMaxSequenceNumber, type), value,
-        value_pinner);
+        &dont_care, value_pinner);
   }
 #else   // ROCKSDB_LITE
+  (void)replay_log;
+  (void)user_key;
+  (void)get_context;
+  (void)value_pinner;
   assert(false);
 #endif  // ROCKSDB_LITE
 }

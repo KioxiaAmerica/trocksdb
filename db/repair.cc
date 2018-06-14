@@ -103,10 +103,12 @@ class Repairer {
         db_options_(SanitizeOptions(dbname_, db_options)),
         immutable_db_options_(ImmutableDBOptions(db_options_)),
         icmp_(default_cf_opts.comparator),
-        default_cf_opts_(default_cf_opts),
+        default_cf_opts_(
+            SanitizeOptions(immutable_db_options_, default_cf_opts)),
         default_cf_iopts_(
-            ImmutableCFOptions(immutable_db_options_, default_cf_opts)),
-        unknown_cf_opts_(unknown_cf_opts),
+            ImmutableCFOptions(immutable_db_options_, default_cf_opts_)),
+        unknown_cf_opts_(
+            SanitizeOptions(immutable_db_options_, unknown_cf_opts)),
         create_unknown_cfs_(create_unknown_cfs),
         raw_table_cache_(
             // TableCache can be small since we expect each table to be opened
@@ -205,7 +207,7 @@ class Repairer {
       ROCKS_LOG_WARN(db_options_.info_log,
                      "**** Repaired rocksdb %s; "
                      "recovered %" ROCKSDB_PRIszt " files; %" PRIu64
-                     "bytes. "
+                     " bytes. "
                      "Some data may have been lost. "
                      "****",
                      dbname_.c_str(), tables_.size(), bytes);
@@ -426,17 +428,20 @@ class Repairer {
       int64_t _current_time = 0;
       status = env_->GetCurrentTime(&_current_time);  // ignore error
       const uint64_t current_time = static_cast<uint64_t>(_current_time);
+      SnapshotChecker* snapshot_checker = DisableGCSnapshotChecker::Instance();
 
+      auto write_hint = cfd->CalculateSSTWriteHint(0);
       status = BuildTable(
           dbname_, env_, *cfd->ioptions(), *cfd->GetLatestMutableCFOptions(),
           env_options_, table_cache_, iter.get(),
           std::unique_ptr<InternalIterator>(mem->NewRangeTombstoneIterator(ro)),
           &meta, cfd->internal_comparator(),
           cfd->int_tbl_prop_collector_factories(), cfd->GetID(), cfd->GetName(),
-          {}, kMaxSequenceNumber, kNoCompression, CompressionOptions(), false,
-          nullptr /* internal_stats */, TableFileCreationReason::kRecovery,
-          nullptr /* event_logger */, 0 /* job_id */, Env::IO_HIGH,
-          nullptr /* table_properties */, -1 /* level */, current_time);
+          {}, kMaxSequenceNumber, snapshot_checker, kNoCompression,
+          CompressionOptions(), false, nullptr /* internal_stats */,
+          TableFileCreationReason::kRecovery, nullptr /* event_logger */,
+          0 /* job_id */, Env::IO_HIGH, nullptr /* table_properties */,
+          -1 /* level */, current_time, write_hint);
       ROCKS_LOG_INFO(db_options_.info_log,
                      "Log #%" PRIu64 ": %d ops saved to Table #%" PRIu64 " %s",
                      log, counter, meta.fd.GetNumber(),
@@ -522,7 +527,8 @@ class Repairer {
     if (status.ok()) {
       InternalIterator* iter = table_cache_->NewIterator(
           ReadOptions(), env_options_, cfd->internal_comparator(), t->meta.fd,
-          nullptr /* range_del_agg */);
+          nullptr /* range_del_agg */,
+          cfd->GetLatestMutableCFOptions()->prefix_extractor.get());
       bool empty = true;
       ParsedInternalKey parsed;
       t->min_sequence = 0;
@@ -598,7 +604,8 @@ class Repairer {
         max_sequence = tables_[i].max_sequence;
       }
     }
-    vset_.SetLastToBeWrittenSequence(max_sequence);
+    vset_.SetLastAllocatedSequence(max_sequence);
+    vset_.SetLastPublishedSequence(max_sequence);
     vset_.SetLastSequence(max_sequence);
 
     for (const auto& cf_id_and_tables : cf_id_to_tables) {
@@ -653,6 +660,8 @@ class Repairer {
 #endif
 
 
+      assert(next_file_number_ > 0);
+      vset_.MarkFileNumberUsed(next_file_number_ - 1);
       mutex_.Lock();
       Status status = vset_.LogAndApply(
           cfd, *cfd->GetLatestMutableCFOptions(), &edit, &mutex_,
