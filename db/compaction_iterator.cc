@@ -183,7 +183,7 @@ void CompactionIterator::Next() {
 void CompactionIterator::InvokeFilterIfNeeded(bool* need_skip,
                                               Slice* skip_until) {
   if (compaction_filter_ != nullptr &&
-      (ikey_.type == kTypeValue || ikey_.type == kTypeBlobIndex) &&
+      IsTypeValue(ikey_.type) &&
       (visible_at_tip_ || ignore_snapshots_ ||
        ikey_.sequence > latest_snapshot_ ||
        (snapshot_checker_ != nullptr &&
@@ -197,11 +197,11 @@ void CompactionIterator::InvokeFilterIfNeeded(bool* need_skip,
     compaction_filter_value_.clear();
     compaction_filter_skip_until_.Clear();
     CompactionFilter::ValueType value_type =
-        ikey_.type == kTypeValue ? CompactionFilter::ValueType::kValue
+        IsTypeValueNonBlob(ikey_.type) ? CompactionFilter::ValueType::kValue
                                  : CompactionFilter::ValueType::kBlobIndex;
     // Hack: pass internal key to BlobIndexCompactionFilter since it needs
     // to get sequence number.
-    Slice& filter_key = ikey_.type == kTypeValue ? ikey_.user_key : key_;
+    Slice& filter_key = IsTypeValueNonBlob(ikey_.type) ? ikey_.user_key : key_;
     {
       StopWatchNano timer(env_, true);
       filter = compaction_filter_->FilterV2(

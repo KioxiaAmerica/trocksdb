@@ -110,9 +110,6 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
     if (!CheckCallback(parsed_key.sequence)) {
       return true;  // to continue to the next seq
     }
-#ifdef INDIRECT_VALUE_SUPPORT   // resolve the Get() value before putting it through the merge maze
-// Resolve the operand if indirect, and replace the indirect type with a direct one.  Pin the data read from disk
-#endif
 
     appendToReplayLog(replay_log_, parsed_key.type, value);
 

@@ -59,6 +59,7 @@ InternalKeyPropertiesCollector::GetReadableProperties() const {
 
 namespace {
 
+#if 0 // scaf obsolete conflict
 EntryType GetEntryType(ValueType value_type) {
   switch (value_type) {
 #ifdef INDIRECT_VALUE_SUPPORT   // treat indirect value as value for stats purposes
@@ -79,6 +80,7 @@ EntryType GetEntryType(ValueType value_type) {
       return kEntryOther;
   }
 }
+#endif
 
 uint64_t GetUint64Property(const UserCollectedProperties& props,
                            const std::string& property_name,

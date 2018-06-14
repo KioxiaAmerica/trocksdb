@@ -1129,7 +1129,7 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
             ikey,
             RangeDelAggregator::RangePositioningMode::kBackwardTraversal)) {
       break;
-    } else if (ikey.type == kTypeValue) {
+    } else if (IsTypeValue(ikey.type)) {
       const Slice val = iter_->value();
       Status s = MergeHelper::TimedFullMerge(
           merge_operator_, saved_key_.GetUserKey(), &val,
@@ -1142,7 +1142,7 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
       }
       valid_ = true;
       return true;
-    } else if (ikey.type == kTypeMerge) {
+    } else if (IsTypeMerge(ikey.type)) {
       merge_context_.PushOperand(iter_->value(),
                                  iter_->IsValuePinned() /* operand_pinned */);
       PERF_COUNTER_ADD(internal_merge_count, 1);

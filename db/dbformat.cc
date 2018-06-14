@@ -45,12 +45,18 @@ uint64_t PackSequenceAndType(uint64_t seq, ValueType t) {
 EntryType GetEntryType(ValueType value_type) {
   switch (value_type) {
     case kTypeValue:
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kTypeIndirectValue:
+#endif
       return kEntryPut;
     case kTypeDeletion:
       return kEntryDelete;
     case kTypeSingleDeletion:
       return kEntrySingleDelete;
     case kTypeMerge:
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kTypeIndirectMerge:
+#endif
       return kEntryMerge;
     case kTypeRangeDeletion:
       return kEntryRangeDeletion;
