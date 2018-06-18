@@ -28,39 +28,38 @@ extern void ProbDelay() {
 }
 #endif
 
-// compress a data block according to the options, then put it into output-record format including CRC.
+// compress a data block according to the options
 // If there is an error, it just returns the input data
 extern CompressionType CompressForVLog(const std::string& raw,
                     CompressionType type,
-                    const CompressionOptions& compression_options,
-                    const std::string& compression_dict,
+                    const CompressionContext& compression_context,
                     std::string* compressed_output) {
-  bool compressok;  // true is compression succeeded
+  bool compressok;  // true if compression succeeded
 
   // Will return compressed block contents if (1) the compression method is
   // supported in this platform and (2) the compression rate is "good enough".
   switch (type) {
     case kSnappyCompression:
-      compressok = Snappy_Compress(compression_options, raw.data(), raw.size(),
+      compressok = Snappy_Compress(compression_context, raw.data(), raw.size(),
                           compressed_output);
       break;  // fall back to no compression.
     case kZlibCompression:
-      compressok = Zlib_Compress(compression_options,kVLogCompressionVersionFormat,
-              raw.data(), raw.size(), compressed_output, compression_dict);
+      compressok = Zlib_Compress(compression_context,kVLogCompressionVersionFormat,
+              raw.data(), raw.size(), compressed_output);
       break;  // fall back to no compression.
     case kBZip2Compression:
-      compressok = BZip2_Compress(compression_options,kVLogCompressionVersionFormat,
+      compressok = BZip2_Compress(compression_context,kVLogCompressionVersionFormat,
               raw.data(), raw.size(), compressed_output);
       break;  // fall back to no compression.
     case kLZ4Compression:
       compressok = LZ4_Compress(
-              compression_options,kVLogCompressionVersionFormat,
-              raw.data(), raw.size(), compressed_output, compression_dict); 
+              compression_context,kVLogCompressionVersionFormat,
+              raw.data(), raw.size(), compressed_output); 
       break;  // fall back to no compression.
     case kLZ4HCCompression:
       compressok = LZ4HC_Compress(
-              compression_options,kVLogCompressionVersionFormat,
-              raw.data(), raw.size(), compressed_output, compression_dict);
+              compression_context,kVLogCompressionVersionFormat,
+              raw.data(), raw.size(), compressed_output);
       break;     // fall back to no compression.
     case kXpressCompression:
       compressok = XPRESS_Compress(raw.data(), raw.size(),
@@ -68,8 +67,8 @@ extern CompressionType CompressForVLog(const std::string& raw,
       break;
     case kZSTD:
     case kZSTDNotFinalCompression:
-      compressok = ZSTD_Compress(compression_options, raw.data(), raw.size(),
-                        compressed_output, compression_dict);
+      compressok = ZSTD_Compress(compression_context, raw.data(), raw.size(),
+                        compressed_output);
       break;     // fall back to no compression.
     default: compressok = false; break;  // Do not recognize this compression type
   }
@@ -1366,10 +1365,11 @@ Status VLog::VLogGet(
     result.assign(&ringresult[1],ringresult.size()-(1+4));   // data starts at offset 1, and doesn't include 1-byte header or 4-byte trailer 
   } else {
     BlockContents contents;
+   const UncompressionContext ucontext((CompressionType)ctype);
 // scaf this moves the data twice, which we could avoid if we rewrite the subroutine
-    if(!(s = UncompressBlockContentsForCompressionType(
+    if(!(s = UncompressBlockContentsForCompressionType(ucontext,
         &ringresult[1], ringresult.size()-(1+4), &contents,
-          kVLogCompressionVersionFormat, Slice(), (CompressionType)ctype,
+          kVLogCompressionVersionFormat,
         *(cfd_->ioptions()))).ok()){
       ROCKS_LOG_ERROR(immdbopts_->info_log,
         "Decompression error reading from file number %zd in ring %d",ref.Fileno(),ref.Ringno());

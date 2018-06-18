@@ -950,9 +950,7 @@ TEST_F(DBPropertiesTest, EstimatePendingCompBytes) {
 }
 
 TEST_F(DBPropertiesTest, EstimateCompressionRatio) {
-#ifdef INDIRECT_VALUE_SUPPORT
-  return;  // can't measure SST compression when there are indirect values
-#endif
+#ifdef INDIRECT_VALUE_SUPPORT  // can't measure SST compression when there are indirect values
   if (!Snappy_Supported()) {
     return;
   }
@@ -990,6 +988,7 @@ TEST_F(DBPropertiesTest, EstimateCompressionRatio) {
   // Data at L1 should be highly compressed thanks to Snappy and redundant data
   // in values (ratio is 12.846 as of 4/19/2016).
   ASSERT_GT(CompressionRatioAtLevel(1), 10.0);
+#endif
 }
 
 #endif  // ROCKSDB_LITE

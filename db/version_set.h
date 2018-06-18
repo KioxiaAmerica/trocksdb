@@ -855,8 +855,7 @@ class VersionSet {
   }
 
 #ifdef INDIRECT_VALUE_SUPPORT
-  const EnvOptions *env_options_compactions() const { return &env_options_compactions_; }
-  std::vector<FileMetaData*>& obsolete_files() { return obsolete_files_; }
+  std::vector<ObsoleteFileInfo>& obsolete_files() { return obsolete_files_; }
 #endif
 
   uint64_t current_next_file_number() const { return next_file_number_.load(); }

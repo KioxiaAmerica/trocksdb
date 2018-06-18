@@ -160,7 +160,6 @@ void PrintLevelStats(char* buf, size_t len, const std::string& name,
       "%9d "      /*  Comp(cnt) */
       "%8.3f "    /*  Avg(sec) */
       "%7s "      /*  KeyIn */
-      "%6s\n",    /*  KeyDrop */
       "%6s"       /*  KeyDrop */
 #ifdef INDIRECT_VALUE_SUPPORT
       "%9.1f"     /* WVCmp(GB) */
@@ -169,8 +168,6 @@ void PrintLevelStats(char* buf, size_t len, const std::string& name,
       "%8d"       /* WVFiles */
 #endif
       "\n",
-      name.c_str(),
-      static_cast<int>(stat_value.at(LevelStatType::NUM_FILES)),
       name.c_str(), static_cast<int>(stat_value.at(LevelStatType::NUM_FILES)),
       static_cast<int>(stat_value.at(LevelStatType::COMPACTED_FILES)),
       BytesToHumanString(
@@ -192,8 +189,6 @@ void PrintLevelStats(char* buf, size_t len, const std::string& name,
       NumberToHumanString(
           static_cast<std::int64_t>(stat_value.at(LevelStatType::KEY_IN)))
           .c_str(),
-      NumberToHumanString(static_cast<std::int64_t>(
-                              stat_value.at(LevelStatType::KEY_DROP)))
       NumberToHumanString(
           static_cast<std::int64_t>(stat_value.at(LevelStatType::KEY_DROP)))
                .c_str()

@@ -15,12 +15,12 @@ namespace rocksdb {
 // determining when an input file is exhausted.  Rather than put switches
 // into all the other iterator types, we just do everything here, in a single level.
   RecyclingIterator::RecyclingIterator(Compaction *compaction_,  // pointer to all compaction data including files
-    VersionSet *versions_  //  pointer to environmant data
+    const EnvOptions& env_options_  //  pointer to environmant data
   ) :
     compaction(compaction_),
-    file_index(-1),  // init pointing before first file
+    file_index((size_t)-1),  // init pointing before first file
     file_iterator(nullptr),  // init no iterator for file
-    env_options(versions_->env_options_compactions())
+    env_options(env_options_)
   {
     // These read options are copied from MakeInputIterator in version_set.cc
     read_options.verify_checksums = true;
@@ -35,11 +35,11 @@ namespace rocksdb {
       // the current iterator, if any, has expired.  Advance to the next one
       do {   // loop in case there is a file with no kvs
         // If there is no next file, we are through
-        if(++file_index >= compaction->inputs()->size())break;  // exit is no more files
+        if(++file_index >= compaction->inputs()->size())break;  // exit if no more files
         // Create the iterator for the next (or first) file
         file_iterator.reset(compaction->column_family_data()->table_cache()->NewIterator(
-          read_options, *env_options, compaction->column_family_data()->internal_comparator() /* not used */, (*compaction->inputs())[file_index][0]->fd, nullptr /* range_del_agg */ ,
-          nullptr /* don't need reference to table */, nullptr /* no file_read_hist */,
+          read_options, env_options, compaction->column_family_data()->internal_comparator() /* not used */, (*compaction->inputs())[file_index][0]->fd, nullptr /* range_del_agg */ ,
+          nullptr /* prefix extractor */, nullptr /* don't need reference to table */, nullptr /* no file_read_hist */,
           true /* for_compaction */, nullptr /* arena */, false /* skip_filters */, (*compaction->inputs())[file_index][0]->level));
         // start at the beginning of the next file
         file_iterator->SeekToFirst();             
@@ -128,8 +128,7 @@ printf("\n");
 
     // Get the compression information to use for this file
     CompressionType compressiontype = compaction->mutable_cf_options()->ring_compression_style[outputringno];  // scaf need option
-    CompressionOptions compressionopts{};  // scaf need option
-    std::string compressiondict;  // scaf need initial dict
+    CompressionContext compressioncontext{compressiontype};  // scaf need initial dict
 
     // Get the minimum mapped size for the output level we are writing into
     size_t minindirectlen = (size_t)compaction->mutable_cf_options()->min_indirect_val_size[outputringno];
@@ -195,7 +194,7 @@ printf("\n");
         bytesintocompression += val.size();  // count length into compression
         std::string compresseddata;  // place the compressed string will go
         // Compress the data.  This will never fail; if there is an error, we just get uncompressed data
-        CompressionType ctype = CompressForVLog(std::string(val.data(),val.size()),compressiontype,compressionopts,compressiondict,&compresseddata);
+        CompressionType ctype = CompressForVLog(std::string(val.data(),val.size()),compressiontype,compressioncontext,&compresseddata);
         // Move the compression type and the compressed data into the output area, jammed together
         size_t ctypeindex = diskdata.size();  // offset to the new record
         reserveatleast(diskdata,1+4+compresseddata.size());  // make sure there's room for header+CRC

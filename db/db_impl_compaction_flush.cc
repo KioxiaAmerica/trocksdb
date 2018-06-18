@@ -1831,27 +1831,18 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
         c->edit()->AddFile(c->output_level(), f->fd.GetNumber(),
                            f->fd.GetPathId(), f->fd.GetFileSize(), f->smallest,
                            f->largest, f->smallest_seqno, f->largest_seqno,
-<<<<<<< HEAD
                            f->marked_for_compaction
 #ifdef INDIRECT_VALUE_SUPPORT
-                   ,f->indirect_ref_0
-                   ,f->avgparentfileno
+                           ,f->indirect_ref_0
+                           ,f->avgparentfileno
 #endif
-                   );
-        ROCKS_LOG_BUFFER(log_buffer, "[%s] Moving #%" PRIu64
-                                     " to level-%d %" PRIu64 " bytes\n",
-                         c->column_family_data()->GetName().c_str(),
-                         f->fd.GetNumber(), c->output_level(),
-                         f->fd.GetFileSize());
-=======
-                           f->marked_for_compaction);
+                           );
 
         ROCKS_LOG_BUFFER(
             log_buffer,
             "[%s] Moving #%" PRIu64 " to level-%d %" PRIu64 " bytes\n",
             c->column_family_data()->GetName().c_str(), f->fd.GetNumber(),
             c->output_level(), f->fd.GetFileSize());
->>>>>>> master
         ++moved_files;
         moved_bytes += f->fd.GetFileSize();
       }

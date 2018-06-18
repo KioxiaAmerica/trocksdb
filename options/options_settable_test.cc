@@ -469,7 +469,6 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
       "ttl=60;"
       "compaction_options_fifo={max_table_files_size=3;ttl=100;allow_"
       "compaction=false;"
-      new_options));
 
 #ifdef INDIRECT_VALUE_SUPPORT
       "allow_trivial_move=false;"

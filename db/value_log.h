@@ -113,8 +113,7 @@ extern VLogRingRefFileOffset BreakRecordsIntoFiles(
 // If there is an error, it just returns the input data.  result is the compression type used
 extern CompressionType CompressForVLog(const std::string& raw,  // input to be compressed
                     CompressionType type,   // compression algorithm selection
-                    const CompressionOptions& compression_options,  // algorithm-dependent parameters to the compression
-                    const std::string& compression_dict,  // initial compressions dictionary, empty if none
+                    const CompressionContext& compression_context,  // algorithm-dependent parameters to the compression
                     std::string* compressed_output);  // result: the compressed string
 
 // Constants (some will be replaced by options)

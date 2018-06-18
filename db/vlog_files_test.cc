@@ -321,7 +321,7 @@ TEST_F(DBVLogTest, VlogFileSizeTest) {
     uint64_t expfiles = (uint64_t)std::max(std::ceil(vsize/((double)options.vlogfile_max_size[0]*1.25)),std::floor(vsize/((double)options.vlogfile_max_size[0])));
     ASSERT_EQ(expfiles, vlogfilesizes.size());
     // verify files have almost the same size
-    uint64_t minsize=~0, maxsize=0;  // place to build file stats
+    uint64_t minsize=(uint64_t)~0, maxsize=0;  // place to build file stats
     for(size_t i=0;i<vlogfilesizes.size();++i){
      minsize=std::min(minsize,vlogfilesizes[i]); maxsize=std::max(maxsize,vlogfilesizes[i]);
     }
@@ -562,7 +562,8 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
     remap_options.change_level = true;
     remap_options.target_level = 1;
     remap_options.bottommost_level_compaction = BottommostLevelCompaction::kForce;
-    ASSERT_OK(db_->CompactRange(remap_options, &Slice(Key((int)(nkeys*(mapfrac-0.05)))), &Slice(Key((int)(nkeys*(mapfrac+0.05))))));
+    Slice minkey(Key((int)(nkeys*(mapfrac-0.05)))), maxkey(Key((int)(nkeys*(mapfrac+0.05))));
+    ASSERT_OK(db_->CompactRange(remap_options, &minkey, &maxkey));
     // verify that the VLog file total has grown by 5%
     vlogfilesizes.clear();  // reinit list of files
     ListVLogFileSizes(this,vlogfilesizes);
@@ -613,7 +614,6 @@ void DBVLogTest::SetUpForActiveRecycleTest() {
   // AR should happen, freeing the beginning of the db
 
   int32_t mappct=20;
-  double mapfrac = mappct * 0.01;
 // scaf speedup printf("%f\n",mapfrac);  break;
   // turn off remapping
   options.fraction_remapped_during_compaction = std::vector<int32_t>({mappct});
@@ -656,7 +656,8 @@ void DBVLogTest::SetUpForActiveRecycleTest() {
   remap_options.target_level = 1;
   remap_options.bottommost_level_compaction = BottommostLevelCompaction::kForce;
   remap_options.exclusive_manual_compaction = false;
-  ASSERT_OK(db_->CompactRange(remap_options, &Slice(Key((int)(nkeys*0.05))), &Slice(Key((int)(nkeys*0.20)))));
+  Slice minkey(Key((int)(nkeys*0.05))), maxkey(Key((int)(nkeys*0.20)));
+  ASSERT_OK(db_->CompactRange(remap_options, &minkey, &maxkey));
   // The user compaction and the AR compaction should both run.
   // scaf  printf("%s\n", FilesPerLevel(0).c_str());
 
@@ -957,13 +958,13 @@ TEST_F(DBVLogTest, VLogRefsTest) {
       UpdateVersionStorageInfo();
       VersionStorageInfo *vstore(vstorage_.get());
 //      vstore->cfd_->current_->vset_->obsolete_files_;
-      std::vector<FileMetaData*>& currssts = vstore->GetCfd()->current()->version_set()->obsolete_files();
+      std::vector<ObsoleteFileInfo>& currssts = vstore->GetCfd()->current()->version_set()->obsolete_files();
 
       // Go through the file & verify that the ref0 field has the key of the oldest VLog file in the SST.  This is always the same key,
       // but it appears in different positions depending on the permutation.
       int ref0=1;  // the first file number is 1
       for(int kfx=0;kfx<num_files;++kfx){
-        ASSERT_EQ(ref0, currssts[kfx]->indirect_ref_0[0]);
+        ASSERT_EQ(ref0, currssts[kfx].metadata->indirect_ref_0[0]);
         ref0 += keys_per_file[kfx];  // skip to the batch of VLog values in the next file
       }
     }

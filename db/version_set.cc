@@ -2790,10 +2790,10 @@ VersionSet::~VersionSet() {
     // The SST is about to be deleted.  Remove it from any VLog queues it is attached to.
     // We have to do this explicitly rather than in a destructor because FileMetaData blocks get copied & put on queues
     // with no regard for ownership.  Rather than try to enforce no-copy semantics everywhere we root out all the delete calls and put this there
-    if(file->vlog){
-      file->vlog->AcquireLock();
-        if(file->vlog->cfd_exists())file->vlog->VLogSstDelete(*file);
-      file->vlog->ReleaseLock();
+    if(file.metadata->vlog){
+      file.metadata->vlog->AcquireLock();
+        if(file.metadata->vlog->cfd_exists())file.metadata->vlog->VLogSstDelete(*file.metadata);
+      file.metadata->vlog->ReleaseLock();
     }
     // The test for cfd_exists() is to cover a sporadic problem when the database closes while a file is waiting to be deleted.
     // The cfd may be removed before we mark the VLogRings, and then we crash if we try to mark the VLogRings, because that refers to

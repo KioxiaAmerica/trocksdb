@@ -31,9 +31,9 @@ namespace rocksdb {
 // into all the other iterator types, we just do everything here, in a single level.
 class RecyclingIterator : public InternalIterator {
  public:
-  explicit RecyclingIterator(Compaction *compaction_, VersionSet* versions_);
+  explicit RecyclingIterator(Compaction *compaction_, const EnvOptions& env_options_);
 
-  virtual void SeekToFirst() override { file_index = -1; file_iterator.reset(); Next(); }  // set up to get the first record
+  virtual void SeekToFirst() override { file_index = (size_t)-1; file_iterator.reset(); Next(); }  // set up to get the first record
   virtual void Next() override;
   virtual Slice key() const override { return file_iterator->key(); }
   virtual Slice value() const override { return file_iterator->value(); }
@@ -53,7 +53,7 @@ private:
   size_t file_index;  // index of the file the current kv came from
   std::unique_ptr<InternalIterator> file_iterator;  // pointer to iterator for the current file
   ReadOptions read_options;  // options we will use for reading tables
-  const EnvOptions *env_options;  // env options for reading the database
+  const EnvOptions& env_options;  // env options for reading the database
 };
 
 

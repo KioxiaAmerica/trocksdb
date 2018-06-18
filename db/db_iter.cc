@@ -1202,7 +1202,7 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
       break;
     }
 
-    iter_->Next();
+    CallIteratorNext();
   }
 
   if (ikey.type == kTypeDeletion || ikey.type == kTypeSingleDeletion ||
@@ -1231,7 +1231,7 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
   assert(IsTypeMerge(ikey.type));
   current_entry_is_merged_ = true;
   merge_context_.Clear();
-  merge_context_.PushOperand(iter_->value(),
+  merge_context_.PushOperand(ResolvedValue(),
                              iter_->IsValuePinned() /* operand_pinned */);
   while (true) {
     CallIteratorNext();
@@ -1304,11 +1304,11 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
   // seeked to the current key.
   if ((prefix_extractor_ != nullptr && !total_order_seek_) || !iter_->Valid()) {
     if (prefix_extractor_ != nullptr && !total_order_seek_) {
-      iter_->SeekForPrev(last_key);
+      CallIteratorSeekForPrev(last_key);
     } else {
-      iter_->Seek(last_key);
+      CallIteratorSeek(last_key);
       if (!iter_->Valid() && iter_->status().ok()) {
-        iter_->SeekToLast();
+        CallIteratorSeekToLast();
       }
     }
     RecordTick(statistics_, NUMBER_OF_RESEEKS_IN_ITERATION);
@@ -1351,7 +1351,7 @@ bool DBIter::FindUserKeyBeforeSavedKey() {
           saved_key_.GetUserKey(), kMaxSequenceNumber, kValueTypeForSeek));
       // It would be more efficient to use SeekForPrev() here, but some
       // iterators may not support it.
-      iter_->Seek(last_key.GetInternalKey());
+      CallIteratorSeek(last_key.GetInternalKey());
       RecordTick(statistics_, NUMBER_OF_RESEEKS_IN_ITERATION);
       if (!iter_->Valid()) {
         break;

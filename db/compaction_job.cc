@@ -733,24 +733,6 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
       CompressionTypeToString(compact_->compaction->output_compression())
           .c_str()
       VLOG_STATSD);
-#else
-  ROCKS_LOG_BUFFER(
-      log_buffer_,
-      "[%s] compacted to: %s, MB/sec: %.1f rd, %.1f wr, level %d, "
-      "files in(%d, %d) out(%d) "
-      "MB in(%.1f, %.1f) out(%.1f), read-write-amplify(%.1f) "
-      "write-amplify(%.1f) %s, records in: %d, records dropped: %d"
-      "\n",
-      cfd->GetName().c_str(), vstorage->LevelSummary(&tmp), bytes_read_per_sec,
-      bytes_written_per_sec, compact_->compaction->output_level(),
-      stats.num_input_files_in_non_output_levels,
-      stats.num_input_files_in_output_level, stats.num_output_files,
-      stats.bytes_read_non_output_levels / 1048576.0,
-      stats.bytes_read_output_level / 1048576.0,
-      stats.bytes_written / 1048576.0, read_write_amp, write_amp,
-      status.ToString().c_str(), stats.num_input_records,
-      stats.num_dropped_records);
-#endif
 
   UpdateCompactionJobStats(stats);
 
@@ -802,11 +784,11 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   if(const_cast<Compaction*>(sub_compact->compaction)->compaction_reason() != CompactionReason::kActiveRecycling) {
     // normal case, using the merging iterator
     range_del_agg.reset(new RangeDelAggregator(cfd->internal_comparator(), existing_snapshots_));
-    input.reset(versions_->MakeInputIterator(sub_compact->compaction, range_del_agg.get()));
+    input.reset(versions_->MakeInputIterator(sub_compact->compaction, range_del_agg.get(),env_optiosn_for_read_));
   } else {
     // Active Recycling, using the RecyclingIterator
     // leave range_del_agg null, since we don't need it
-    input.reset(new RecyclingIterator(const_cast<Compaction*>(sub_compact->compaction),versions_));
+    input.reset(new RecyclingIterator(const_cast<Compaction*>(sub_compact->compaction),env_optiosn_for_read_));
   }
 
 #else
@@ -1561,7 +1543,7 @@ Status CompactionJob::InstallCompactionResults(
             std::vector<uint32_t> curroverlapx(overlapping_files.size(),0);  // running pointer into files - one for each level we are keeping
             for(uint32_t curroutx = 0; curroutx<sub_compact.outputs.size();++curroutx) {
               // we are looking for overlaps with curroutx.  Count the numbers of files and the index of each
-              int nolaps = 0; double totalolaps = 0.0; VLogRingRefFileno minolap = ~0;  // number of overlaps, and total/min indexes
+              int nolaps = 0; double totalolaps = 0.0; VLogRingRefFileno minolap = (VLogRingRefFileno)~0;  // number of overlaps, and total/min indexes.  Init ref to high_value
               // look for overlaps in each level, advancing the file pointers for each level independently, and accumulating overlap totals
               for(uint32_t checklevel=0; checklevel<overlapping_files.size();++checklevel){
                 auto& ofiles = overlapping_files[checklevel];  // the overlapping files for the current level

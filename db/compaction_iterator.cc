@@ -291,7 +291,7 @@ void CompactionIterator::InvokeFilterIfNeeded(bool* need_skip,
       value_ = compaction_filter_value_;
 #ifdef INDIRECT_VALUE_SUPPORT
       // The user has changed the value.  Whether it was indirect or not to begin with, it is direct now.  If it was indirect, change it (leave it if not; it might be a Blob)
-      if(IsTypeIndirect(ikey_.type){
+      if(IsTypeIndirect(ikey_.type)){
         ikey_.type = kTypeValue;
         current_key_.UpdateInternalKey(ikey_.sequence, kTypeValue);
         key_ = current_key_.GetInternalKey();
@@ -312,7 +312,8 @@ void CompactionIterator::NextFromInput() {
   // comparisons.
   if(compaction_!=nullptr && compaction_->compaction_reason() == CompactionReason::kActiveRecycling){
     // read new values from the RecyclingIterator
-    if((valid_ = input_->Valid())) {  // don't read the other stuff if it's not valid
+    valid_ = input_->Valid();
+    if(valid_) {  // don't read the other stuff if it's not valid
       // Copy all the kv info into our iterator, where the caller will take it
       key_ = input_->key();
       value_ = input_->value();

@@ -129,7 +129,7 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
       return false;
     }
     bool has_customized_fields = false;
-    if (f.marked_for_compaction || has_min_log_number_to_keep
+    if (f.marked_for_compaction || has_min_log_number_to_keep_
 #ifdef INDIRECT_VALUE_SUPPORT
         || f.indirect_ref_0.size()
         || f.avgparentfileno
