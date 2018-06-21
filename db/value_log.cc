@@ -8,6 +8,7 @@
 #include <atomic>
 #include <memory>
 #include <algorithm>
+#include <inttypes.h>
 #include <math.h>
 #include "db/value_log.h"
 #include "db/column_family.h"
@@ -556,6 +557,12 @@ std::vector<Status>& resultstatus   // result: place to save error status.  For 
     // remember the size of the largest allocation
   fileendoffsets.clear(); fileendoffsets.reserve(filecumreccnts.size());  //clear output area and give it the correct size
 
+  // Log start of writing 
+  ROCKS_LOG_INFO(
+      current_vlog->immdbopts_->info_log, "[%s] writing %" PRIu64 " VLog files, %" PRIu64 " bytes, max filesize=%" PRIu64,
+      current_vlog->cfd_->GetName().c_str(), 
+      filecumreccnts.size(), rcdend.size()?rcdend.back():0, maxfilesize);
+
 
   std::vector<VLogRingFileDeletion> deleted_files;  // files put here will be deleted after we release the lock
   AcquireLock();
@@ -732,6 +739,12 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
         }
       }
 
+    // Log writing the file
+    ROCKS_LOG_INFO(
+        current_vlog->immdbopts_->info_log, "[%s] wrote file# %" PRIu64 ", %" PRIu64 " bytes",
+        current_vlog->cfd_->GetName().c_str(), 
+        VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber(), filebufferx);
+
       // Sync the written data.  We must make sure it is synced before the SSTs referring to it are committed to the manifest.
       // We might as well sync it right now
       if(iostatus.ok()) {
@@ -742,7 +755,14 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
         }
       }
 
+    // Log syncing the file   scaf
+    ROCKS_LOG_INFO(
+        current_vlog->immdbopts_->info_log, "[%s] synced file# %" PRIu64,
+        current_vlog->cfd_->GetName().c_str(), 
+        VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber());
+
     }  // this closes the writable_file
+
 
     // Reopen the file as randomly readable
     std::unique_ptr<RandomAccessFile> fp;  // the open file
@@ -754,6 +774,12 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
           "Error reopening VLog file %s for reading",pathnames.back().c_str());
       }
     }
+
+    // Log reopening the file   scaf
+    ROCKS_LOG_INFO(
+        current_vlog->immdbopts_->info_log, "[%s] reopened file# %" PRIu64,
+        current_vlog->cfd_->GetName().c_str(), 
+        VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber());
 
     filepointers.push_back(std::move(fp));  // push one fp, even if null, for every file slot
 
@@ -815,6 +841,12 @@ ProbDelay();
 
   // fill in the FileRef for the first value, with its length
   firstdataref.FillVLogRingRef(ringno_,fileno_for_writing,0,rcdend[0]);
+
+  // Log reopening the file   scaf
+  ROCKS_LOG_INFO(
+      current_vlog->immdbopts_->info_log, "[%s] all files added to VLogRing",
+      current_vlog->cfd_->GetName().c_str());
+
   return;
 
 }
@@ -1484,9 +1516,9 @@ extern void DetectVLogDeletions(ColumnFamilyData *cfd,   // CF to work on
           ringchanges.frag = ringchanges.size;   // the reduction in size is also a reduction in fragmentation, since an empty file is 100% frag
           ringchanges.valid_files.push_back(0); ringchanges.valid_files.push_back(currentoldest-1);   // make the edit a delete for all files up to the last one we deleted
         }
-         // Move the edit to the result
-        (*vlogedits).push_back(ringchanges);  // tell the caller how to account for the deletion
       }
+       // Move the (possibly empty) edit to the result
+      (*vlogedits).push_back(ringchanges);  // tell the caller how to account for the deletion
     }
   }
 }

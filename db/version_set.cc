@@ -1677,16 +1677,27 @@ void VersionStorageInfo::ComputeCompactionScore(
         if (compaction_style_ == kCompactionStyleLevel && num_levels() > 1) {
           // Level-based involves L0->L0 compactions that can lead to oversized
           // L0 files. Take into account size as well to avoid later giant
-          // compactions to the base level.
-          double projectedl0score = static_cast<double>(total_size) /
-                     mutable_cf_options.max_bytes_for_level_base;
-          score = std::max(score, projectedl0score);
+          // compactions to the base level.  Since the files produced by L0->L0 compactions are
+          // sized to target_file_size_base, this limit comes into play when the target_file_size_base is larger
+          // than the memtable size (write_buffer_size) which makes the number of files an inadequate proxy for their size.
+#ifdef INDIRECT_VALUE_SUPPORT
+          // With indirect values, the opposite problem arises: the target file size is much smaller than the memtable; in fact the
+          // max_bytes_for_level_base is likely smaller than a single memtable.  In this case, comparing the size of a memtable against
+          // max_bytes_for_level_base will lead to artificially large compaction score.  So we suppress the test if the average memtable is
+          // at least 8x bigger than all the files at the first level: in that case the file-number ratio will be sufficient
+          if(mutable_cf_options.write_buffer_size < 8*mutable_cf_options.max_bytes_for_level_base)  // DO NOT MOVE - affects block below
+#endif
+           {  // NOTE DO NOT MOVE - this block is affected by the preceding #ifdef
+           double projectedl0score = static_cast<double>(total_size) /
+                      mutable_cf_options.max_bytes_for_level_base;
+           score = std::max(score, projectedl0score);
+           }  // end DO NOT MOVE
 #ifdef INDIRECT_VALUE_SUPPORT
           // When the host Write stream outruns the compactions, score starts to grow,
           // and can grow very large.  When it gets too big, it makes all the other compaction scores
           // meaningless, and the levels do not assume reasonable proportions.  When the L0 score is X, L1 grows
           // to X times normal size before getting any compactions.  To prevent that from
-          // happening, we put a limit on X.
+          // happening, we put a limit on X.  scaf this may not be needed, if the preceding block works
           score = std::min(score,mutable_cf_options.compaction_score_limit_L0);
 #endif
         }

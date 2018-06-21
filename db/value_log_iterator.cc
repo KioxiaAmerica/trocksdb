@@ -5,6 +5,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <inttypes.h>
 #include "db/value_log_iterator.h"
 #include "rocksdb/status.h"
 
@@ -159,6 +160,7 @@ printf("\n");
 
     size_t totalsstlen=0;  // total length so far that will be written to the SST
     size_t bytesresvindiskdata=0;  // total length that we will write to disk.  diskdata contains a mixture of references and actual data
+    uint64_t timehandlingvalueusec=0;  // time to compress/crc/move value, in usec
     while(c_iter->Valid() && 
            !(recyciter==nullptr && end != nullptr && pcfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0)) {
       // process this kv.  It is valid and the key is not past the specified ending key
@@ -191,6 +193,8 @@ printf("\n");
       sstvaluelen = val.size();  // if value passes through, its length will go to the SST
       if(IsTypeDirect(c_iter->ikey().type) && recyciter==nullptr && val.size() > minindirectlen ) {  // remap Direct type if length is big enough - but never if AR
         // direct value that should be indirected
+        const uint64_t start_micros = current_vlog->immdbopts_->env->NowMicros();
+
         bytesintocompression += val.size();  // count length into compression
         std::string compresseddata;  // place the compressed string will go
         // Compress the data.  This will never fail; if there is an error, we just get uncompressed data
@@ -210,6 +214,7 @@ printf("\n");
         // We have built the compressed/CRCd record.  save its length
         diskrecl.push_back(bytesresvindiskdata += diskdata.size()-ctypeindex);   // write running sum of record lengths, i. e. current total allocated size after we add this record
         sstvaluelen = VLogRingRef::sstrefsize;  // what we write to the SST will be a reference
+        timehandlingvalueusec +=  current_vlog->immdbopts_->env->NowMicros()-start_micros;  // accumulate time spent handling values
       } else if(IsTypeIndirect(c_iter->ikey().type)) {  // is indirect ref?
         // value is indirect; does it need to be remapped?
         assert(val.size()==VLogRingRef::sstrefsize);  // should be a reference
@@ -313,6 +318,12 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
         BreakRecordsIntoFiles(filecumreccnts, outputrcdend, compaction->max_output_file_size(),
           &compaction->grandparents(), &keys, &keylens, &compaction->column_family_data()->internal_comparator(),
           compaction->max_compaction_bytes());  // calculate filecumreccnts, including use of grandparent info
+
+      ROCKS_LOG_INFO(
+          current_vlog->immdbopts_->info_log, "[%s] Spent %" PRIu64 "handling values.  Now writing %" PRIu64 " SST files, %" PRIu64 " bytes, max filesize=%" PRIu64,
+          current_vlog->cfd_->GetName().c_str(), timehandlingvalueusec,
+          filecumreccnts.size(), outputrcdend.size()?outputrcdend.back():0, compaction->max_output_file_size());
+
       }
       // now filecumreccnts has the length in kvs of each eventual output file.  For AR, we mimic the input; for compaction, we create new files
 

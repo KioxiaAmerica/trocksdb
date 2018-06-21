@@ -311,6 +311,19 @@ TEST_F(DBCompactionTest, IndirectTest) {
   options.max_bytes_for_level_base = 1 * (1LL<<20);
   options.max_bytes_for_level_multiplier = 10;
 
+  options.vlogring_activation_level = std::vector<int32_t>({0,1});
+  options.min_indirect_val_size = std::vector<size_t>({0});
+  options.fraction_remapped_during_compaction = std::vector<int32_t>({50});
+  options.fraction_remapped_during_active_recycling = std::vector<int32_t>({25});
+  options.fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
+  options.fragmentation_active_recycling_klaxon = std::vector<int32_t>({50});
+  options.active_recycling_sst_minct = std::vector<int32_t>({5});
+  options.active_recycling_sst_maxct = std::vector<int32_t>({15});
+  options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
+  options.compaction_picker_age_importance = std::vector<int32_t>({100});
+  options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
+  options.vlogfile_max_size = std::vector<uint64_t>({4LL << 20});  // 4MB
+
   DestroyAndReopen(options);
   int32_t value_size = 18;  // 10 KB
   int32_t key_size = 10 * 1024 - value_size;

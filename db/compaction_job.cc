@@ -1816,9 +1816,9 @@ void CompactionJob::LogCompaction() {
   if (db_options_.info_log_level <= InfoLogLevel::INFO_LEVEL) {
     Compaction::InputLevelSummaryBuffer inputs_summary;
     ROCKS_LOG_INFO(
-        db_options_.info_log, "[%s] [JOB %d] Compacting %s, score %.2f",
+        db_options_.info_log, "[%s] [JOB %d] Compacting %s, score %.2f, reason %s",
         cfd->GetName().c_str(), job_id_,
-        compaction->InputLevelSummary(&inputs_summary), compaction->score());
+        compaction->InputLevelSummary(&inputs_summary), compaction->score(), GetCompactionReasonString(compaction->compaction_reason()));
     char scratch[2345];
     compaction->Summary(scratch, sizeof(scratch));
     ROCKS_LOG_INFO(db_options_.info_log, "[%s] Compaction start summary: %s\n",
