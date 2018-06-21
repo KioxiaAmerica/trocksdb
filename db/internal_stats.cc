@@ -581,7 +581,7 @@ bool InternalStats::HandleLevelStats(std::string* value, Slice /*suffix*/) {
 }
 
 #ifdef INDIRECT_VALUE_SUPPORT
-bool InternalStats::HandleVLogRingStats(std::string* value, Slice suffix) {
+bool InternalStats::HandleVLogRingStats(std::string* value, Slice /*suffix*/) {
   char buf[1000];
   std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
   //Warning: Unused Variable

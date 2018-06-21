@@ -190,7 +190,7 @@ class CompactionFilter {
   // Because deployed code will not be compatible with the VLog filter interface, we give it a new version number and call it only by option
   virtual Decision FilterV3(int level, const Slice& key, ValueType value_type,
                             const Slice& existing_value, std::string* new_value,
-                            std::string* skip_until,
+                            std::string* /*skip_until*/,
                             std::shared_ptr<VLog> pvlog   // pointer to VLog, if any, for resolving indirect references
     ) const {
     Slice resolved_value{existing_value};
@@ -211,6 +211,8 @@ class CompactionFilter {
         bool rv = FilterMergeOperand(level, key, existing_value);
         return rv ? Decision::kRemove : Decision::kKeep;
       }
+      default:
+        break;
     }
     assert(false);
     return Decision::kKeep;

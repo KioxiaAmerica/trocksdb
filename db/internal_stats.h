@@ -219,6 +219,12 @@ class InternalStats {
           num_output_files(0),
           num_input_records(0),
           num_dropped_records(0),
+#ifdef INDIRECT_VALUE_SUPPORT
+          vlog_bytes_written_comp(0),
+          vlog_bytes_written_raw(0),
+          vlog_bytes_remapped(0),
+          vlog_files_created(0),
+#endif
           count(c) {
       int num_of_reasons = static_cast<int>(CompactionReason::kNumOfReasons);
       for (int i = 0; i < num_of_reasons; i++) {

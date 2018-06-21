@@ -135,12 +135,12 @@ class DBIter final: public Iterator {
         range_del_agg_(cf_options.internal_comparator, s,
                        true /* collapse_deletions */),
         read_callback_(read_callback),
+#ifdef INDIRECT_VALUE_SUPPORT
+        resolved_indirect_values(std::vector<shared_ptr<std::string>>(16)),  // init a capacity that will probably cover all needs
+#endif
         allow_blob_(allow_blob),
         is_blob_(false),
         start_seqnum_(read_options.iter_start_seqnum)
-#ifdef INDIRECT_VALUE_SUPPORT
-        ,resolved_indirect_values(std::vector<shared_ptr<std::string>>(16))  // init a capacity that will probably cover all needs
-#endif
           {
     RecordTick(statistics_, NO_ITERATORS);
     prefix_extractor_ = mutable_cf_options.prefix_extractor.get();

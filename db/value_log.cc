@@ -395,7 +395,7 @@ printf("Deleting file %s\n",filenames[i].c_str());
   // Delete the file.  Close it as random-access, then delete it
   void VLogRingFileDeletion::DeleteFile(VLogRing& v,   // the current ring
     const ImmutableDBOptions *immdbopts,   // The current Env
-    EnvOptions& file_options  // options to use for all VLog files
+    EnvOptions& /*file_options*/  // options to use for all VLog files
   ) {
     filepointer = nullptr;  // This closes the file if it was open
     std::string filename = VLogFileName(v.immdbopts_->db_paths,
