@@ -5,7 +5,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#define IITIMING  // set to log timing breakdown for the iterator
+#ifdef IITIMING
 #include <inttypes.h>
+#endif
 #include "db/value_log_iterator.h"
 #include "rocksdb/status.h"
 
@@ -87,10 +90,15 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
   {
     // If indirects are disabled, we have nothing to do.  We will just be returning values from c_iter_.
     if(!use_indirects_)return;
+#ifdef IITIMING
+    const uint64_t start_micros = current_vlog->immdbopts_->env->NowMicros();
+    std::vector<uint64_t> iitimevec(10,0);
+#endif
     size_t outputringno;   // The ring# we will be writing VLog files to
     // For Active Recycling, use the ringno chosen earlier; otherwise use the ringno for the output level
     if(recyciter!=nullptr)outputringno = compaction->ringno();   // AR
     else{
+
       int level = compaction->output_level();  // output level for this run
       outputringno = current_vlog->VLogRingNoForLevelOutput(level);  // get the ring number we will write output to
 #if DEBLEVEL&4
@@ -160,9 +168,11 @@ printf("\n");
 
     size_t totalsstlen=0;  // total length so far that will be written to the SST
     size_t bytesresvindiskdata=0;  // total length that we will write to disk.  diskdata contains a mixture of references and actual data
-    uint64_t timehandlingvalueusec=0;  // time to compress/crc/move value, in usec
     while(c_iter->Valid() && 
            !(recyciter==nullptr && end != nullptr && pcfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0)) {
+#ifdef IITIMING
+    iitimevec[0] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 0 - top of loop
+#endif
       // process this kv.  It is valid and the key is not past the specified ending key
       char vclass;   // disposition of this value
       size_t sstvaluelen;  // length of the value that will be written to the sst for this kv
@@ -193,28 +203,36 @@ printf("\n");
       sstvaluelen = val.size();  // if value passes through, its length will go to the SST
       if(IsTypeDirect(c_iter->ikey().type) && recyciter==nullptr && val.size() > minindirectlen ) {  // remap Direct type if length is big enough - but never if AR
         // direct value that should be indirected
-        const uint64_t start_micros = current_vlog->immdbopts_->env->NowMicros();
-
+#ifdef IITIMING
+    iitimevec[1] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 1 - starting value handling
+#endif
         bytesintocompression += val.size();  // count length into compression
         std::string compresseddata;  // place the compressed string will go
         // Compress the data.  This will never fail; if there is an error, we just get uncompressed data
         CompressionType ctype = CompressForVLog(std::string(val.data(),val.size()),compressiontype,compressioncontext,&compresseddata);
+#ifdef IITIMING
+    iitimevec[2] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 2 - after compression
+#endif
         // Move the compression type and the compressed data into the output area, jammed together
         size_t ctypeindex = diskdata.size();  // offset to the new record
         reserveatleast(diskdata,1+4+compresseddata.size());  // make sure there's room for header+CRC
         diskdata.push_back((char)ctype);
         appendtovector(diskdata,compresseddata);  // collect new data into the written-to-disk area
+#ifdef IITIMING
+    iitimevec[3] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 3 - after copy
+#endif
         // CRC the type/data and move the CRC to the output record
         uint32_t crcint = crc32c::Value((char *)diskdata.data()+ctypeindex,diskdata.size()-ctypeindex);  // take CRC
         // Append the CRC to the type/data, giving final record format of type/data/CRC.  We don't use a structure for this for fear
         // of compiler/architecture variations.  Instead, we treat everything as bytes.  We put the CRC out littlendian here
         for(int i = 0;i<4;++i){diskdata.push_back((char)crcint); crcint>>=8;}
-
+#ifdef IITIMING
+    iitimevec[4] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 4 - after CRC
+#endif
         vclass += vIndirectFirstMap;  // indicate the conversion.  We always have a value in diskrecl when we set this vclass
         // We have built the compressed/CRCd record.  save its length
         diskrecl.push_back(bytesresvindiskdata += diskdata.size()-ctypeindex);   // write running sum of record lengths, i. e. current total allocated size after we add this record
         sstvaluelen = VLogRingRef::sstrefsize;  // what we write to the SST will be a reference
-        timehandlingvalueusec +=  current_vlog->immdbopts_->env->NowMicros()-start_micros;  // accumulate time spent handling values
       } else if(IsTypeIndirect(c_iter->ikey().type)) {  // is indirect ref?
         // value is indirect; does it need to be remapped?
         assert(val.size()==VLogRingRef::sstrefsize);  // should be a reference
@@ -288,9 +306,15 @@ printf("\n");
       // Associate the valid kv with the file it comes from.  We store the current record # into the file# slot it came from, so
       // that when it's all over each slot contains the record# of the last record (except for empty files which contain 0 as the ending record#)
       if(recyciter!=nullptr)filecumreccnts[recyciter->fileindex()] = valueclass.size();
+#ifdef IITIMING
+    iitimevec[5] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 5 - all loop processing except Next
+#endif
 
       // We have processed one key from the compaction iterator - get the next one
       c_iter->Next();
+#ifdef IITIMING
+    iitimevec[6] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 6 - after Next
+#endif
     }
 
     // All values have been read from c_iter
@@ -303,27 +327,37 @@ printf("\n");
     // TODO: It might be worthwhile to sort the kvs by key.  This would be needed only during Active Recycling, since they are
     // automatically sorted during compaction.  Perhaps we could merge by level.
 
+#ifdef IITIMING
+    iitimevec[7] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 7 - before write to VLog
+#endif
     // Allocate space in the Value Log and write the values out, and save the information for assigning references
     outputring->VLogRingWrite(current_vlog,diskdata,diskrecl,valueclass,compaction->mutable_cf_options()->vlogfile_max_size[outputringno],firstdiskref,fileendoffsets,outputerrorstatus);
     nextdiskref = firstdiskref;    // remember where we start, and initialize the running pointer to the disk data
+#ifdef IITIMING
+    iitimevec[8] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 8 - after write to VLog
+#endif
 
     // save what we need to return to stats
     diskdatalen = bytesresvindiskdata;  // save # bytes written for stats report
 #if DEBLEVEL&4
 printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.size());
 #endif
+
+#ifdef IITIMING
+    ROCKS_LOG_INFO(
+        current_vlog->immdbopts_->info_log, "[%s] Total IndirectIterator time %5.2f (comp=%5.2f, move=%5.2f, CRC=%5.2f, Next()=%5.2f, VLogWr=%5.2f, other=%5.2f).  Now writing %" PRIu64 " SST files, %" PRIu64 " bytes, max filesize=%" PRIu64,
+        current_vlog->cfd_->GetName().c_str(),
+        iitimevec[8]*1e-6, (iitimevec[2]-iitimevec[1])*1e-6, (iitimevec[3]-iitimevec[2])*1e-6, (iitimevec[4]-iitimevec[3])*1e-6, (iitimevec[6]-iitimevec[5])*1e-6, (iitimevec[8]-iitimevec[7])*1e-6,
+        (iitimevec[5]-iitimevec[4]+iitimevec[1]-iitimevec[0])*1e-6,
+        filecumreccnts.size(), outputrcdend.size()?outputrcdend.back():0, compaction->max_output_file_size());
+#endif
+
     if(outputerrorstatus.empty()) {
       // No error reading keys and writing to disk.
       if(recyciter==nullptr) {      // If this is NOT Active Recycling, allocate the kvs to SSTs so as to keep files sizes equal.
         BreakRecordsIntoFiles(filecumreccnts, outputrcdend, compaction->max_output_file_size(),
           &compaction->grandparents(), &keys, &keylens, &compaction->column_family_data()->internal_comparator(),
           compaction->max_compaction_bytes());  // calculate filecumreccnts, including use of grandparent info
-
-      ROCKS_LOG_INFO(
-          current_vlog->immdbopts_->info_log, "[%s] Spent %" PRIu64 "handling values.  Now writing %" PRIu64 " SST files, %" PRIu64 " bytes, max filesize=%" PRIu64,
-          current_vlog->cfd_->GetName().c_str(), timehandlingvalueusec,
-          filecumreccnts.size(), outputrcdend.size()?outputrcdend.back():0, compaction->max_output_file_size());
-
       }
       // now filecumreccnts has the length in kvs of each eventual output file.  For AR, we mimic the input; for compaction, we create new files
 
