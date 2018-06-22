@@ -44,8 +44,8 @@ class RecyclingIterator : public InternalIterator {
 
   // The following are needed to meet the requirements of the InternalIterator:
   virtual void SeekToLast() override {};
-  virtual void SeekForPrev(const Slice& target) override {};
-  virtual void Seek(const Slice& target) override {};
+  virtual void SeekForPrev(const Slice& /*unused*/) override {};
+  virtual void Seek(const Slice& /*unused*/) override {};
   virtual void Prev() override {};
   
 private:

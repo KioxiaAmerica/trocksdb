@@ -327,13 +327,13 @@ int ParseInt(const std::string& value) {
 }
 
 #ifdef INDIRECT_VALUE_SUPPORT
-int64_t ParseInt64(const std::string& value) {
+int32_t ParseInt32(const std::string& value) {
   size_t endchar;
 #ifndef CYGWIN
-  int64_t num = std::stoll(value.c_str(), &endchar);
+  int32_t num = std::stoi(value.c_str(), &endchar);
 #else
   char* endptr;
-  int64_t num = std::strtoull(value.c_str(), &endptr, 0);
+  int32_t num = std::strtoul(value.c_str(), &endptr, 0);
   endchar = endptr - value.c_str();
 #endif
 
@@ -380,16 +380,31 @@ std::vector<int> ParseVectorInt(const std::string& value) {
 }
 
 #ifdef INDIRECT_VALUE_SUPPORT
+std::vector<int32_t> ParseVectorInt32(const std::string& value) {
+  std::vector<int32_t> result;
+  size_t start = 0;
+  while (start < value.size()) {
+    size_t end = value.find(':', start);
+    if (end == std::string::npos) {
+      result.push_back(ParseInt32(value.substr(start)));
+      break;
+    } else {
+      result.push_back(ParseInt32(value.substr(start, end - start)));
+      start = end + 1;
+    }
+  }
+  return result;
+}
 std::vector<uint64_t> ParseVectorInt64(const std::string& value) {
   std::vector<uint64_t> result;
   size_t start = 0;
   while (start < value.size()) {
     size_t end = value.find(':', start);
     if (end == std::string::npos) {
-      result.push_back(ParseInt64(value.substr(start)));
+      result.push_back(ParseUint64(value.substr(start)));
       break;
     } else {
-      result.push_back(ParseInt64(value.substr(start, end - start)));
+      result.push_back(ParseUint64(value.substr(start, end - start)));
       start = end + 1;
     }
   }
@@ -409,6 +424,16 @@ bool SerializeIntVector(const std::vector<int>& vec, std::string* value) {
 }
 
 #ifdef INDIRECT_VALUE_SUPPORT
+bool SerializeVectorInt32(const std::vector<int32_t>& vec, std::string* value) {
+  *value = "";
+  for (size_t i = 0; i < vec.size(); ++i) {
+    if (i > 0) {
+      *value += ":";
+    }
+    *value += ToString(vec[i]);
+  }
+  return true;
+}
 bool SerializeVectorInt64(const std::vector<uint64_t>& vec, std::string* value) {
   *value = "";
   for (size_t i = 0; i < vec.size(); ++i) {

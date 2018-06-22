@@ -208,14 +208,14 @@ class CompactionIterator {
   // is in or beyond the last file checked during the previous call
   std::vector<size_t> level_ptrs_;
   CompactionIterationStats iter_stats_;
+  // Used to avoid purging uncommitted values. The application can specify
+  // uncommitted values by providing a SnapshotChecker object.
+  bool current_key_committed_;
 #ifdef INDIRECT_VALUE_SUPPORT
   std::vector<int64_t> ring_bytes_refd_;  // for each ring, the total number of bytes referred to in the ring.  This represents all the indirect data going into compaction.  Anything that is not passed through becomes fragmentation
   void CountIndirectRefs(ValueType keytype, Slice& value);
 #endif
 
-  // Used to avoid purging uncommitted values. The application can specify
-  // uncommitted values by providing a SnapshotChecker object.
-  bool current_key_committed_;
 
   bool IsShuttingDown() {
     // This is a best-effort facility, so memory_order_relaxed is sufficient.

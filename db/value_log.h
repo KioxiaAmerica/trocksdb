@@ -298,7 +298,7 @@ public:
   ) : queue(nullptr), refcount_deletion(0), refcount_manifest(0), filepointer(std::move(fptr)), length(len) {}
   VLogRingFile() :   // used to initialize empty slot
     queue(nullptr), refcount_deletion(0), refcount_manifest(0), filepointer(nullptr), length(0) {}
-  VLogRingFile(VLogRingFile& v, int dummy) :  // used to create faux copy constructor to evade no-copy rules
+  VLogRingFile(VLogRingFile& v, int /*dummy*/) :  // used to create faux copy constructor to evade no-copy rules
     queue(v.queue), refcount_deletion(v.refcount_deletion), refcount_manifest(v.refcount_manifest), filepointer(v.filepointer.get()), length(v.length) {}
 
   // Ensure the file is not copyable
