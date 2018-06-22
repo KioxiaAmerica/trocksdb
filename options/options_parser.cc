@@ -602,6 +602,9 @@ bool AreEqualOptions(
       return (*reinterpret_cast<const InfoLogLevel*>(offset1) ==
               *reinterpret_cast<const InfoLogLevel*>(offset2));
 #ifdef INDIRECT_VALUE_SUPPORT
+    case OptionType::kVectorInt32:
+      return (*reinterpret_cast<const std::vector<int32_t>*>(offset1) ==
+              *reinterpret_cast<const std::vector<int32_t>*>(offset2));
     case OptionType::kVectorInt64:
       return (*reinterpret_cast<const std::vector<uint64_t>*>(offset1) ==
               *reinterpret_cast<const std::vector<uint64_t>*>(offset2));
