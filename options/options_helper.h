@@ -78,6 +78,7 @@ enum class OptionType {
   kInfoLogLevel,
   kLRUCacheOptions,
 #ifdef INDIRECT_VALUE_SUPPORT
+  kVectorInt32,
   kVectorInt64,
 #endif //INDIRECT_VALUE_SUPPORT
   kUnknown
