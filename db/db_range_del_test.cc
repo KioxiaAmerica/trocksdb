@@ -923,10 +923,8 @@ TEST_F(DBRangeDelTest, CompactionTreatsSplitInputLevelDeletionAtomically) {
   options.level0_file_num_compaction_trigger = kNumFilesPerLevel;
   options.memtable_factory.reset(
       new SpecialSkipListFactory(2 /* num_entries_flush */));
-  options.target_file_size_base = (uint64_t)(kValueBytes*1.7);  // allow 2 keys per file for both indirect and direct values
-#ifdef INDIRECT_VALUE_SUPPORT
-  options.allow_trivial_move = true;
-#endif
+  // allow 2 keys per file for both indirect and direct values
+  options.target_file_size_base = kValueBytes;
   // i == 0: CompactFiles
   // i == 1: CompactRange
   // i == 2: automatic compaction
