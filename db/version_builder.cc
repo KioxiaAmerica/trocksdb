@@ -518,7 +518,11 @@ void VersionBuilder::Apply(VersionEdit* edit) { rep_->Apply(edit); }
 std::vector<VLogRingRestartInfo> VersionBuilder::VLogAdditions() { return rep_->vlog_additions; }
 #endif
 
+#ifdef INDIRECT_VALUE_SUPPORT
 void VersionBuilder::SaveTo(VersionStorageInfo* vstorage, ColumnFamilyData *cfd) {
+#else
+void VersionBuilder::SaveTo(VersionStorageInfo* vstorage, ColumnFamilyData* /*cfd*/) {
+#endif
 #ifdef INDIRECT_VALUE_SUPPORT
   // We are about to commit the added_files in rep_ to the new version vstorage.  This is a safe time
   // to enter their info into the Value Log.  We could come here either from initial recovery or from finishing a

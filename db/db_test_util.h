@@ -755,7 +755,11 @@ class DBTestBase : public testing::Test {
   }
 
   // like Key, but give a big Key suitable for keeping constant kv size regardless of indirects
+#ifdef INDIRECT_VALUE_SUPPORT
   std::string KeyBig(int i, size_t valuelen) {
+#else
+  std::string KeyBig(int i, size_t /*valuelen*/) {
+#endif
     std::string retstg;
     char buf[100];
     snprintf(buf, sizeof(buf), "key%06d", i);
@@ -774,7 +778,11 @@ class DBTestBase : public testing::Test {
   std::string KeyBigNewFile(int key_idx, int i) { return KeyBig(key_idx, (i==99) ? 1 : 999) ; }
   
   // like Key, but give a big Key suitable for keeping constant kv size regardless of indirects
+#ifdef INDIRECT_VALUE_SUPPORT
   std::string KeyBig(const std::string& k, size_t valuelen) {
+#else
+  std::string KeyBig(const std::string& k, size_t /*valuelen*/) {
+#endif
     std::string retstg;
     retstg.assign(k);
 #ifdef INDIRECT_VALUE_SUPPORT  // scaf need option

@@ -43,7 +43,12 @@ size_t CompactedDBImpl::FindFile(const Slice& key) {
   return right;
 }
 
-Status CompactedDBImpl::Get(const ReadOptions& options, ColumnFamilyHandle* column_family_handle,
+Status CompactedDBImpl::Get(const ReadOptions& options,
+#ifdef INDIRECT_VALUE_SUPPORT
+                            ColumnFamilyHandle* column_family_handle,
+#else
+                            ColumnFamilyHandle* /*column_family_handle*/,
+#endif
                             const Slice& key, PinnableSlice* value) {
 #ifdef INDIRECT_VALUE_SUPPORT
   // Even though CompactedDB doesn't support merges, we need a MergeContext to hold the address of the VLog
@@ -68,7 +73,11 @@ Status CompactedDBImpl::Get(const ReadOptions& options, ColumnFamilyHandle* colu
 }
 
 std::vector<Status> CompactedDBImpl::MultiGet(const ReadOptions& options,
+#ifdef INDIRECT_VALUE_SUPPORT
     const std::vector<ColumnFamilyHandle*>& column_family_handle,
+#else
+    const std::vector<ColumnFamilyHandle*>& /*column_family_handle*/,
+#endif
     const std::vector<Slice>& keys, std::vector<std::string>* values) {
   autovector<TableReader*, 16> reader_list;
   for (const auto& key : keys) {
