@@ -330,6 +330,8 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
       {offset_of(
            &ColumnFamilyOptions::max_bytes_for_level_multiplier_additional),
        sizeof(std::vector<int>)},
+      {offset_of(&ColumnFamilyOptions::compaction_options_fifo),
+       sizeof(CompactionOptionsFIFO)},  // MSVC copies the padding for this struct when it initializes
       {offset_of(&ColumnFamilyOptions::memtable_factory),
        sizeof(std::shared_ptr<MemTableRepFactory>)},
       {offset_of(&ColumnFamilyOptions::table_properties_collector_factories),
@@ -468,13 +470,13 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
       "report_bg_io_stats=true;"
       "ttl=60;"
       "compaction_options_fifo={max_table_files_size=3;ttl=100;allow_"
-      "compaction=false;"
+      "compaction=false;};"
 
 #ifdef INDIRECT_VALUE_SUPPORT
       "allow_trivial_move=false;"
       "compaction_score_limit_L0=1000.0;"
 #endif
-      "};";
+      ;
   ASSERT_OK(GetColumnFamilyOptionsFromString(
       *options, optionstring, new_options));
 
