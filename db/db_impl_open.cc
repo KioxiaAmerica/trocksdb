@@ -1043,7 +1043,7 @@ Status DBImpl::OpenVLogs(const DBOptions& db_options) {
   EnvOptions vlog_options(db_options);
   // for each column family that supports VLogs, init the VLogs.  Abort if there is an error
   for (auto cfd : *versions_->GetColumnFamilySet()){
-    if(cfd->vlog()!=nullptr)if(!(s = cfd->vlog()->VLogInit(existing_vlog_files,existing_vlog_sizes,&immutable_db_options_,vlog_options)).ok())return s;  // if error, it has been logged
+    if(cfd->vlog()!=nullptr)if(!(s = cfd->vlog()->VLogInit(existing_vlog_files,existing_vlog_sizes,immutable_db_options_,vlog_options)).ok())return s;  // if error, it has been logged
   }
   return s;
 }

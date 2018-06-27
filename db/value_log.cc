@@ -312,7 +312,7 @@ VLogRing::VLogRing(
   std::vector<std::string> filenames,  // the filenames that might be vlog files for this ring
   std::vector<VLogRingRefFileLen> filesizes,   // corresponding file sizes
   const ImmutableDBOptions *immdbopts,   // The current Env
-  EnvOptions& file_options  // options to use for all VLog files
+  const EnvOptions& file_options  // options to use for all VLog files
 )   : 
     ringno_(ringno),
     cfd_(cfd),
@@ -1264,18 +1264,24 @@ void VLogRing::VLogRingFindLaggingSsts(
 //
 
 // A VLog is a set of VLogRings for a single column family.  The VLogRings are distinguished by an index.
+// The VLog is initialized with a set of empty rings.  If the ring is being created because a column family is being
+// added to an existing database, these empty rings are a valid starting point.  If the ring is being created at
+// database-open time, there will be a subsequent call to VLogInit
 VLog::VLog(
-  // the info for the column family
-  ColumnFamilyData *cfd
+  ColumnFamilyData *cfd,  // the info for the column family
+  const ImmutableDBOptions& immdbopts,   // The current options
+  const EnvOptions& file_options  // options to use for all VLog files
 ) :
   rings_(std::vector<std::unique_ptr<VLogRing>>()),  // start with empty rings
   starting_level_for_ring_(std::vector<int>()),
   cfd_(cfd),
-  waiting_sst_queues(std::vector<FileMetaData *>{4})  // init max possible # ring anchors
+  waiting_sst_queues(std::vector<FileMetaData *>{4}),  // init max possible # ring anchors
+  initcomplete(false)   // start uninitialized
 {  writelock.store(0,std::memory_order_release);
 #if DEBLEVEL&1
 printf("VLog cfd=%p name=%s\n",cfd,cfd->GetName().data());
 #endif
+  VLogInit(std::vector<std::string>{},std::vector<VLogRingRefFileLen>{},immdbopts,file_options);
 }
 
 
@@ -1285,18 +1291,18 @@ printf("VLog cfd=%p name=%s\n",cfd,cfd->GetName().data());
 Status VLog::VLogInit(
     std::vector<std::string> vlg_filenames,    // all the filenames that exist for this database - at least, all the vlg files
     std::vector<VLogRingRefFileLen> vlg_filesizes,   // corresponding file sizes
-    const ImmutableDBOptions *immdbopts,   // The current Env
-    EnvOptions& file_options  // options to use for all VLog files
+    const ImmutableDBOptions& immdbopts,   // The current Env
+    const EnvOptions& file_options  // options to use for all VLog files
 ) {
 #if DEBLEVEL&1
 printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
 #endif
-  immdbopts_ = immdbopts;  // save the options
+  immdbopts_ = &immdbopts;  // save the options
   // Save the ring starting levels
   starting_level_for_ring_.clear();
   for(auto l : cfd_->VLogRingActivationLevel()){if (l<0)l+=cfd_->NumberLevels(); starting_level_for_ring_.push_back(l);}
 
-  // The the database is not new, the CF will have the stats for the rings.  If the CF has no stats, create null stats for each level
+  // If the database is not new, the CF will have the stats for the rings.  If the CF has no stats, create null stats for each level
   if(cfd_->vloginfo().size()==0)cfd_->vloginfo().resize(starting_level_for_ring_.size());
     // scaf worry about mismatch between # rings given & # in database
 #if DEBLEVEL&0x800
@@ -1306,8 +1312,7 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
     }
 #endif
 
-  // If there are VlogRings now, it means that somehow the database was reopened without being destroyed.  This is bad form but not necessarily fatal.
-  // To cope, we will delete the old rings, which should go through and free up all their resources.  Then we will continue with new rings.
+  // Delete any rings left from initialization or a closed database, which should go through and free up all their resources.  Then we will continue with new rings.
   rings_.clear();  // delete any rings that are hanging around
 
   // cull the list of files to leave only those that apply to this cf
@@ -1329,7 +1334,7 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
 //      immdbopts /* immdbopts */, file_options)));
     unique_ptr<VLogRing> vptr(new VLogRing(i /* ring# */, cfd_ /* ColumnFamilyData */, existing_vlog_files_for_cf /* filenames */,
       existing_vlog_sizes_for_cf /* filesizes */, 
-      immdbopts /* immdbopts */, file_options));
+      &immdbopts /* immdbopts */, file_options));
     rings_.push_back(std::move(vptr));
 
     // if there was an error creating the ring, abort
@@ -1430,7 +1435,7 @@ if(!rings_.size() || !newsst.indirect_ref_0.size())printf("VLogSstInstall newsst
     // a ring after the block itself has been deleted.  The not-on-queue indication persists throughout for
     // those rings that the block doesn't have a reference for; for the others it changes based on queue status
 
-    if(!rings_.size()){
+    if(!initcomplete){
       // if the rings have not been, or never will be, created, enqueue them here in the Vlog.  In case initialization ever
       // becomes multi-threaded, acquire a lock on the ring headers
       AcquireLock();

@@ -519,7 +519,7 @@ VLogRing(
   std::vector<std::string> filenames,  // the filenames that might be vlog files for this ring
   std::vector<VLogRingRefFileLen> filesizes,   // corresponding file sizes
   const ImmutableDBOptions *immdbopts,   // The current Env
-  EnvOptions& file_options  // options to use for all VLog files
+  const EnvOptions& file_options  // options to use for all VLog files
 );
 
   // Ensure the ring is not copyable
@@ -655,18 +655,21 @@ private:
   std::vector<FileMetaData *> waiting_sst_queues;  // queue headers when SSTs are queued awaiting init.  One per possible ring
   std::atomic<uint32_t> writelock;  // 0 normally, 1 when the ring headers are being modified
   const ImmutableDBOptions *immdbopts_;  // options at time of creation
+  bool initcomplete;  // set when we run a compaction for this VLog.  Up till that point any InstallSst requests must be queued until the ring isinitialized
 
 public:
 
   VLog(
-    // the info for the column family
-    ColumnFamilyData *cfd
+  ColumnFamilyData *cfd,  // the info for the column family
+  const ImmutableDBOptions& immdbopts,   // The current options
+  const EnvOptions& file_options  // options to use for all VLog files
   );
   size_t nrings() { return rings_.size(); }
   std::vector<std::unique_ptr<VLogRing>>& rings() { return rings_; }
   int starting_level_for_ring(int ringno) { return starting_level_for_ring_[ringno]; }
   bool cfd_exists() { return cfd_ != nullptr; }   // id the cfd still valid?
   void cfd_clear() { AcquireLock(); cfd_ = nullptr; ReleaseLock(); }  // clear CF pointer under lock in case it is being used
+  void SetInitComplete() {initcomplete = true;}
 
   // No copying
   VLog(VLog const&) = delete;
@@ -696,8 +699,8 @@ public:
   Status VLogInit(
     std::vector<std::string> vlg_filenames,    // all the filenames that exist for this database - at least, all the vlg files
     std::vector<VLogRingRefFileLen> vlg_filesizes,   // corresponding file sizes
-    const ImmutableDBOptions *immdbopts,  // the currect Env
-    EnvOptions& file_options   // options to use for VLog files
+    const ImmutableDBOptions& immdbopts,  // the currect Env
+    const EnvOptions& file_options   // options to use for VLog files
   )
     // Go through all the SSTs and create a vector of filerefs for each ring
 

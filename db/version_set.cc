@@ -3407,7 +3407,6 @@ Status VersionSet::Recover(
               "does not match existing comparator " + edit.comparator_);
           break;
         }
-      }
 
 #ifdef INDIRECT_VALUE_SUPPORT
       if(edit.vlog_additions.size())   // If this edit contains vlog info
@@ -3419,6 +3418,7 @@ Status VersionSet::Recover(
     }
 #endif
 #endif
+      }
 
       if (edit.has_prev_log_number_) {
         previous_log_number = edit.prev_log_number_;

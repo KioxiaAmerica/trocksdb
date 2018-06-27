@@ -727,7 +727,7 @@ ColumnFamilyData::ColumnFamilyData(
 #ifdef INDIRECT_VALUE_SUPPORT
     // If the selected table doesn't support indirect values, leave the vlog_ pointer at its initial (nullptr) value
     // If it supports indirect values, create a vlog
-    if(cf_options.table_factory->supports_indirect_values)vlog_ = std::make_shared<VLog>(this);
+    if(cf_options.table_factory->supports_indirect_values)vlog_ = std::make_shared<VLog>(this,db_options,env_options);
 #endif
   }
 

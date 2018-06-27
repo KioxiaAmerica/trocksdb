@@ -332,6 +332,8 @@ printf("\n");
 #endif
     // Allocate space in the Value Log and write the values out, and save the information for assigning references
     outputring->VLogRingWrite(current_vlog,diskdata,diskrecl,valueclass,compaction->mutable_cf_options()->vlogfile_max_size[outputringno],firstdiskref,fileendoffsets,outputerrorstatus);
+    // Now, before any SSTs have been released, switch over the first time from 'waiting for SST/VLog info' to 'normal operation'
+    current_vlog->SetInitComplete();
     nextdiskref = firstdiskref;    // remember where we start, and initialize the running pointer to the disk data
 #ifdef IITIMING
     iitimevec[8] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 8 - after write to VLog
