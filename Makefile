@@ -546,31 +546,49 @@ PARALLEL_TEST = \
 	write_prepared_transaction_test \
 	write_unprepared_transaction_test \
 
+ifdef INDIRECT_VALUE_SUPPORT
+TESTS += vlog_files_test \
+
+endif
+
 # options_settable_test doesn't pass with UBSAN as we use hack in the test
 ifdef COMPILE_WITH_UBSAN
         TESTS := $(shell echo $(TESTS) | sed 's/\boptions_settable_test\b//g')
 endif
 #LOCK/CRASH test cases
 #[unit] \
-	backupable_db_test              trocks \
-	db_compaction_test              trocks \
-	db_properties_test              noflags \
-	db_range_del_test               noflags \
-
-#[tsan] \
-	db_compaction_test              trocks \
-	external_sst_file_test          trocks \
+FAIL	backupable_db_test 			trocks Bug144+Bug128\
+FAIL	db_basic_test 				trocks Bug134\
+FAIL	db_bloom_filter_test 			trocks Bug137\
+FAIL	db_compaction_test 			trocks Bug152\
+SEGF	db_iterator_test 			trocks Bug139\
+FAIL	db_properties_test 			trocks Bug140\
+FAIL	db_range_del_test 			trocks Bug127\
+FIXED?	db_range_del_test 			noflags Bug98\
+FAIL	db_test 				trocks Bug136\
+FAIL	db_universal_compaction_test 		trocks Bug147\
+FAIL	external_sst_file_test			trocks Bug142\
+FAIL	vlog_files_test 			trocks Bug163\
+FAIL	write_prepared_transaction_test 	trocks Bug151\
+FAIL	write_prepared_transaction_test 	noflags Bug151\
 
 ifdef INDIRECT_VALUE_SUPPORT
 LOCKS= \
 	backupable_db_test \
+	db_basic_test \
+	db_bloom_filter_test \
 	db_compaction_test \
+	db_iterator_test \
+	db_properties_test \
+	db_test \
+	db_universal_compaction_test \
 	external_sst_file_test \
+	vlog_files_test \
+	write_prepared_transaction_test \
 
 else
 LOCKS= \
-	db_properties_test \
-	db_range_del_test \
+	write_prepared_transaction_test \
 
 endif
 
@@ -1551,6 +1569,9 @@ range_del_aggregator_test: db/range_del_aggregator_test.o db/db_test_util.o $(LI
 	$(AM_LINK)
 
 blob_db_test: utilities/blob_db/blob_db_test.o $(LIBOBJECTS) $(TESTHARNESS)
+	$(AM_LINK)
+
+vlog_files_test: db/vlog_files_test.o db/db_test_util.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
 #-------------------------------------------------
