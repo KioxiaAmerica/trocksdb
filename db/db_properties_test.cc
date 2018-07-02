@@ -950,7 +950,7 @@ TEST_F(DBPropertiesTest, EstimatePendingCompBytes) {
 }
 
 TEST_F(DBPropertiesTest, EstimateCompressionRatio) {
-#ifdef INDIRECT_VALUE_SUPPORT  // can't measure SST compression when there are indirect values
+#ifndef INDIRECT_VALUE_SUPPORT  // can't measure SST compression when there are indirect values
   if (!Snappy_Supported()) {
     return;
   }
