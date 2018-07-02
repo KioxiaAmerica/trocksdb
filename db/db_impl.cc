@@ -1000,16 +1000,16 @@ InternalIterator* DBImpl::NewInternalIterator(
         new IterState(this, &mutex_, super_version,
                       read_options.background_purge_on_iterator_cleanup);
     internal_iter->RegisterCleanup(CleanupIteratorState, cleanup, nullptr);
-#ifdef INDIRECT_VALUE_SUPPORT
-    // Install the VLog object into the iterator so that resolving values can get to it
-    internal_iter->SetVlogForIteratorCF(cfd->vlog());
-#endif
 
-    return internal_iter;
   } else {
     CleanupSuperVersion(super_version);
+    internal_iter = NewErrorInternalIterator(s, arena);
   }
-  return NewErrorInternalIterator(s, arena);
+#ifdef INDIRECT_VALUE_SUPPORT
+  // Install the VLog object into the iterator so that resolving values can get to it
+  internal_iter->SetVlogForIteratorCF(cfd->vlog());
+#endif
+  return internal_iter;
 }
 
 ColumnFamilyHandle* DBImpl::DefaultColumnFamily() const {

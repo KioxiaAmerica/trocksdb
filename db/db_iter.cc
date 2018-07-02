@@ -136,7 +136,8 @@ class DBIter final: public Iterator {
                        true /* collapse_deletions */),
         read_callback_(read_callback),
 #ifdef INDIRECT_VALUE_SUPPORT
-        resolved_indirect_values(std::vector<shared_ptr<std::string>>(16)),  // init a capacity that will probably cover all needs
+// obsolete         resolved_indirect_vals(std::vector<shared_ptr<std::string>>(16)),  // init a capacity that will probably cover all needs
+        resolved_indirect_vals(std::vector<std::string>()),
 #endif
         allow_blob_(allow_blob),
         is_blob_(false),
@@ -152,6 +153,9 @@ class DBIter final: public Iterator {
     if (iter_) {
       iter_->SetPinnedItersMgr(&pinned_iters_mgr_);
     }
+#ifdef INDIRECT_VALUE_SUPPORT
+    resolved_indirect_vals.reserve(16);  // init a capacity that will probably cover all needs
+#endif
   }
   virtual ~DBIter() {
     // Release pinned data if any
@@ -224,7 +228,7 @@ class DBIter final: public Iterator {
   // Call here to init when the user calls Next() or Prev() in this iterator, to get a new key/value
   void ClearIndirectList() {
 #ifdef INDIRECT_VALUE_SUPPORT
-    resolved_indirect_values.clear();  // Since this starts a new merge, it's safe to forget previous values
+    resolved_indirect_vals.clear();  // Since this starts a new merge, it's safe to forget previous values
     // DO NOT tamper with indirect_state: the next key may have been read already
 #endif
   }
@@ -238,7 +242,9 @@ class DBIter final: public Iterator {
   }
 
 
-  virtual bool Valid() const override { return valid_; }
+  virtual bool Valid() const override {
+   return valid_;
+  }
   virtual Slice key() const override {
     assert(valid_);
     if(start_seqnum_ > 0) {
@@ -260,19 +266,22 @@ class DBIter final: public Iterator {
       if(indirect_state == kISResolveNeeded) {
         // create a new string to hold the resolved value.  We keep all the values for a single result
         // in separate strings, so that they are all available for merge.  The string is copied to
-        // the persistent name resolved_indirect_values before it is filled.
+        // the persistent name resolved_indirect_vals before it is filled.
         //
         // We have to cast names here to avoid compiler complaints about constness.  Thus, this
         // function violates the const declaration.  Really, it's none of the user's business whether value() modifies
         // the object, so this function should not be defined as const; but that would affect user code, so we don't change it
-        auto newstring = std::make_shared<std::string>();
-        (const_cast<std::vector<std::shared_ptr<std::string>>*>(&resolved_indirect_values))->emplace_back(newstring);  // add a new empty string for upcoming read
+// obsolete         auto newstring = std::make_shared<std::string>();
+// obsolete         (const_cast<std::vector<std::shared_ptr<std::string>>&>(resolved_indirect_vals)).emplace_back(newstring);  // add a new empty string for upcoming read
+        (const_cast<std::vector<std::string>&>(resolved_indirect_vals)).emplace_back();  // add a new empty string for upcoming read
         // resolve the value in the new string.
-        iter_->GetVlogForIteratorCF()->VLogGet(val,*(const_cast<std::vector<shared_ptr<std::string>>*>(&resolved_indirect_values))->back().get());   // turn the reference into a value, in the string
-        *(IndirectState*)&indirect_state = kISResolved;  // change state so we don't resolve again
+// obsolete         iter_->GetVlogForIteratorCF()->VLogGet(val,*(const_cast<std::vector<shared_ptr<std::string>>&>(resolved_indirect_vals)).back().get());   // turn the reference into a value, in the string
+        iter_->GetVlogForIteratorCF()->VLogGet(val,const_cast<std::string&>(resolved_indirect_vals.back()));   // turn the reference into a value, in the string
+        const_cast<IndirectState&>(indirect_state) = kISResolved;  // change state so we don't resolve again
       }
       // In any case, the key is now the last string in the read buffers.
-      val = Slice(*resolved_indirect_values.back());  // create a slice for the resolved value
+// obsolete       val = Slice(resolved_indirect_vals.back());  // create a slice for the resolved value
+      val = Slice(resolved_indirect_vals.back());  // create a slice for the resolved value
     }
 #endif
   return val;
@@ -460,7 +469,8 @@ enum IndirectState : unsigned char {
   //
   // This container persists to the end of the iterator, at which time all the strings are freed.  It is initialized with
   // a capacity of 16, which will probably be enough for any normal use.
-  std::vector<std::shared_ptr<std::string>> resolved_indirect_values;
+// obsolete   std::vector<std::shared_ptr<std::string>> resolved_indirect_vals;
+  std::vector<std::string> resolved_indirect_vals;
 #endif
   bool allow_blob_;
   bool is_blob_;

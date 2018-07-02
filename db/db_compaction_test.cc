@@ -298,7 +298,7 @@ TEST_P(DBCompactionTestWithParam, CompactionDeletionTrigger) {
 }
 #endif  // ROCKSDB_VALGRIND_RUN
 #ifdef INDIRECT_VALUE_SUPPORT
-#if 0  // turn on for long r/w test.  This is the TRocks random-load test
+#if 1  // turn on for long r/w test.  This is the TRocks random-load test
 static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
 TEST_F(DBCompactionTest, IndirectTest) {
   Options options = CurrentOptions();
@@ -328,7 +328,7 @@ TEST_F(DBCompactionTest, IndirectTest) {
   int32_t value_size = 18;  // 10 KB
   int32_t key_size = 10 * 1024 - value_size;
   int32_t value_size_var = 20;
-  int32_t batch_size = 200000;
+  int32_t batch_size = 200; // scaf 200000;
 
   // Add 2 non-overlapping files
   Random rnd(301);

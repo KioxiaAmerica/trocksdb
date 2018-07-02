@@ -2097,6 +2097,7 @@ TEST_P(DBIteratorTest, TableFilter) {
     delete iter;
   }
 
+
   // Ensure returning false in the table_filter hides the keys from that table
   // during iteration.
   {
