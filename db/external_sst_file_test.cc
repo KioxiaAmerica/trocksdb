@@ -377,7 +377,11 @@ TEST_F(ExternalSSTFileTest, Basic) {
       ASSERT_EQ(Get(Key(k)), value);
     }
     DestroyAndRecreateExternalSSTFilesDir();
-  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction));
+  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction
+#ifdef INDIRECT_VALUE_SUPPORT
+    | kSkipDirectIO
+#endif
+    ));
 }
 class SstFileWriterCollector : public TablePropertiesCollector {
  public:
@@ -619,7 +623,11 @@ TEST_F(ExternalSSTFileTest, AddList) {
       ASSERT_EQ(Get(Key(k)), value);
     }
     DestroyAndRecreateExternalSSTFilesDir();
-  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction));
+  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction
+#ifdef INDIRECT_VALUE_SUPPORT
+    | kSkipDirectIO
+#endif
+    ));
 }
 
 TEST_F(ExternalSSTFileTest, AddListAtomicity) {
@@ -661,7 +669,11 @@ TEST_F(ExternalSSTFileTest, AddListAtomicity) {
       ASSERT_EQ(Get(Key(k)), value);
     }
     DestroyAndRecreateExternalSSTFilesDir();
-  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction));
+  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction
+#ifdef INDIRECT_VALUE_SUPPORT
+    | kSkipDirectIO
+#endif
+    ));
 }
 // This test reporduce a bug that can happen in some cases if the DB started
 // purging obsolete files when we are adding an external sst file.
@@ -892,7 +904,11 @@ TEST_F(ExternalSSTFileTest, MultiThreaded) {
 
     fprintf(stderr, "Verified %d values\n", num_files * keys_per_file);
     DestroyAndRecreateExternalSSTFilesDir();
-  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction));
+  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction
+#ifdef INDIRECT_VALUE_SUPPORT
+    | kSkipDirectIO
+#endif
+    ));
 }
 
 TEST_F(ExternalSSTFileTest, OverlappingRanges) {
@@ -918,8 +934,11 @@ TEST_F(ExternalSSTFileTest, OverlappingRanges) {
       });
   rocksdb::SyncPoint::GetInstance()->EnableProcessing();
   do {
+
     Options options = CurrentOptions();
     DestroyAndReopen(options);
+if(option_config_==10)
+  option_config_ = 10;  // scaf
 
     SstFileWriter sst_file_writer(EnvOptions(), options);
 
@@ -1022,7 +1041,11 @@ TEST_F(ExternalSSTFileTest, OverlappingRanges) {
     }
     printf("keys/values verified\n");
     DestroyAndRecreateExternalSSTFilesDir();
-  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction));
+  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction
+#ifdef INDIRECT_VALUE_SUPPORT
+    | kSkipDirectIO
+#endif
+    ));
 }
 
 TEST_F(ExternalSSTFileTest, PickedLevel) {

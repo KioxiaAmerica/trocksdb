@@ -736,6 +736,7 @@ class DBTestBase : public testing::Test {
     kSkipHashCuckoo = 64,
     kSkipFIFOCompaction = 128,
     kSkipMmapReads = 256,
+    kSkipDirectIO = 512,
   };
 
   explicit DBTestBase(const std::string path);
