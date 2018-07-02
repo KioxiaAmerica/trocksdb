@@ -111,8 +111,8 @@ class InternalIterator : public Cleanable {
   // The iterator remembers the VLog for the column family it is a part of
   void SetVlogForIteratorCF(std::shared_ptr<VLog> vlog) { iterator_vlog = vlog; }
   std::shared_ptr<VLog> GetVlogForIteratorCF() { return iterator_vlog; }
-// obsolete   std::vector<std::shared_ptr<std::string>> resolved_indirect_values;  // workarea holding resolved values.  Because vector<> copies its contents on reallocation, we have to store pointers.  unique_ptrs don't copy so we use shared
-  std::vector<std::string> resolved_indirect_values;  // workarea holding resolved values.  vecotr<> reallocates & copies, but the contents should stay put
+  std::vector<std::shared_ptr<std::string>> resolved_indirect_values;  // workarea holding resolved values.  Because vector<> copies its contents on reallocation, we have to store pointers.  unique_ptrs don't copy so we use shared
+// obsolete   std::vector<std::string> resolved_indirect_values;  // workarea holding resolved values.  vecotr<> reallocates & copies, but the contents should stay put
 #endif
 
  protected:

@@ -204,14 +204,14 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       // the persistent name resolved_indirect_values before it is filled.  resolved_indirect_values
       // is defined at the compaction-iterator level
       // The vector holds pointers to the strings so that resizing the vector doesn't invalidate them
-// obsolete       auto newstring = std::make_shared<std::string>();
-// obsolete       iter->resolved_indirect_values.emplace_back(newstring);  // add a new empty string for upcoming read
-      iter->resolved_indirect_values.emplace_back();  // add a new empty string for upcoming read
+      auto newstring = std::make_shared<std::string>();
+      iter->resolved_indirect_values.emplace_back(newstring);  // add a new empty string for upcoming read
+// obsolete       iter->resolved_indirect_values.emplace_back();  // add a new empty string for upcoming read
       // resolve the value in the new string.
-// obsolete       vlog->VLogGet(val,iter->resolved_indirect_values.back().get());   // turn the reference into a value, in the string
-      vlog->VLogGet(val,iter->resolved_indirect_values.back());   // turn the reference into a value, in the string
-// obsolete       val = Slice(*iter->resolved_indirect_values.back());  // create a slice for the resolved value
-      val = Slice(iter->resolved_indirect_values.back());  // create a slice for the resolved value
+      vlog->VLogGet(val,*iter->resolved_indirect_values.back());   // turn the reference into a value, in the string
+// obsolete       vlog->VLogGet(val,iter->resolved_indirect_values.back());   // turn the reference into a value, in the string
+      val = Slice(*iter->resolved_indirect_values.back());  // create a slice for the resolved value
+// obsolete       val = Slice(iter->resolved_indirect_values.back());  // create a slice for the resolved value
       ikey.type = ikey.type==kTypeIndirectMerge ? kTypeMerge : kTypeValue;   // the types we give to the merge filter are always direct, for backward compatibility
       ikeystring = InternalKey(ikey).Encode().ToString();  // save string form where it won't be freed till we've used it
       ikeyslice = ikeystring;   // keep the Slice form, which is what we refer to below, current

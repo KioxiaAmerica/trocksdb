@@ -136,8 +136,8 @@ class DBIter final: public Iterator {
                        true /* collapse_deletions */),
         read_callback_(read_callback),
 #ifdef INDIRECT_VALUE_SUPPORT
-// obsolete         resolved_indirect_vals(std::vector<shared_ptr<std::string>>(16)),  // init a capacity that will probably cover all needs
-        resolved_indirect_vals(std::vector<std::string>()),
+        resolved_indirect_vals(std::vector<shared_ptr<std::string>>(16)),  // init a capacity that will probably cover all needs
+// obsolete         resolved_indirect_vals(std::vector<std::string>()),
 #endif
         allow_blob_(allow_blob),
         is_blob_(false),
@@ -271,17 +271,17 @@ class DBIter final: public Iterator {
         // We have to cast names here to avoid compiler complaints about constness.  Thus, this
         // function violates the const declaration.  Really, it's none of the user's business whether value() modifies
         // the object, so this function should not be defined as const; but that would affect user code, so we don't change it
-// obsolete         auto newstring = std::make_shared<std::string>();
-// obsolete         (const_cast<std::vector<std::shared_ptr<std::string>>&>(resolved_indirect_vals)).emplace_back(newstring);  // add a new empty string for upcoming read
-        (const_cast<std::vector<std::string>&>(resolved_indirect_vals)).emplace_back();  // add a new empty string for upcoming read
+        auto newstring = std::make_shared<std::string>();
+        (const_cast<std::vector<std::shared_ptr<std::string>>&>(resolved_indirect_vals)).emplace_back(newstring);  // add a new empty string for upcoming read
+// obsolete         (const_cast<std::vector<std::string>&>(resolved_indirect_vals)).emplace_back();  // add a new empty string for upcoming read
         // resolve the value in the new string.
-// obsolete         iter_->GetVlogForIteratorCF()->VLogGet(val,*(const_cast<std::vector<shared_ptr<std::string>>&>(resolved_indirect_vals)).back().get());   // turn the reference into a value, in the string
-        iter_->GetVlogForIteratorCF()->VLogGet(val,const_cast<std::string&>(resolved_indirect_vals.back()));   // turn the reference into a value, in the string
+        iter_->GetVlogForIteratorCF()->VLogGet(val,*(const_cast<std::vector<shared_ptr<std::string>>&>(resolved_indirect_vals)).back().get());   // turn the reference into a value, in the string
+// obsolete         iter_->GetVlogForIteratorCF()->VLogGet(val,const_cast<std::string&>(resolved_indirect_vals.back()));   // turn the reference into a value, in the string
         const_cast<IndirectState&>(indirect_state) = kISResolved;  // change state so we don't resolve again
       }
       // In any case, the key is now the last string in the read buffers.
-// obsolete       val = Slice(resolved_indirect_vals.back());  // create a slice for the resolved value
-      val = Slice(resolved_indirect_vals.back());  // create a slice for the resolved value
+     val = Slice(*resolved_indirect_vals.back());  // create a slice for the resolved value
+// obsolete        val = Slice(resolved_indirect_vals.back());  // create a slice for the resolved value
     }
 #endif
   return val;
@@ -469,8 +469,8 @@ enum IndirectState : unsigned char {
   //
   // This container persists to the end of the iterator, at which time all the strings are freed.  It is initialized with
   // a capacity of 16, which will probably be enough for any normal use.
-// obsolete   std::vector<std::shared_ptr<std::string>> resolved_indirect_vals;
-  std::vector<std::string> resolved_indirect_vals;
+  std::vector<std::shared_ptr<std::string>> resolved_indirect_vals;
+// obsolete   std::vector<std::string> resolved_indirect_vals;
 #endif
   bool allow_blob_;
   bool is_blob_;
