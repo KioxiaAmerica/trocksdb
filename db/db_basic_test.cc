@@ -567,7 +567,11 @@ TEST_F(DBBasicTest, CompactBetweenSnapshots) {
     ASSERT_EQ("sixth", Get(1, "foo"));
     ASSERT_EQ(AllEntriesFor("foo", 1), "[ sixth ]");
     // skip HashCuckooRep as it does not support snapshot
-  } while (ChangeOptions(kSkipHashCuckoo | kSkipFIFOCompaction));
+  } while (ChangeOptions(kSkipHashCuckoo | kSkipFIFOCompaction
+#ifdef INDIRECT_VALUE_SUPPORT
+           | kSkipDirectIO
+#endif
+          ));
 }
 
 TEST_F(DBBasicTest, DBOpen_Options) {
