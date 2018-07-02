@@ -120,7 +120,7 @@ class FlushedFileCollector : public EventListener {
   FlushedFileCollector() {}
   ~FlushedFileCollector() {}
 
-  virtual void OnFlushCompleted(DB* db, const FlushJobInfo& info) override {
+  virtual void OnFlushCompleted(DB* /*db*/, const FlushJobInfo& info) override {
     std::lock_guard<std::mutex> lock(mutex_);
     flushed_files_.push_back(info.file_path);
   }
@@ -144,6 +144,8 @@ class FlushedFileCollector : public EventListener {
 static const int kCDTValueSize = 1000;
 static const int kCDTKeysPerBuffer = 4;
 static const int kCDTNumLevels = 8;
+/* Unused Function DeletionTriggerOptions */
+/*
 Options DeletionTriggerOptions(Options options) {
   options.compression = kNoCompression;
   options.write_buffer_size = kCDTKeysPerBuffer * (kCDTValueSize + 24);
@@ -159,7 +161,10 @@ Options DeletionTriggerOptions(Options options) {
   options.disable_auto_compactions = false;
   return options;
 }
+*/
 
+/* Unused Function HaveOverlappingKeyRanges */
+/*
 bool HaveOverlappingKeyRanges(
     const Comparator* c,
     const SstFileMetaData& a, const SstFileMetaData& b) {
@@ -183,9 +188,12 @@ bool HaveOverlappingKeyRanges(
   }
   return false;
 }
+*/
 
 // Identifies all files between level "min_level" and "max_level"
 // which has overlapping key range with "input_file_meta".
+/* Unused Function GetOverlappingFileNumbersForLevelCompaction */
+/*
 void GetOverlappingFileNumbersForLevelCompaction(
     const ColumnFamilyMetaData& cf_meta,
     const Comparator* comparator,
@@ -207,7 +215,10 @@ void GetOverlappingFileNumbersForLevelCompaction(
     }
   }
 }
+*/
 
+/* Unused Function VerifyCompactionResult */
+/*
 void VerifyCompactionResult(
     const ColumnFamilyMetaData& cf_meta,
     const std::set<std::string>& overlapping_file_numbers) {
@@ -220,7 +231,10 @@ void VerifyCompactionResult(
   }
 #endif
 }
+*/
 
+/* Unused Function PickFileRandomly */
+/*
 const SstFileMetaData* PickFileRandomly(
     const ColumnFamilyMetaData& cf_meta,
     Random* rand,
@@ -240,6 +254,7 @@ const SstFileMetaData* PickFileRandomly(
   assert(false);
   return nullptr;
 }
+*/
 }  // anonymous namespace
 
 
@@ -275,7 +290,7 @@ TEST_F(DBVLogTest, VlogFileSizeTest) {
   options.max_bytes_for_level_base = 100 * (1LL<<20);  // keep level1 big too
   options.max_bytes_for_level_multiplier = 10;
 
-  const int32_t key_size = 100;
+  //const int32_t key_size = 100;
   const int32_t value_size = (1LL<<14);  // k+v=16KB
   options.target_file_size_base = 100LL << 20;  // high limit for compaction result, so we don't subcompact
 
@@ -302,7 +317,7 @@ TEST_F(DBVLogTest, VlogFileSizeTest) {
 // scaf for speedup printf("%zd\n",nkeys);    break; 
     DestroyAndReopen(options);
     // write the kvs
-    for(int key = 0;key<nkeys;++key){
+    for(size_t key = 0;key<nkeys;++key){
       ASSERT_OK(Put(Key(key), RandomString(&rnd, value_size)));
     }
     size_t vsize=nkeys*(value_size+5);  // bytes written to vlog.  5 bytes for compression header
@@ -340,7 +355,7 @@ TEST_F(DBVLogTest, MinIndirectValSizeTest) {
   options.max_bytes_for_level_base = 100 * (1LL<<20);  // keep level1 big too
   options.max_bytes_for_level_multiplier = 10;
 
-  const int32_t key_size = 100;
+  //const int32_t key_size = 100;
   const int32_t value_size_incr = 10;  // k+v=16KB
   const int32_t nkeys = 2000;  // k+v=16KB
   options.target_file_size_base = 100LL << 20;  // high limit for compaction result, so we don't subcompact
@@ -408,7 +423,7 @@ TEST_F(DBVLogTest, VLogCompressionTest) {
   options.max_bytes_for_level_base = 100 * (1LL<<20);  // keep level1 big too
   options.max_bytes_for_level_multiplier = 10;
 
-  const int32_t key_size = 100;
+  //const int32_t key_size = 100;
   const int32_t value_size_incr = 10;  // k+v=16KB
   const int32_t nkeys = 2000;  // k+v=16KB
   options.target_file_size_base = 100LL << 20;  // high limit for compaction result, so we don't subcompact
@@ -499,7 +514,7 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
   options.max_bytes_for_level_base = 100 * (1LL<<20);  // keep level1 big too
   options.max_bytes_for_level_multiplier = 10;
 
-  const int32_t key_size = 100;
+  //const int32_t key_size = 100;
   const int32_t value_size = 16384;  // k+v=16KB
   const int32_t nkeys = 100;  // number of files
   options.target_file_size_base = 100LL << 20;  // high limit for compaction result, so we don't subcompact
@@ -586,7 +601,7 @@ void DBVLogTest::SetUpForActiveRecycleTest() {
   options.max_bytes_for_level_base = 100 * (1LL<<20);  // keep level1 big too
   options.max_bytes_for_level_multiplier = 10;
 
-  const int32_t key_size = 100;
+  //const int32_t key_size = 100;
   const int32_t value_size = 16384;  // k+v=16KB
   const int32_t nkeys = 100;  // number of files
   options.target_file_size_base = 100LL << 20;  // high limit for compaction result, so we don't subcompact
