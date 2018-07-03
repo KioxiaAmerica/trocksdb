@@ -227,18 +227,31 @@ void GetExpectedTableProperties(TableProperties* expected_tp,
                                 const bool index_key_is_user_key) {
   const int kKeyCount = kTableCount * kKeysPerTable;
   const int kAvgSuccessorSize = kKeySize / 5;
+#ifdef INDIRECT_VALUE_SUPPORT
   const int kEncodingSavePerKey = std::min(2,kKeySize / 10);  // empirical.  Using random keys it's very unlikely to share bytes
+#else
+  const int kEncodingSavePerKey = kKeySize / 4;
+#endif //INDIRECT_VALUE_SUPPORT
   expected_tp->raw_key_size = kKeyCount * (kKeySize + 8);
   expected_tp->raw_value_size = kKeyCount * kValueSize;
   expected_tp->num_entries = kKeyCount;
+#ifdef INDIRECT_VALUE_SUPPORT
   expected_tp->num_data_blocks =
       kTableCount *
       (1 + kKeysPerTable / (kBlockSize / (1 + kKeySize + 8 - kEncodingSavePerKey + 1 + kValueSize)));
-// old      kTableCount *
-// old      (kKeysPerTable * (kKeySize - kEncodingSavePerKey + kValueSize)) /
-// old      kBlockSize;
+#else
+  expected_tp->num_data_blocks =
+      kTableCount *
+      (kKeysPerTable * (kKeySize - kEncodingSavePerKey + kValueSize)) /
+      kBlockSize;
+#endif //INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT
   expected_tp->data_size =
       kTableCount * (kKeysPerTable * (1 + kKeySize + 8 + 1 + kValueSize));
+#else
+  expected_tp->data_size =
+      kTableCount * (kKeysPerTable * (kKeySize + 8 + kValueSize));
+#endif //INDIRECT_VALUE_SUPPORT
   expected_tp->index_size =
       expected_tp->num_data_blocks *
       (kAvgSuccessorSize + (index_key_is_user_key ? 0 : 8));
