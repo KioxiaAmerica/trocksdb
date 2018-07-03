@@ -17,6 +17,9 @@
 #include<thread>
 
 namespace rocksdb {
+#ifndef INDIRECT_VALUE_SUPPORT
+#define GenerateNewFileBig GenerateNewFile
+#endif //INDIRECT_VALUE_SUPPORT
 
 // SYNC_POINT is not supported in released Windows mode.
 #if !defined(ROCKSDB_LITE)

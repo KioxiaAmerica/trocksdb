@@ -12,6 +12,9 @@
 #include "rocksdb/env_encryption.h"
 
 namespace rocksdb {
+#ifndef INDIRECT_VALUE_SUPPORT
+#define GenerateNewFileBig GenerateNewFile
+#endif //INDIRECT_VALUE_SUPPORT
 
 // Special Env used to delay background operations
 
@@ -1165,8 +1168,6 @@ void DBTestBase::GenerateNewFileBig(Random* rnd, int* key_idx, bool nowait) {
     dbfull()->TEST_WaitForCompact();
   }
 }
-#else
-#define GenerateNewFileBig GenerateNewFile
 #endif
 
 const int DBTestBase::kNumKeysByGenerateNewRandomFile = 51;

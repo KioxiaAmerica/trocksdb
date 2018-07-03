@@ -14,6 +14,10 @@
 #include "util/sync_point.h"
 
 namespace rocksdb {
+#ifndef INDIRECT_VALUE_SUPPORT
+#define GenerateNewFileBig GenerateNewFile
+#endif //INDIRECT_VALUE_SUPPORT
+
 static std::string CompressibleString(Random* rnd, int len) {
   std::string r;
   test::CompressibleString(rnd, 0.8, len, &r);
@@ -1374,7 +1378,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
   options.memtable_factory.reset(
       new SpecialSkipListFactory(KNumKeysByGenerateNewFile - 1));
   options.compaction_style = kCompactionStyleUniversal;
-  options.compaction_options_universal.size_ratio = 5;
+  options.compaction_options_universal.size_ratio = 10;
   options.write_buffer_size = 111 << 10;  // 114KB
   options.arena_block_size = 4 << 10;
   options.level0_file_num_compaction_trigger = 2;
