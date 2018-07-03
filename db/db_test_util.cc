@@ -1141,6 +1141,7 @@ void DBTestBase::GenerateNewFile(Random* rnd, int* key_idx, bool nowait) {
     dbfull()->TEST_WaitForCompact();
   }
 }
+#ifdef INDIRECT_VALUE_SUPPORT
 // this version guarantees a predictable size for the kv even if the value was replaced with an indirect reference
 // key-size is chosen so that 100 keys fits in under 100000B, like the normal version
 void DBTestBase::GenerateNewFileBig(int cf, Random* rnd, int* key_idx, bool nowait) {
@@ -1163,6 +1164,9 @@ void DBTestBase::GenerateNewFileBig(Random* rnd, int* key_idx, bool nowait) {
     dbfull()->TEST_WaitForCompact();
   }
 }
+#else
+#define GenerateNewFileBig GenerateNewFile
+#endif
 
 const int DBTestBase::kNumKeysByGenerateNewRandomFile = 51;
 

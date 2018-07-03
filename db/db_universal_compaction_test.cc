@@ -14,7 +14,6 @@
 #include "util/sync_point.h"
 
 namespace rocksdb {
-
 static std::string CompressibleString(Random* rnd, int len) {
   std::string r;
   test::CompressibleString(rnd, 0.8, len, &r);
@@ -122,7 +121,6 @@ class DelayFilterFactory : public CompactionFilterFactory {
   DBTestBase* db_test;
 };
 }  // namespace
-
 // Make sure we don't trigger a problem if the trigger condtion is given
 // to be 0, which is invalid.
 TEST_P(DBTestUniversalCompaction, UniversalCompactionSingleSortedRun) {
@@ -1382,6 +1380,13 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
   options.level0_file_num_compaction_trigger = 2;
   options.num_levels = 1;
 
+  const int allowedvlen1 = 1;   const int allowedvlen2 = 990;  // possible lengths for values
+#ifdef INDIRECT_VALUE_SUPPORT
+  const int allowedvlen3 = 16;  // value allowed for indirect refs
+#else
+  const int allowedvlen3 = 1;
+#endif
+
   std::vector<Options> option_vector;
   option_vector.emplace_back(options);
   ColumnFamilyOptions cf_opt1(options), cf_opt2(options);
@@ -1409,9 +1414,9 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
   int key_idx2 = 0;
 
   auto generate_file = [&]() {
-    GenerateNewFile(0, &rnd, &key_idx);
-    GenerateNewFile(1, &rnd, &key_idx1);
-    GenerateNewFile(2, &rnd, &key_idx2);
+    GenerateNewFileBig(0, &rnd, &key_idx);
+    GenerateNewFileBig(1, &rnd, &key_idx1);
+    GenerateNewFileBig(2, &rnd, &key_idx2);
   };
 
   auto check_sstfilecount = [&](int path_id, int expected) {
@@ -1422,21 +1427,21 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
 
   auto check_getvalues = [&]() {
     for (int i = 0; i < key_idx; i++) {
-      auto v = Get(0, Key(i));
+      auto v = Get(0, KeyBigNewFile(i,i%100));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+      ASSERT_TRUE(v.size() == allowedvlen1 || v.size() == allowedvlen2 || v.size() == allowedvlen3);
     }
 
     for (int i = 0; i < key_idx1; i++) {
-      auto v = Get(1, Key(i));
+      auto v = Get(1, KeyBigNewFile(i,i%100));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+      ASSERT_TRUE(v.size() == allowedvlen1 || v.size() == allowedvlen2 || v.size() == allowedvlen3);
     }
 
     for (int i = 0; i < key_idx2; i++) {
-      auto v = Get(2, Key(i));
+      auto v = Get(2, KeyBigNewFile(i,i%100));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+      ASSERT_TRUE(v.size() == allowedvlen1 || v.size() == allowedvlen2 || v.size() == allowedvlen3);
     }
   };
 
