@@ -667,6 +667,7 @@ Status DBTestBase::PutBig(int k, size_t valuelen, const Slice& v) {  // use valu
   Slice val{v};  // get the data
   return Put(bigkeypos,ValueBig(v.ToString()));   // Write it out
 }
+
 Status DBTestBase::PutBig(int cf, const Slice& k, const Slice& v) {
 #ifdef INDIRECT_VALUE_SUPPORT
   if(v.size()<=16)Put(cf,k,v);  // return if no excess length to move

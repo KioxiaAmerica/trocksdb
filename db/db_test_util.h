@@ -776,6 +776,7 @@ class DBTestBase : public testing::Test {
     return retstg;
   }
   // This version used for generatng new files.  The tests are exquisitely tuned to the file sizes, so we just copy what was done
+  // key_idx is the key#, i is the index of that key within the file it is in.  For sequentially-generated files, i==key_idx%KNumKeysByGenerateNewFile
   std::string KeyBigNewFile(int key_idx, int i) { return KeyBig(key_idx, (i==99) ? 1 : 999) ; }
   
   // like Key, but give a big Key suitable for keeping constant kv size regardless of indirects

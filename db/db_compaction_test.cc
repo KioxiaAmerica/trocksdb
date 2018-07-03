@@ -584,7 +584,7 @@ TEST_F(DBCompactionTest, SkipStatsUpdateTest) {
   // Note that this number must be changed accordingly if we change
   // the number of files needed to be opened in the DB::Open process.
 #ifdef INDIRECT_VALUE_SUPPORT
-  const int kMaxFileOpenCount = 50;  // more files when there is Value Logging
+  const int kMaxFileOpenCount = 65;  // more files when there is Value Logging
 #else
   const int kMaxFileOpenCount = 10;
 #endif
@@ -1797,7 +1797,6 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
   size_t new_num_files = CountFiles();
   ASSERT_GT(old_num_files, new_num_files);
 }
-
 TEST_F(DBCompactionTest, DeleteFilesInRanges) {
   Options options = CurrentOptions();
   options.write_buffer_size = 10 * 1024 * 1024;
@@ -1805,6 +1804,9 @@ TEST_F(DBCompactionTest, DeleteFilesInRanges) {
   options.num_levels = 4;
   options.max_background_compactions = 3;
   options.disable_auto_compactions = true;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move = true;
+#endif
 
   DestroyAndReopen(options);
   int32_t value_size = 10 * 1024;  // 10 KB
@@ -1817,7 +1819,7 @@ TEST_F(DBCompactionTest, DeleteFilesInRanges) {
     for (auto j = 0; j < 100; j++) {
       auto k = i * 100 + j;
       values[k] = RandomString(&rnd, value_size);
-      ASSERT_OK(Put(Key(k), values[k]));
+      ASSERT_OK(PutBig(k, value_size, values[k]));
     }
     ASSERT_OK(Flush());
   }
@@ -1832,7 +1834,8 @@ TEST_F(DBCompactionTest, DeleteFilesInRanges) {
   for (auto i = 0; i < 10; i+=2) {
     for (auto j = 0; j < 100; j++) {
       auto k = i * 100 + j;
-      ASSERT_OK(Put(Key(k), values[k]));
+      ASSERT_OK(PutBig(k, value_size, values[k]));
+// obsolete       ASSERT_OK(Put(Key(k), values[k]));
     }
     ASSERT_OK(Flush());
   }
@@ -1842,9 +1845,9 @@ TEST_F(DBCompactionTest, DeleteFilesInRanges) {
 
   // Delete files in range [0, 299] (inclusive)
   {
-    auto begin_str1 = Key(0), end_str1 = Key(100);
-    auto begin_str2 = Key(100), end_str2 = Key(200);
-    auto begin_str3 = Key(200), end_str3 = Key(299);
+    auto begin_str1 = KeyBig(0, value_size), end_str1 = KeyBig(100, value_size);
+    auto begin_str2 = KeyBig(100, value_size), end_str2 = KeyBig(200, value_size);
+    auto begin_str3 = KeyBig(200, value_size), end_str3 = KeyBig(299, value_size);
     Slice begin1(begin_str1), end1(end_str1);
     Slice begin2(begin_str2), end2(end_str2);
     Slice begin3(begin_str3), end3(end_str3);
@@ -1860,19 +1863,19 @@ TEST_F(DBCompactionTest, DeleteFilesInRanges) {
     for (auto i = 0; i < 300; i++) {
       ReadOptions ropts;
       std::string result;
-      auto s = db_->Get(ropts, Key(i), &result);
+      auto s = db_->Get(ropts, KeyBig(i, value_size), &result);
       ASSERT_TRUE(s.IsNotFound());
     }
     for (auto i = 300; i < 1000; i++) {
-      ASSERT_EQ(Get(Key(i)), values[i]);
+      ASSERT_EQ(Get(KeyBig(i, value_size)), ValueBig(values[i]));
     }
   }
 
   // Delete files in range [600, 999) (exclusive)
   {
-    auto begin_str1 = Key(600), end_str1 = Key(800);
-    auto begin_str2 = Key(700), end_str2 = Key(900);
-    auto begin_str3 = Key(800), end_str3 = Key(999);
+    auto begin_str1 = KeyBig(600, value_size), end_str1 = KeyBig(800, value_size);
+    auto begin_str2 = KeyBig(700, value_size), end_str2 = KeyBig(900, value_size);
+    auto begin_str3 = KeyBig(800, value_size), end_str3 = KeyBig(999, value_size);
     Slice begin1(begin_str1), end1(end_str1);
     Slice begin2(begin_str2), end2(end_str2);
     Slice begin3(begin_str3), end3(end_str3);
@@ -1888,14 +1891,14 @@ TEST_F(DBCompactionTest, DeleteFilesInRanges) {
     for (auto i = 600; i < 900; i++) {
       ReadOptions ropts;
       std::string result;
-      auto s = db_->Get(ropts, Key(i), &result);
+      auto s = db_->Get(ropts, KeyBig(i, value_size), &result);
       ASSERT_TRUE(s.IsNotFound());
     }
     for (auto i = 300; i < 600; i++) {
-      ASSERT_EQ(Get(Key(i)), values[i]);
+      ASSERT_EQ(Get(KeyBig(i, value_size)), ValueBig(values[i]));
     }
     for (auto i = 900; i < 1000; i++) {
-      ASSERT_EQ(Get(Key(i)), values[i]);
+      ASSERT_EQ(Get(KeyBig(i, value_size)), ValueBig(values[i]));
     }
   }
 
@@ -1908,7 +1911,7 @@ TEST_F(DBCompactionTest, DeleteFilesInRanges) {
     for (auto i = 0; i < 1000; i++) {
       ReadOptions ropts;
       std::string result;
-      auto s = db_->Get(ropts, Key(i), &result);
+      auto s = db_->Get(ropts, KeyBig(i, value_size), &result);
       ASSERT_TRUE(s.IsNotFound());
     }
   }
@@ -2286,6 +2289,11 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionCFPathUse) {
   options.num_levels = 4;
   options.max_bytes_for_level_base = 400 * 1024;
   options.max_subcompactions = max_subcompactions_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  const int allowedvlen3 = 16;  // length of a reference, used as length for values
+#else
+  const int allowedvlen3 = 1;
+#endif
 
   std::vector<Options> option_vector;
   option_vector.emplace_back(options);
@@ -2312,9 +2320,9 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionCFPathUse) {
   int key_idx2 = 0;
 
   auto generate_file = [&]() {
-    GenerateNewFile(0, &rnd, &key_idx);
-    GenerateNewFile(1, &rnd, &key_idx1);
-    GenerateNewFile(2, &rnd, &key_idx2);
+    GenerateNewFileBig(0, &rnd, &key_idx);
+    GenerateNewFileBig(1, &rnd, &key_idx1);
+    GenerateNewFileBig(2, &rnd, &key_idx2);
   };
 
   auto check_sstfilecount = [&](int path_id, int expected) {
@@ -2331,21 +2339,21 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionCFPathUse) {
 
   auto check_getvalues = [&]() {
     for (int i = 0; i < key_idx; i++) {
-      auto v = Get(0, Key(i));
+      auto v = Get(0, KeyBigNewFile(i,i%KNumKeysByGenerateNewFile));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+      ASSERT_TRUE(v.size() == 1 || v.size() == 990 || v.size() == allowedvlen3);
     }
 
     for (int i = 0; i < key_idx1; i++) {
-      auto v = Get(1, Key(i));
+      auto v = Get(1, KeyBigNewFile(i,i%KNumKeysByGenerateNewFile));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+      ASSERT_TRUE(v.size() == 1 || v.size() == 990 || v.size() == allowedvlen3);
     }
 
     for (int i = 0; i < key_idx2; i++) {
-      auto v = Get(2, Key(i));
+      auto v = Get(2, KeyBigNewFile(i,i%KNumKeysByGenerateNewFile));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+      ASSERT_TRUE(v.size() == 1 || v.size() == 990 || v.size() == allowedvlen3);
     }
   };
 
@@ -3530,7 +3538,10 @@ TEST_F(DBCompactionTest, CompactBottomLevelFilesWithDeletions) {
   options.compression = kNoCompression;
   options.level0_file_num_compaction_trigger = kNumLevelFiles;
   // inflate it a bit to account for key/metadata overhead
-  options.target_file_size_base = 120 * kNumKeysPerFile * kValueSize / 100;
+  options.target_file_size_base = 120 * kNumKeysPerFile * (kValueSize+12) / 100;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move = true;
+#endif
   Reopen(options);
 
   Random rnd(301);
@@ -3538,7 +3549,7 @@ TEST_F(DBCompactionTest, CompactBottomLevelFilesWithDeletions) {
   for (int i = 0; i < kNumLevelFiles; ++i) {
     for (int j = 0; j < kNumKeysPerFile; ++j) {
       ASSERT_OK(
-          Put(Key(i * kNumKeysPerFile + j), RandomString(&rnd, kValueSize)));
+          PutBig(i * kNumKeysPerFile + j, kValueSize, RandomString(&rnd, kValueSize)));
     }
     if (i == kNumLevelFiles - 1) {
       snapshot = db_->GetSnapshot();
@@ -3546,7 +3557,7 @@ TEST_F(DBCompactionTest, CompactBottomLevelFilesWithDeletions) {
       // and the keys they cover can't be dropped until after the snapshot is
       // released.
       for (int j = 0; j < kNumLevelFiles * kNumKeysPerFile; j += 2) {
-        ASSERT_OK(Delete(Key(j)));
+        ASSERT_OK(Delete(KeyBig(j,kValueSize)));
       }
     }
     Flush();
@@ -3602,6 +3613,9 @@ TEST_F(DBCompactionTest, LevelCompactExpiredTtlFiles) {
   options.env = env_;
 
   env_->addon_time_.store(0);
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move = true;
+#endif
   DestroyAndReopen(options);
 
   Random rnd(301);
@@ -3957,6 +3971,9 @@ TEST_F(DBCompactionTest, CompactFilesOutputRangeConflict) {
   Options options = CurrentOptions();
   FlushedFileCollector* collector = new FlushedFileCollector();
   options.listeners.emplace_back(collector);
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.allow_trivial_move = true;
+#endif
   Reopen(options);
 
   for (int level = 3; level >= 2; --level) {
