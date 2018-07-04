@@ -51,7 +51,7 @@ class DBVLogTest : public DBTestBase {
         vstorage_(nullptr) {
      fifo_options_.max_table_files_size = 1;
     mutable_cf_options_.RefreshDerivedOptions(ioptions_);
-    ioptions_.db_paths.emplace_back("dummy",
+    ioptions_.cf_paths.emplace_back("dummy",
                                     std::numeric_limits<uint64_t>::max());}
 
   void DeleteVersionStorage() {
@@ -278,7 +278,6 @@ static void ListVLogFileSizes(DBVLogTest *db, std::vector<uint64_t>& vlogfilesiz
   }
 }
 
-
 TEST_F(DBVLogTest, VlogFileSizeTest) {
   Options options = CurrentOptions();
   options.write_buffer_size = 100 * 1024 * 1024;  // 100MB write buffer: hold all keys
@@ -313,11 +312,12 @@ TEST_F(DBVLogTest, VlogFileSizeTest) {
   // Set filesize to 4MB
   // Write keys 4MB+multiples of 1MB; Compact them to L1; count files & sizes.
   // # files should be correct, and files should be close to the same size
+  printf("Stopping at %zd:",10*options.vlogfile_max_size[0]/value_size);
   for(size_t nkeys = options.vlogfile_max_size[0]/value_size; nkeys<10*options.vlogfile_max_size[0]/value_size; nkeys += (1LL<<20)/value_size){
-// scaf for speedup printf("%zd\n",nkeys);    break; 
+    printf(" %zd",nkeys);
     DestroyAndReopen(options);
     // write the kvs
-    for(size_t key = 0;key<nkeys;++key){
+    for(int key = 0;key<nkeys;++key){
       ASSERT_OK(Put(Key(key), RandomString(&rnd, value_size)));
     }
     size_t vsize=nkeys*(value_size+5);  // bytes written to vlog.  5 bytes for compression header
@@ -328,6 +328,7 @@ TEST_F(DBVLogTest, VlogFileSizeTest) {
     compact_options.change_level = true;
     compact_options.target_level = 1;
     ASSERT_OK(db_->CompactRange(compact_options, nullptr, nullptr));
+    dbfull()->TEST_WaitForCompact();
     // 1 file in L1, after compaction
     ASSERT_EQ("0,1", FilesPerLevel(0));
     std::vector<uint64_t> vlogfilesizes;  // sizes of all the VLog files
@@ -342,6 +343,7 @@ TEST_F(DBVLogTest, VlogFileSizeTest) {
     }
     ASSERT_LT(maxsize-minsize, 2*value_size);
   }
+  printf("\n");
 }
 
 TEST_F(DBVLogTest, MinIndirectValSizeTest) {
@@ -378,8 +380,9 @@ TEST_F(DBVLogTest, MinIndirectValSizeTest) {
   // Set filesize to 4MB
   // Write keys 4MB+multiples of 1MB; Compact them to L1; count files & sizes.
   // total # bytes in files should go down as the minimum remapping size goes up
+  printf("Stopping at %d:",nkeys*value_size_incr);
   for(size_t minsize=0; minsize<nkeys*value_size_incr; minsize+=500){
-// scaf speedup printf("%zd\n",minsize); break;  
+    printf(" %zd",minsize);
     options.min_indirect_val_size[0]=minsize;
     DestroyAndReopen(options);
     // write the kvs
@@ -395,6 +398,7 @@ TEST_F(DBVLogTest, MinIndirectValSizeTest) {
     compact_options.change_level = true;
     compact_options.target_level = 1;
     ASSERT_OK(db_->CompactRange(compact_options, nullptr, nullptr));
+    dbfull()->TEST_WaitForCompact();
     // 1 file in L1, after compaction
     ASSERT_EQ("0,1", FilesPerLevel(0));
     std::vector<uint64_t> vlogfilesizes;  // sizes of all the VLog files
@@ -409,6 +413,7 @@ TEST_F(DBVLogTest, MinIndirectValSizeTest) {
     int64_t expmappedsize = nmappedkeys * ((minsize + value_size)+5) / 2;  // 5 for compression header
     ASSERT_LT(std::abs(expmappedsize-totalsize), 2*value_size);
   }
+  printf("\n");
 }
 
 
@@ -462,6 +467,7 @@ TEST_F(DBVLogTest, VLogCompressionTest) {
   compact_options.change_level = true;
   compact_options.target_level = 1;
   ASSERT_OK(db_->CompactRange(compact_options, nullptr, nullptr));
+  dbfull()->TEST_WaitForCompact();
   // 1 file in L1, after compaction
   ASSERT_EQ("0,1", FilesPerLevel(0));
   std::vector<uint64_t> vlogfilesizes;  // sizes of all the VLog files
@@ -488,6 +494,7 @@ TEST_F(DBVLogTest, VLogCompressionTest) {
   ASSERT_OK(Flush());
   // Compact them into L1, which will write the VLog files
   ASSERT_OK(db_->CompactRange(compact_options, nullptr, nullptr));
+  dbfull()->TEST_WaitForCompact();
   // 1 file in L1, after compaction
   ASSERT_EQ("0,1", FilesPerLevel(0));
   ListVLogFileSizes(this,vlogfilesizes);
@@ -501,7 +508,6 @@ TEST_F(DBVLogTest, VLogCompressionTest) {
   // Verify compression happened
   ASSERT_LT(totalsizecomp, 0.1*totalsize);
 }
-
 
 TEST_F(DBVLogTest, RemappingFractionTest) {
   Options options = CurrentOptions();
@@ -537,9 +543,10 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
   // Set filesize to 4MB
 
 
+  printf("Stopping at %d:",40);
   for(int32_t mappct=20; mappct<=40; mappct+= 5){
     double mapfrac = mappct * 0.01;
-// scaf speedup printf("%f\n",mapfrac);   break;  
+    printf(" %d",mappct);
     // set remapping fraction to n
     options.fraction_remapped_during_compaction = std::vector<int32_t>({mappct});
     DestroyAndReopen(options);
@@ -560,6 +567,7 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
       compact_options.change_level = true;
       compact_options.target_level = 1;
       ASSERT_OK(db_->CompactRange(compact_options, &keyslice, &keyslice));
+      dbfull()->TEST_WaitForCompact();
     }
     // Verify 100 SSTs and 100 VLog files
     ASSERT_EQ("0,100", FilesPerLevel(0));
@@ -577,8 +585,10 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
     remap_options.change_level = true;
     remap_options.target_level = 1;
     remap_options.bottommost_level_compaction = BottommostLevelCompaction::kForce;
-    Slice minkey(Key((int)(nkeys*(mapfrac-0.05)))), maxkey(Key((int)(nkeys*(mapfrac+0.05))));
+    std::string minkeystring(Key((int)(nkeys*(mapfrac-0.05)))), maxkeystring(Key((int)(nkeys*(mapfrac+0.05))));
+    Slice minkey(minkeystring), maxkey(maxkeystring);
     ASSERT_OK(db_->CompactRange(remap_options, &minkey, &maxkey));
+    dbfull()->TEST_WaitForCompact();
     // verify that the VLog file total has grown by 5%
     vlogfilesizes.clear();  // reinit list of files
     ListVLogFileSizes(this,vlogfilesizes);
@@ -588,6 +598,7 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
     }
     ASSERT_GT(value_size+500, (int64_t)std::abs(newtotalsize-totalsize*1.05));  // not a tight match, but if it works throughout the range it's OK
   }
+  printf("\n");
 }
 
 void DBVLogTest::SetUpForActiveRecycleTest() {
@@ -629,7 +640,6 @@ void DBVLogTest::SetUpForActiveRecycleTest() {
   // AR should happen, freeing the beginning of the db
 
   int32_t mappct=20;
-// scaf speedup printf("%f\n",mapfrac);  break;
   // turn off remapping
   options.fraction_remapped_during_compaction = std::vector<int32_t>({mappct});
   options.fragmentation_active_recycling_trigger = std::vector<int32_t>({10});
@@ -653,6 +663,7 @@ void DBVLogTest::SetUpForActiveRecycleTest() {
     compact_options.change_level = true;
     compact_options.target_level = 1;
     ASSERT_OK(db_->CompactRange(compact_options, &keyslice, &keyslice));
+    dbfull()->TEST_WaitForCompact();
   }
   // Verify 100 SSTs and 100 VLog files
   ASSERT_EQ("0,100", FilesPerLevel(0));
@@ -671,10 +682,11 @@ void DBVLogTest::SetUpForActiveRecycleTest() {
   remap_options.target_level = 1;
   remap_options.bottommost_level_compaction = BottommostLevelCompaction::kForce;
   remap_options.exclusive_manual_compaction = false;
-  Slice minkey(Key((int)(nkeys*0.05))), maxkey(Key((int)(nkeys*0.20)));
+  std::string minkeystring(Key((int)(nkeys*0.05))), maxkeystring(Key((int)(nkeys*0.20)));
+  Slice minkey(minkeystring), maxkey(maxkeystring);
   ASSERT_OK(db_->CompactRange(remap_options, &minkey, &maxkey));
+  dbfull()->TEST_WaitForCompact();
   // The user compaction and the AR compaction should both run.
-  // scaf  printf("%s\n", FilesPerLevel(0).c_str());
 
   NewVersionStorage(6, kCompactionStyleLevel);
   UpdateVersionStorageInfo();
@@ -698,6 +710,7 @@ TEST_F(DBVLogTest, ActiveRecycleTriggerTest1) {
   mutable_cf_options_.active_recycling_sst_minct = std::vector<int32_t>({5});
   mutable_cf_options_.active_recycling_sst_maxct = std::vector<int32_t>({15});
   mutable_cf_options_.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
+  mutable_cf_options_.RefreshDerivedOptions(ioptions_);
 
   std::unique_ptr<Compaction> compaction(level_compaction_picker.PickCompaction(
       cf_name_, mutable_cf_options_, vstorage_.get(), nullptr));
@@ -709,6 +722,7 @@ TEST_F(DBVLogTest, ActiveRecycleTriggerTest1) {
   mutable_cf_options_.active_recycling_sst_minct = std::vector<int32_t>({5});
   mutable_cf_options_.active_recycling_sst_maxct = std::vector<int32_t>({15});
   mutable_cf_options_.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
+  mutable_cf_options_.RefreshDerivedOptions(ioptions_);
 
   compaction.reset(level_compaction_picker.PickCompaction(
       cf_name_, mutable_cf_options_, vstorage_.get(), nullptr));
@@ -720,6 +734,7 @@ TEST_F(DBVLogTest, ActiveRecycleTriggerTest1) {
   mutable_cf_options_.active_recycling_sst_minct = std::vector<int32_t>({5});
   mutable_cf_options_.active_recycling_sst_maxct = std::vector<int32_t>({15});
   mutable_cf_options_.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
+  mutable_cf_options_.RefreshDerivedOptions(ioptions_);
 
   compaction.reset(level_compaction_picker.PickCompaction(
       cf_name_, mutable_cf_options_, vstorage_.get(), nullptr));
@@ -909,10 +924,12 @@ TEST_F(DBVLogTest, VLogRefsTest) {
   const int32_t num_files = sizeof(keys_per_file)/sizeof(keys_per_file[0]);
  
   // loop twice, once with the size of the last file set to 1
+  printf("Running to permutation 2/6:");
   for(int finalkey=0;finalkey<2;finalkey++){
     // loop over each permutation of inputs
     for(int perm=0;perm<6;++perm){
       int permadd[3]; permadd[0]=perm>>1; permadd[1]=1^(permadd[0]&1); if(perm&1)permadd[1]=3-permadd[0]-permadd[1]; permadd[2]=3-permadd[0]-permadd[1];  // adjustment for each slot of 3
+      printf(" %d/%d%d%d",finalkey,permadd[0],permadd[1],permadd[2]);
 
       // Create SSTs, with 1 key per file.  Flush each file to L0, then compact into L1 to produce 1 VLog file per SST
       DestroyAndReopen(options);
@@ -940,6 +957,7 @@ TEST_F(DBVLogTest, VLogRefsTest) {
           compact_options.change_level = true;
           compact_options.target_level = 1;
           ASSERT_OK(db_->CompactRange(compact_options, &keyslice, &keyslice));
+          dbfull()->TEST_WaitForCompact();
         }
         key += kpf;  // skip to next key
       }
@@ -960,6 +978,7 @@ TEST_F(DBVLogTest, VLogRefsTest) {
       remap_options.bottommost_level_compaction = BottommostLevelCompaction::kForce;
       remap_options.exclusive_manual_compaction = false;
       ASSERT_OK(db_->CompactRange(remap_options,nullptr,nullptr));
+      dbfull()->TEST_WaitForCompact();
       // The user compaction and the AR compaction should both run.
       sprintf(buf,"0,0,%d",num_files);
       ASSERT_EQ(buf, FilesPerLevel(0));
@@ -986,6 +1005,7 @@ TEST_F(DBVLogTest, VLogRefsTest) {
 
     keys_per_file[num_files-1] = 1;  // make the last file 1 key long for the second run
   }
+  printf("\n");
 
 }
 #endif
