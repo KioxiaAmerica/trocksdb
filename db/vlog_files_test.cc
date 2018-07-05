@@ -317,7 +317,7 @@ TEST_F(DBVLogTest, VlogFileSizeTest) {
     printf(" %zd",nkeys);
     DestroyAndReopen(options);
     // write the kvs
-    for(int key = 0;key<nkeys;++key){
+    for(size_t key = 0;key<nkeys;++key){
       ASSERT_OK(Put(Key(key), RandomString(&rnd, value_size)));
     }
     size_t vsize=nkeys*(value_size+5);  // bytes written to vlog.  5 bytes for compression header
