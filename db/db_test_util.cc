@@ -12,9 +12,6 @@
 #include "rocksdb/env_encryption.h"
 
 namespace rocksdb {
-#ifndef INDIRECT_VALUE_SUPPORT
-#define GenerateNewFileBig GenerateNewFile
-#endif //INDIRECT_VALUE_SUPPORT
 
 // Special Env used to delay background operations
 
@@ -1145,10 +1142,10 @@ void DBTestBase::GenerateNewFile(Random* rnd, int* key_idx, bool nowait) {
     dbfull()->TEST_WaitForCompact();
   }
 }
-#ifdef INDIRECT_VALUE_SUPPORT
 // this version guarantees a predictable size for the kv even if the value was replaced with an indirect reference
 // key-size is chosen so that 100 keys fits in under 100000B, like the normal version
 void DBTestBase::GenerateNewFileBig(int cf, Random* rnd, int* key_idx, bool nowait) {
+#ifdef INDIRECT_VALUE_SUPPORT
   for (int i = 0; i < KNumKeysByGenerateNewFile; i++) {
     ASSERT_OK(Put(cf, KeyBigNewFile(*key_idx, i), ValueBig(RandomString(rnd, (i == 99) ? 1 : 990))));
     (*key_idx)++;
@@ -1157,8 +1154,12 @@ void DBTestBase::GenerateNewFileBig(int cf, Random* rnd, int* key_idx, bool nowa
     dbfull()->TEST_WaitForFlushMemTable();
     dbfull()->TEST_WaitForCompact();
   }
+#else
+  GenerateNewFile(cf,rnd,key_idx,nowait);
+#endif
 }
 void DBTestBase::GenerateNewFileBig(Random* rnd, int* key_idx, bool nowait) {
+#ifdef INDIRECT_VALUE_SUPPORT
   for (int i = 0; i < KNumKeysByGenerateNewFile; i++) {
     ASSERT_OK(Put(KeyBigNewFile(*key_idx, i), ValueBig(RandomString(rnd, (i == 99) ? 1 : 990))));
     (*key_idx)++;
@@ -1167,8 +1168,10 @@ void DBTestBase::GenerateNewFileBig(Random* rnd, int* key_idx, bool nowait) {
     dbfull()->TEST_WaitForFlushMemTable();
     dbfull()->TEST_WaitForCompact();
   }
-}
+#else
+  GenerateNewFile(rnd,key_idx,nowait);
 #endif
+}
 
 const int DBTestBase::kNumKeysByGenerateNewRandomFile = 51;
 
