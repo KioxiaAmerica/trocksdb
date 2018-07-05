@@ -347,11 +347,11 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
 
 #ifdef IITIMING
     ROCKS_LOG_INFO(
-        current_vlog->immdbopts_->info_log, "[%s] Total IndirectIterator time %5.2f (comp=%5.2f, move=%5.2f, CRC=%5.2f, Next()=%5.2f, VLogWr=%5.2f, other=%5.2f).  Now writing %" PRIu64 " SST files, %" PRIu64 " bytes, max filesize=%" PRIu64,
+        current_vlog->immdbopts_->info_log, "[%s] Total IndirectIterator time %5.2f (comp=%5.2f, move=%5.2f, CRC=%5.2f, Next()=%5.2f, VLogWr=%5.2f, other=%5.2f).",
         current_vlog->cfd_->GetName().c_str(),
         iitimevec[8]*1e-6, (iitimevec[2]-iitimevec[1])*1e-6, (iitimevec[3]-iitimevec[2])*1e-6, (iitimevec[4]-iitimevec[3])*1e-6, (iitimevec[6]-iitimevec[5])*1e-6, (iitimevec[8]-iitimevec[7])*1e-6,
-        (iitimevec[5]-iitimevec[4]+iitimevec[1]-iitimevec[0])*1e-6,
-        filecumreccnts.size(), outputrcdend.size()?outputrcdend.back():0, compaction->max_output_file_size());
+        (iitimevec[5]-iitimevec[4]+iitimevec[1]-iitimevec[0])*1e-6
+        );
 #endif
 
     if(outputerrorstatus.empty()) {
@@ -362,6 +362,12 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
           compaction->max_compaction_bytes());  // calculate filecumreccnts, including use of grandparent info
       }
       // now filecumreccnts has the length in kvs of each eventual output file.  For AR, we mimic the input; for compaction, we create new files
+#ifdef IITIMING
+      ROCKS_LOG_INFO(
+          current_vlog->immdbopts_->info_log, "[%s]  Now writing %" PRIu64 " SST files, %" PRIu64 " bytes, max filesize=%" PRIu64,
+          current_vlog->cfd_->GetName().c_str(),
+          filecumreccnts.size(), outputrcdend.size()?outputrcdend.back():0, compaction->max_output_file_size());
+#endif
 
       // set up to read first key
       // set up the variables for the first key
