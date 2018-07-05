@@ -17,9 +17,6 @@
 #include<thread>
 
 namespace rocksdb {
-#ifndef INDIRECT_VALUE_SUPPORT
-#define GenerateNewFileBig GenerateNewFile
-#endif //INDIRECT_VALUE_SUPPORT
 
 // SYNC_POINT is not supported in released Windows mode.
 #if !defined(ROCKSDB_LITE)
@@ -587,7 +584,7 @@ TEST_F(DBCompactionTest, SkipStatsUpdateTest) {
   // Note that this number must be changed accordingly if we change
   // the number of files needed to be opened in the DB::Open process.
 #ifdef INDIRECT_VALUE_SUPPORT
-  const int kMaxFileOpenCount = 65;  // more files when there is Value Logging
+  const int kMaxFileOpenCount = 60;  // more files when there is Value Logging
 #else
   const int kMaxFileOpenCount = 10;
 #endif

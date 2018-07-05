@@ -14,9 +14,6 @@
 #include "util/sync_point.h"
 
 namespace rocksdb {
-#ifndef INDIRECT_VALUE_SUPPORT
-#define GenerateNewFileBig GenerateNewFile
-#endif //INDIRECT_VALUE_SUPPORT
 
 static std::string CompressibleString(Random* rnd, int len) {
   std::string r;
