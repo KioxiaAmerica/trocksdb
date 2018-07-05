@@ -1274,9 +1274,9 @@ VLog::VLog(
   rings_(std::vector<std::unique_ptr<VLogRing>>()),  // start with empty rings
   starting_level_for_ring_(std::vector<int>()),
   cfd_(cfd),
-  waiting_sst_queues(std::vector<FileMetaData *>{4}),  // init max possible # ring anchors
-  initcomplete(false)   // start uninitialized
+  waiting_sst_queues(std::vector<FileMetaData *>{4})  // init max possible # ring anchors
 {  writelock.store(0,std::memory_order_release);
+   initcomplete.store(0,std::memory_order_release);
 #if DEBLEVEL&1
 printf("VLog cfd=%p name=%s\n",cfd,cfd->GetName().data());
 #endif
@@ -1434,8 +1434,13 @@ if(!rings_.size() || !newsst.indirect_ref_0.size())printf("VLogSstInstall newsst
     // a ring after the block itself has been deleted.  The not-on-queue indication persists throughout for
     // those rings that the block doesn't have a reference for; for the others it changes based on queue status
 
-    if(!initcomplete){
-      // if the rings have not been, or never will be, created, enqueue them here in the Vlog.  In case initialization ever
+    if(initcomplete.load(std::memory_order_relaxed)||initcomplete.load(std::memory_order_acquire)){  // once set, it stays set; so we don't need any locked loads after the first bobzero is read
+      // Normal case after initial recovery.  Put the SST into each ring for which it has a reference
+      if(newsst.level<0)
+        printf("installing SST with no level\n");  // scaf debug only
+      for (uint32_t i=0;i<newsst.indirect_ref_0.size();++i)if(newsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstInstall(newsst);
+    } else {
+      // if the rings have not been, or never will be, created, enqueue the SSTs here in the Vlog.  In case initialization ever
       // becomes multi-threaded, acquire a lock on the ring headers
       AcquireLock();
         // for each ring that has a reference in the SST, enqueue the SST to that ring's chains.  We know that there
@@ -1444,11 +1449,6 @@ if(!rings_.size() || !newsst.indirect_ref_0.size())printf("VLogSstInstall newsst
         for (uint32_t i=0;i<newsst.indirect_ref_0.size();++i)
           if(newsst.indirect_ref_0[i]){newsst.ringfwdchain[i] = waiting_sst_queues[i]; waiting_sst_queues[i] = &newsst;};
       ReleaseLock();
-    } else {
-      // Normal case after initial recovery.  Put the SST into each ring for which it has a reference
-      if(newsst.level<0)
-        printf("installing SST with no level\n");  // scaf debug only
-      for (uint32_t i=0;i<newsst.indirect_ref_0.size();++i)if(newsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstInstall(newsst);
     }
   }
 

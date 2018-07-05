@@ -462,9 +462,6 @@ private:
 // first time the file is used as a reference.  We acquire a lock on the ring to make a modification, including reallocation, and we
 // double-buffer the ring so that after a reallocation the old ring persists until the next reallocation, which should be days later.
 
-  // The ring:
-  std::vector<VLogRingFile> fd_ring[2];  // the rings of open file descriptors for the VLog files.  We ping-pong between two rings
-
   // We group the atomics together so they can be aligned to a cacheline boundary
   struct /* alignas(64) */ {   // alignment is desirable, but not available till C++17.  This struct is 1 full cache line
   // The ring head/tail pointers:
@@ -482,7 +479,14 @@ private:
   // quiesces Get, when we need to resize the ring.  We use this as a sync point for the ringpointer/len so we don't have to use atomic reads on them.
   std::atomic<uint32_t> usecount;
   std::atomic<uint32_t> writelock;  // 0 normally, 1 when the ring is in use for writing
+  uint64_t filler00[2];  // fill to cacheline boundary
   } atomics;
+
+  // To avoid false sharing of the ring pointers with the atomics, we put in a cacheline of fill.  This can be removed if the atomics struct can be aligned
+  uint64_t filler01[8];  // one full cacheline
+
+  // The ring:
+  std::vector<VLogRingFile> fd_ring[2];  // the rings of open file descriptors for the VLog files.  We ping-pong between two rings
 
   // All the info we need to preserve over a restart/compaction
   VLogRingRestartInfo restartinfo;
@@ -649,13 +653,17 @@ friend void DetectVLogDeletions(ColumnFamilyData *, std::vector<VLogRingRestartI
 private:
   friend class IndirectIterator;
   friend class VLogRing;
+
+  uint64_t filler00[7];  // we would prefer to align the atomics on cacheline boundary, but that is not supported
+  std::atomic<uint32_t> writelock;  // 0 normally, 1 when the ring headers are being modified
+  std::atomic<uint32_t> initcomplete;    // set when we run a compaction for this VLog.  Up till that point any InstallSst requests must be queued until the ring isinitialized
+  uint64_t filler01[7];   // leave space after the atomics to avoid cacheline sharing
+
   std::vector<std::unique_ptr<VLogRing>> rings_;  // the VLogRing objects for this CF
   std::vector<int> starting_level_for_ring_;
   ColumnFamilyData *cfd_;
   std::vector<FileMetaData *> waiting_sst_queues;  // queue headers when SSTs are queued awaiting init.  One per possible ring
-  std::atomic<uint32_t> writelock;  // 0 normally, 1 when the ring headers are being modified
   const ImmutableDBOptions *immdbopts_;  // options at time of creation
-  bool initcomplete;  // set when we run a compaction for this VLog.  Up till that point any InstallSst requests must be queued until the ring isinitialized
 
 public:
 
@@ -669,7 +677,7 @@ public:
   int starting_level_for_ring(int ringno) { return starting_level_for_ring_[ringno]; }
   bool cfd_exists() { return cfd_ != nullptr; }   // id the cfd still valid?
   void cfd_clear() { AcquireLock(); cfd_ = nullptr; ReleaseLock(); }  // clear CF pointer under lock in case it is being used
-  void SetInitComplete() {initcomplete = true;}
+  void SetInitComplete() {initcomplete.store(1,std::memory_order_release);}
 
   // No copying
   VLog(VLog const&) = delete;
