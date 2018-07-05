@@ -725,7 +725,7 @@ ProbDelay();
       iostatus = immdbopts_->env->NewWritableFile(pathnames.back(),&writable_file,envopts_);  // open the file
       if(!iostatus.ok()) {
         ROCKS_LOG_ERROR(immdbopts_->info_log,
-          "Error opening VLog file %s for write",pathnames.back().c_str());
+          "Error opening VLog file %s for write, Status code/subcode=%d/%d",pathnames.back().c_str(),iostatus.code(),iostatus.subcode());
       }
 #if DEBLEVEL&2
 printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
@@ -735,7 +735,7 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
         iostatus = writable_file->Append(Slice((char *)filebuffer.data(),filebufferx));  // write out the data
         if(!iostatus.ok()) {
           ROCKS_LOG_ERROR(immdbopts_->info_log,
-            "Error writing to VLog file %s",pathnames.back().c_str());
+            "Error writing to VLog file %s, Status code/subcode=%d/%d",pathnames.back().c_str(),iostatus.code(),iostatus.subcode());
         }
       }
 
@@ -751,16 +751,16 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
         iostatus = writable_file->Fsync();  // scaf should fsync once for all files?
         if(!iostatus.ok()) {
           ROCKS_LOG_ERROR(immdbopts_->info_log,
-            "Error Fsyncing VLog file %s",pathnames.back().c_str());
+            "Error Fsyncing VLog file %s, Status code/subcode=%d/%d",pathnames.back().c_str(),iostatus.code(),iostatus.subcode());
         }
       }
 
-    // Log syncing the file   scaf
-    ROCKS_LOG_INFO(
-        current_vlog->immdbopts_->info_log, "[%s] synced file# %" PRIu64,
-        current_vlog->cfd_->GetName().c_str(), 
-        VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber());
-
+// obsolete     // Log syncing the file   this is a useful progress point
+// obsolete     ROCKS_LOG_INFO(
+// obsolete         current_vlog->immdbopts_->info_log, "[%s] synced file# %" PRIu64,
+// obsolete         current_vlog->cfd_->GetName().c_str(), 
+// obsolete         VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber());
+// obsolete 
     }  // this closes the writable_file
 
 
@@ -771,15 +771,15 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
       iostatus = immdbopts_->env->NewRandomAccessFile(pathnames.back(), &fp, envopts_);
       if(!iostatus.ok()) {
         ROCKS_LOG_ERROR(immdbopts_->info_log,
-          "Error reopening VLog file %s for reading",pathnames.back().c_str());
+          "Error reopening VLog file %s for reading, Status code/subcode=%d/%d",pathnames.back().c_str(),iostatus.code(),iostatus.subcode());
+      }else{
+        // Log reopening the file
+        ROCKS_LOG_INFO(
+            current_vlog->immdbopts_->info_log, "[%s] reopened file# %" PRIu64,
+            current_vlog->cfd_->GetName().c_str(), 
+            VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber());
       }
     }
-
-    // Log reopening the file   scaf
-    ROCKS_LOG_INFO(
-        current_vlog->immdbopts_->info_log, "[%s] reopened file# %" PRIu64,
-        current_vlog->cfd_->GetName().c_str(), 
-        VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber());
 
     filepointers.push_back(std::move(fp));  // push one fp, even if null, for every file slot
 
@@ -842,7 +842,6 @@ ProbDelay();
   // fill in the FileRef for the first value, with its length
   firstdataref.FillVLogRingRef(ringno_,fileno_for_writing,0,rcdend[0]);
 
-  // Log reopening the file   scaf
   ROCKS_LOG_INFO(
       current_vlog->immdbopts_->info_log, "[%s] all files added to VLogRing",
       current_vlog->cfd_->GetName().c_str());
