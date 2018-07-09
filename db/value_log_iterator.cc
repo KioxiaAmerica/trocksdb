@@ -338,6 +338,8 @@ printf("\n");
 #ifdef IITIMING
     iitimevec[8] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 8 - after write to VLog
 #endif
+    // record the number of files created here
+    outputring->UpdateDeadband(fileendoffsets.size(),compaction->mutable_cf_options()->active_recycling_size_trigger[outputringno]);
 
     // save what we need to return to stats
     diskdatalen = bytesresvindiskdata;  // save # bytes written for stats report
@@ -360,6 +362,13 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
         BreakRecordsIntoFiles(filecumreccnts, outputrcdend, compaction->max_output_file_size(),
           &compaction->grandparents(), &keys, &keylens, &compaction->column_family_data()->internal_comparator(),
           compaction->max_compaction_bytes());  // calculate filecumreccnts, including use of grandparent info
+        // If there are too many data files per SST, the files are too small
+        if(fileendoffsets.size()>2.0*filecumreccnts.size()){
+          ROCKS_LOG_WARN(
+              current_vlog->immdbopts_->info_log, "[%s]  You have %5.1f VLog files per SST.  Consider increasing vlogfile_max_size.",
+              current_vlog->cfd_->GetName().c_str(),
+              (double)fileendoffsets.size()/(double)filecumreccnts.size());
+        }
       }
       // now filecumreccnts has the length in kvs of each eventual output file.  For AR, we mimic the input; for compaction, we create new files
 #ifdef IITIMING

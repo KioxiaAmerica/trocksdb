@@ -1181,7 +1181,12 @@ void ColumnFamilyData::CheckForActiveRecycle(std::vector<CompactionInputFiles>& 
   for(size_t i = vlog_->rings().size();i>0;) {
     --i;
     // See if this ring needs to be recycled: if it is large enough and its fragmentation is high enough
-    if(vlog_info[i].size<compoptions.active_recycling_size_trigger[i] || vlog_info[i].fragfrac<=0.01*compoptions.fragmentation_active_recycling_trigger[i])continue;  // scaf check for min # files.  If there is not enough fragmentation, don't AR.  convert pct to frac
+    // 'large enough' means bigger than the user-specified limit, and also with more files than the deadband, so that any files we ask to delete will
+    // actually be deleted
+    ;
+    if((vlog_info[i].size<compoptions.active_recycling_size_trigger[i] && compoptions.active_recycling_size_trigger[i]!=armagictestingvalue)   // VLog not big enough; if size_trigger is the testing value, always allow AR
+       || !vlog_->rings()[i]->NewFilesAreDeletable(compoptions.active_recycling_size_trigger[i])    // not enough VLog files
+       || vlog_info[i].fragfrac<=0.01*compoptions.fragmentation_active_recycling_trigger[i])continue;  // Not enough fragmentation  convert pct to frac
     // AR found - fetch the files to be recycled and return them
     compaction_inputs.reserve(compoptions.active_recycling_sst_maxct[i]);  // handle quite a few files at once.  The capacity of the ring tells the max # result SSTs
     vlog_->rings()[i]->VLogRingFindLaggingSsts(compoptions.active_recycling_vlogfile_freed_min[i],compoptions.active_recycling_sst_minct[i],compaction_inputs,lastfileno);  //  find out what to recycle  min 5 vlog files, min 7 SSTs

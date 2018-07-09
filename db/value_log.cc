@@ -318,6 +318,7 @@ VLogRing::VLogRing(
     cfd_(cfd),
     immdbopts_(immdbopts),
     envopts_(file_options),  // must copy into heap storage here
+    deletion_deadband(1000),   // init to big value
     initialstatus(Status{})
 {
 #if DEBLEVEL&1
@@ -518,7 +519,7 @@ ProbDelay();
 
 // Write accumulated bytes to the VLogRing.  First allocate the bytes to files, being
 // careful not to split a record, then write them all out.  Create new files as needed, and leave them
-// open.  The last file will be open for write; the others are read-only
+// open.
 // The result is a VLogRingRef for the first (of possibly several sequential) file, and a vector indicating the
 // number of bytes written to each file
 // We housekeep the end-of-VLogRing information
@@ -1265,7 +1266,7 @@ void VLogRing::VLogRingFindLaggingSsts(
 // A VLog is a set of VLogRings for a single column family.  The VLogRings are distinguished by an index.
 // The VLog is initialized with a set of empty rings.  If the ring is being created because a column family is being
 // added to an existing database, these empty rings are a valid starting point.  If the ring is being created at
-// database-open time, there will be a subsequent call to VLogInit
+// database-(re)open time, there will be a subsequent call to VLogInit
 VLog::VLog(
   ColumnFamilyData *cfd,  // the info for the column family
   const ImmutableDBOptions& immdbopts,   // The current options
@@ -1434,7 +1435,7 @@ if(!rings_.size() || !newsst.indirect_ref_0.size())printf("VLogSstInstall newsst
     // a ring after the block itself has been deleted.  The not-on-queue indication persists throughout for
     // those rings that the block doesn't have a reference for; for the others it changes based on queue status
 
-    if(initcomplete.load(std::memory_order_relaxed)||initcomplete.load(std::memory_order_acquire)){  // once set, it stays set; so we don't need any locked loads after the first bobzero is read
+    if(initcomplete.load(std::memory_order_relaxed)||initcomplete.load(std::memory_order_acquire)){  // once set, it stays set; so we don't need any locked loads after the first nonzero is read
       // Normal case after initial recovery.  Put the SST into each ring for which it has a reference
       if(newsst.level<0)
         printf("installing SST with no level\n");  // scaf debug only
@@ -1509,7 +1510,7 @@ extern void DetectVLogDeletions(ColumnFamilyData *cfd,   // CF to work on
           // Get slot number for the first file
           size_t slotx = vlog->rings_[i]->Ringx(*currentring, currentoldest);
           // Look at files. Accumulate stats of frag/size that will be removed.  End pointing to the file AFTER the last deletable file
-          while(currentoldest+deletion_deadband<headfile && (*currentring)[slotx].refcount_manifest==0){  // avoiding unsigned overflow
+          while(currentoldest+vlog->rings_[i]->deletion_deadband<headfile && (*currentring)[slotx].refcount_manifest==0){  // avoiding unsigned overflow
             ringchanges.size -= (*currentring)[slotx].length;
             if(++slotx == (*currentring).size())slotx=0;  // advance ring, wrapping if needed
             ++currentoldest;
