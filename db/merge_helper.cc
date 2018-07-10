@@ -205,7 +205,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       // is defined at the compaction-iterator level
       // The vector holds pointers to the strings so that resizing the vector doesn't invalidate them
       auto newstring = std::make_shared<std::string>();
-      iter->resolved_indirect_values.emplace_back(newstring);  // add a new empty string for upcoming read
+      iter->resolved_indirect_values.emplace_back(newstring);  // add a new empty string for upcoming read   // ASAN free block (??)  also ASAN allocate the failing block
 // obsolete       iter->resolved_indirect_values.emplace_back();  // add a new empty string for upcoming read
       // resolve the value in the new string.
       vlog->VLogGet(val,*iter->resolved_indirect_values.back());   // turn the reference into a value, in the string

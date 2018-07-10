@@ -591,11 +591,14 @@ bool InternalStats::HandleVLogRingStats(std::string* value, Slice /*suffix*/) {
            "---------------------------\n");
   value->append(buf);
 
-  for(uint32_t i = 0;i<vli.size();++i) {  // for each ring...
+  for(uint32_t i = 0;i<vli.size();++i) { // for each ring...
     // number of files per ring
     uint64_t nfiles = 0;
-    uint64_t prevend = vli[i].valid_files.size()>1 && vli[i].valid_files[0]==0 ? vli[i].valid_files[0] : 0;  // end of previous interval, starting with 0 or delete interval.  The first file is file 1
-    for(uint32_t j=0;j<vli[i].valid_files.size();j+=2)nfiles += vli[i].valid_files[j+1] - std::max(prevend+1,vli[i].valid_files[j]) + 1; // interval is (start,end)
+    uint64_t vfx=0;  // running index of file-pair
+    uint64_t prevend;  // end of previous interval, starting with 0 or delete interval.  The first file is file 1
+    // the first filenumber-pair may be a delete record, if the first file# is 0.  In that case, remember the delete-to point and skip over the pair
+    if(vli[i].valid_files.size()>1 && vli[i].valid_files[0]==0){prevend=vli[i].valid_files[1]; vfx+=2;}else prevend = 0;
+    for(;vfx<vli[i].valid_files.size();vfx+=2)nfiles += vli[i].valid_files[vfx+1] - std::max(prevend+1,vli[i].valid_files[vfx]) + 1; // interval is (start,end)
     // the number of bytes allocated in each VLog ring
     // the amount of fragmentation in each ring, i. e. bytes in VLogs 
     snprintf(buf, sizeof(buf), "%3d %7zd %8.0f %8.0f\n", i, nfiles, vli[i].size / kMB, (vli[i].frag*100.0)/(vli[i].size+1));
