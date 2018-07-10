@@ -80,6 +80,16 @@ enum class LevelStatType {
   TOTAL  // total number of types
 };
 
+#ifdef INDIRECT_VALUE_SUPPORT
+enum class RingStatType {
+  INVALID = 0,
+  NUM_FILES,
+  SIZE_BYTES,
+  FRAGMENTATION,
+  TOTAL  // total number of types
+};
+#endif //INDIRECT_VALUE_SUPPORT
+
 struct LevelStat {
   // This what will be L?.property_name in the flat map returned to the user
   std::string property_name;
@@ -90,6 +100,7 @@ struct LevelStat {
 class InternalStats {
  public:
   static const std::map<LevelStatType, LevelStat> compaction_level_stats;
+  static const std::map<RingStatType, LevelStat> compaction_ring_stats;
 
   enum InternalCFStatsType {
     L0_FILE_COUNT_LIMIT_SLOWDOWNS,
@@ -425,6 +436,10 @@ class InternalStats {
   void DumpCFMapStats(
       std::map<int, std::map<LevelStatType, double>>* level_stats,
       CompactionStats* compaction_stats_sum);
+#ifdef INDIRECT_VALUE_SUPPORT
+  void DumpCFMapStatsRing(
+      std::map<int, std::map<RingStatType, double>>* level_stats);
+#endif //INDIRECT_VALUE_SUPPORT
   void DumpCFMapStatsIOStalls(std::map<std::string, std::string>* cf_stats);
   void DumpCFStats(std::string* value);
   void DumpCFStatsNoFileHistogram(std::string* value);

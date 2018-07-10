@@ -57,6 +57,16 @@ const std::map<LevelStatType, LevelStat> InternalStats::compaction_level_stats =
 #endif
 };
 
+#ifdef INDIRECT_VALUE_SUPPORT
+const std::map<RingStatType, LevelStat> InternalStats::compaction_ring_stats =
+    {
+        {RingStatType::NUM_FILES, LevelStat{"NumFiles", "Files"}},
+        {RingStatType::SIZE_BYTES, LevelStat{"SizeBytes", "Size"}},
+        {RingStatType::FRAGMENTATION, LevelStat{"Fragmentation", "Frag(%%)"}}
+};
+#endif
+
+
 namespace {
 const double kMB = 1048576.0;
 const double kGB = kMB * 1024;
@@ -94,6 +104,30 @@ void PrintLevelStatsHeader(char* buf, size_t len, const std::string& cf_name) {
   snprintf(buf + written_size, len - written_size, "%s\n",
            std::string(line_size, '-').c_str());
 }
+
+#ifdef INDIRECT_VALUE_SUPPORT
+void PrintRingStatsHeader(char* buf, size_t len, const std::string& cf_name) {
+  int written_size =
+      snprintf(buf, len, "\n** Compaction Ring Stats [%s] **\n", cf_name.c_str());
+  auto hdr = [](RingStatType t) {
+    return InternalStats::compaction_ring_stats.at(t).header_name.c_str();
+  };
+  int line_size = snprintf(
+      buf + written_size, len - written_size,
+      "Ring %s %s %s"
+      "\n",
+      // Note that we skip COMPACTED_FILES and merge it with Files column
+      hdr(RingStatType::NUM_FILES),
+      hdr(RingStatType::SIZE_BYTES),
+      hdr(RingStatType::FRAGMENTATION)
+      );
+
+  written_size += line_size;
+  snprintf(buf + written_size, len - written_size, "%s\n",
+           std::string(line_size, '-').c_str());
+}
+#endif
+
 
 void PrepareLevelStats(std::map<LevelStatType, double>* level_stats,
                        int num_files, int being_compacted,
@@ -138,6 +172,16 @@ void PrepareLevelStats(std::map<LevelStatType, double>* level_stats,
       static_cast<double>(stats.vlog_files_created);
 #endif
 }
+
+#ifdef INDIRECT_VALUE_SUPPORT
+void PrepareRingStats(std::map<RingStatType, double>* ring_stats,
+                       int num_files, double total_file_size, double fragmentation) {
+  (*ring_stats)[RingStatType::NUM_FILES] = num_files;
+  (*ring_stats)[RingStatType::SIZE_BYTES] = total_file_size;
+  (*ring_stats)[RingStatType::FRAGMENTATION] = fragmentation;
+}
+#endif
+
 
 void PrintLevelStats(char* buf, size_t len, const std::string& name,
                      const std::map<LevelStatType, double>& stat_value) {
@@ -200,6 +244,25 @@ void PrintLevelStats(char* buf, size_t len, const std::string& name,
 #endif
            );
 }
+
+#ifdef INDIRECT_VALUE_SUPPORT
+void PrintRingStats(char* buf, size_t len, const std::string& name,
+                     const std::map<RingStatType, double>& stat_value) {
+  snprintf(
+      buf, len,
+      "%4s "             /*  Ring */
+      "%6d "             /*  Files */
+      "%8s "             /*  Size */
+      "%6d "             /*  Fragmentation */
+      "\n",
+      name.c_str(), static_cast<int>(stat_value.at(RingStatType::NUM_FILES)),
+      BytesToHumanString(
+        static_cast<int>(stat_value.at(RingStatType::SIZE_BYTES)))
+          .c_str(),
+      static_cast<int>(stat_value.at(RingStatType::FRAGMENTATION))
+           );
+}
+#endif
 
 void PrintLevelStats(char* buf, size_t len, const std::string& name,
                      int num_files, int being_compacted, double total_file_size,
@@ -1183,6 +1246,43 @@ void InternalStats::DumpCFMapStats(
   (*levels_stats)[-1] = sum_stats;  //  -1 is for the Sum level
 }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+void InternalStats::DumpCFMapStatsRing(
+    std::map<int, std::map<RingStatType, double>>* rings_stats) {
+
+  int total_files = 0;
+  double total_file_size = 0;
+  int avg_fragmentation = 0;
+
+  std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
+
+  for(uint32_t ring = 0;ring<vli.size();++ring) {  // for each ring...
+    // number of files per ring
+    int files = 0;
+    std::map<RingStatType, double> ring_stats;
+    uint64_t prevend = vli[ring].valid_files.size()>1 && vli[ring].valid_files[0]==0 ? vli[ring].valid_files[0] : 0;  // end of previous interval, starting with 0 or delete interval.  The first file is file 1
+    for(uint32_t j=0;j<vli[ring].valid_files.size();j+=2){
+      files += vli[ring].valid_files[j+1] - std::max(prevend+1,vli[ring].valid_files[j]) + 1;
+      total_files += files;
+      // interval is (start,end)
+    }
+    // the number of bytes allocated in each VLog ring
+    double file_size = static_cast<double>(vli[ring].size);
+    total_file_size += file_size;
+    // the amount of fragmentation in each ring, i. e. bytes in VLogs
+    double fragmentation = (vli[ring].frag*100.0)/(vli[ring].size+1);
+    avg_fragmentation += fragmentation;
+
+    PrepareRingStats(&ring_stats, files, file_size, fragmentation);
+    (*rings_stats)[ring] = ring_stats;
+  }
+  avg_fragmentation = avg_fragmentation/vli.size();
+  std::map<RingStatType, double> sum_stats;
+  PrepareRingStats(&sum_stats, total_files, total_file_size, avg_fragmentation);
+  (*rings_stats)[-1] = sum_stats;  //  -1 is for the Sum level
+}
+#endif //INDIRECT_VALUE_SUPPORT
+
 void InternalStats::DumpCFMapStatsIOStalls(
     std::map<std::string, std::string>* cf_stats) {
   (*cf_stats)["io_stalls.level0_slowdown"] =
@@ -1372,7 +1472,24 @@ void InternalStats::DumpCFStatsNoFileHistogram(std::string* value) {
            cf_stats_count_[MEMTABLE_LIMIT_SLOWDOWNS],
            total_stall_count - cf_stats_snapshot_.stall_count);
   value->append(buf);
+#ifdef INDIRECT_VALUE_SUPPORT
+  /* VLog Ring Stats */
+  std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
+  PrintRingStatsHeader(buf, sizeof(buf), cfd_->GetName());
+  value->append(buf);
+  std::map<int, std::map<RingStatType, double>> rings_stats;
+  DumpCFMapStatsRing(&rings_stats);
 
+  for(uint32_t i = 0;i<vli.size();++i) {  // for each ring...
+    if (rings_stats.find(i) != rings_stats.end()) {
+      PrintRingStats(buf, sizeof(buf), "R" + ToString(i), rings_stats[i]);
+      value->append(buf);
+    }
+  }
+  // Print sum of level stats
+  PrintRingStats(buf, sizeof(buf), "Sum", rings_stats[-1]);
+  value->append(buf);
+#endif //INDIRECT_VALUE_SUPPORT
   cf_stats_snapshot_.seconds_up = seconds_up;
   cf_stats_snapshot_.ingest_bytes_flush = flush_ingest;
   cf_stats_snapshot_.ingest_bytes_addfile = add_file_ingest;
