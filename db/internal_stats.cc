@@ -61,7 +61,7 @@ const std::map<LevelStatType, LevelStat> InternalStats::compaction_level_stats =
 const std::map<RingStatType, LevelStat> InternalStats::compaction_ring_stats =
     {
         {RingStatType::NUM_FILES, LevelStat{"NumFiles", "Files"}},
-        {RingStatType::SIZE_BYTES, LevelStat{"SizeBytes", "Size(MB)"}},
+        {RingStatType::SIZE_BYTES, LevelStat{"SizeBytes", "Size"}},
         {RingStatType::FRAGMENTATION, LevelStat{"Fragmentation", "Frag(%%)"}}
 };
 #endif
@@ -253,15 +253,13 @@ void PrintRingStats(char* buf, size_t len, const std::string& name,
       "%4s "             /*  Ring */
       "%6d "             /*  Files */
       "%8s "             /*  Size */
-      "%8s "             /*  Fragmentation */
+      "%6d "             /*  Fragmentation */
       "\n",
       name.c_str(), static_cast<int>(stat_value.at(RingStatType::NUM_FILES)),
       BytesToHumanString(
         static_cast<int>(stat_value.at(RingStatType::SIZE_BYTES)))
           .c_str(),
-      BytesToHumanString(
-        static_cast<int>(stat_value.at(RingStatType::FRAGMENTATION)))
-          .c_str()
+      static_cast<int>(stat_value.at(RingStatType::FRAGMENTATION))
            );
 }
 #endif
@@ -1266,7 +1264,7 @@ void InternalStats::DumpCFMapStatsRing(
       // interval is (start,end)
     }
     // the number of bytes allocated in each VLog ring
-    double file_size = static_cast<double>(vli[ring].size / kMB);
+    double file_size = static_cast<double>(vli[ring].size);
     total_file_size += file_size;
     // the amount of fragmentation in each ring, i. e. bytes in VLogs
     double fragmentation = (vli[ring].frag*100.0)/(vli[ring].size+1);
