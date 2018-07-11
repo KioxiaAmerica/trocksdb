@@ -204,8 +204,9 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       // the persistent name resolved_indirect_values before it is filled.  resolved_indirect_values
       // is defined at the compaction-iterator level
       // The vector holds pointers to the strings so that resizing the vector doesn't invalidate them
-      auto newstring = std::make_shared<std::string>();
-      iter->resolved_indirect_values.emplace_back(newstring);  // add a new empty string for upcoming read   // ASAN free block (??)  also ASAN allocate the failing block
+// obsolete       auto newstring = std::make_shared<std::string>();
+// obsolete       iter->resolved_indirect_values.emplace_back(std::make_shared<std::string>());  // add a new empty string for upcoming read   // ASAN free block (??)  also ASAN allocate the failing block
+      iter->resolved_indirect_values.push_back(std::make_shared<std::string>());  // add a new empty string for upcoming read
 // obsolete       iter->resolved_indirect_values.emplace_back();  // add a new empty string for upcoming read
       // resolve the value in the new string.
       vlog->VLogGet(val,*iter->resolved_indirect_values.back());   // turn the reference into a value, in the string

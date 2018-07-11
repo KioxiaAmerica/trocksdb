@@ -175,8 +175,8 @@ void PrepareLevelStats(std::map<LevelStatType, double>* level_stats,
 
 #ifdef INDIRECT_VALUE_SUPPORT
 void PrepareRingStats(std::map<RingStatType, double>* ring_stats,
-                       int num_files, double total_file_size, double fragmentation) {
-  (*ring_stats)[RingStatType::NUM_FILES] = num_files;
+                       int64_t num_files, double total_file_size, double fragmentation) {
+  (*ring_stats)[RingStatType::NUM_FILES] = (double)num_files;
   (*ring_stats)[RingStatType::SIZE_BYTES] = total_file_size;
   (*ring_stats)[RingStatType::FRAGMENTATION] = fragmentation;
 }
@@ -1250,19 +1250,22 @@ void InternalStats::DumpCFMapStats(
 void InternalStats::DumpCFMapStatsRing(
     std::map<int, std::map<RingStatType, double>>* rings_stats) {
 
-  int total_files = 0;
+  uint64_t total_files = 0;
   double total_file_size = 0;
-  int avg_fragmentation = 0;
+  double avg_fragmentation = 0;
 
   std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
 
   for(uint32_t ring = 0;ring<vli.size();++ring) {  // for each ring...
     // number of files per ring
-    int files = 0;
+    uint64_t files = 0;
     std::map<RingStatType, double> ring_stats;
-    uint64_t prevend = vli[ring].valid_files.size()>1 && vli[ring].valid_files[0]==0 ? vli[ring].valid_files[0] : 0;  // end of previous interval, starting with 0 or delete interval.  The first file is file 1
-    for(uint32_t j=0;j<vli[ring].valid_files.size();j+=2){
-      files += vli[ring].valid_files[j+1] - std::max(prevend+1,vli[ring].valid_files[j]) + 1;
+    uint64_t vfx=0;  // running index of file-pair
+    uint64_t prevend;  // end of previous interval, starting with 0 or delete interval.  The first file is file 1
+    // the first filenumber-pair may be a delete record, if the first file# is 0.  In that case, remember the delete-to point and skip over the pair
+    if(vli[ring].valid_files.size()>1 && vli[ring].valid_files[0]==0){prevend=vli[ring].valid_files[1]; vfx+=2;}else prevend = 0;
+    for(;vfx<vli[ring].valid_files.size();vfx+=2){
+      files += vli[ring].valid_files[vfx+1] - std::max(prevend+1,vli[ring].valid_files[vfx]) + 1; // interval is (start,end)
       total_files += files;
       // interval is (start,end)
     }

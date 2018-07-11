@@ -209,7 +209,7 @@ printf("\n");
         bytesintocompression += val.size();  // count length into compression
         std::string compresseddata;  // place the compressed string will go
         // Compress the data.  This will never fail; if there is an error, we just get uncompressed data
-        CompressionType ctype = CompressForVLog(std::string(val.data(),val.size()),compressiontype,compressioncontext,&compresseddata);  // ASAN bad ref here
+        CompressionType ctype = CompressForVLog(std::string(val.data(),val.size()),compressiontype,compressioncontext,&compresseddata);
 #ifdef IITIMING
     iitimevec[2] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 2 - after compression
 #endif
@@ -311,7 +311,7 @@ printf("\n");
 #endif
 
       // We have processed one key from the compaction iterator - get the next one
-      c_iter->Next();   // ASAN frees buf
+      c_iter->Next();
 #ifdef IITIMING
     iitimevec[6] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 6 - after Next
 #endif

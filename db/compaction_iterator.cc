@@ -175,7 +175,7 @@ void CompactionIterator::Next() {
       // MergeHelper moves the iterator to the first record after the merged
       // records, so even though we reached the end of the merge output, we do
       // not want to advance the iterator.
-      NextFromInput();    // ASAN free buf in this call
+      NextFromInput();
     }
   } else {
     // Only advance the input iterator if there is no merge output and the
@@ -641,7 +641,7 @@ void CompactionIterator::NextFromInput() {
       // We encapsulate the merge related state machine in a different
       // object to minimize change to the existing flow.
       Status s = merge_helper_->MergeUntil(input_, range_del_agg_,
-                                           prev_snapshot, bottommost_level_);  // ASAN this call frees the block
+                                           prev_snapshot, bottommost_level_);
       merge_out_iter_.SeekToFirst();
 
       if (!s.ok() && !s.IsMergeInProgress()) {
