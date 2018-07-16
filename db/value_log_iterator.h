@@ -33,7 +33,8 @@ namespace rocksdb {
 class VLogCountingIterator : public InternalIterator {
 
  public:
-  explicit VLogCountingIterator(const Comparator *cmp_, InternalIterator *input_) : cmp(cmp_), input(input_), ring_bytes_refd(std::vector<int64_t>(4)) {}
+  explicit VLogCountingIterator(const Comparator *cmp_, InternalIterator *input_) : cmp(cmp_), input(input_), ring_bytes_refd(std::vector<int64_t>(4))
+   {SetVlogForIteratorCF(input_->GetVlogForIteratorCF());}
 
   virtual void SeekToFirst() override { input->SeekToFirst(); }  // set up to get the first record
   // We count the indirect references at Next time.  If we terminate the compaction before end-of-input, we need to make sure we do Next() only for the
