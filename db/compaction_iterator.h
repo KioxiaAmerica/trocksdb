@@ -19,9 +19,12 @@
 #include "rocksdb/compaction_filter.h"
 #ifdef INDIRECT_VALUE_SUPPORT
 #include "db/value_log.h"
+// obsolete #include "db/value_log_iterator.h"
 #endif
 
 namespace rocksdb {
+
+class VLogCountingIterator;
 
 class CompactionIterator {
  public:
@@ -112,7 +115,7 @@ class CompactionIterator {
   const Slice& user_key() const { return current_user_key_; }
   const CompactionIterationStats& iter_stats() const { return iter_stats_; }
 #ifdef INDIRECT_VALUE_SUPPORT
-  void RingBytesRefd(std::vector<int64_t>& refbytes) { for(uint32_t i = 0;i<refbytes.size();++i)refbytes[i]=ring_bytes_refd_[i]; }  // the total length of all indirect data referred to, in each ring
+  void RingBytesRefd(std::vector<int64_t>& refbytes);  // the total length of all indirect data referred to, in each ring
 #endif
 
  private:
@@ -141,7 +144,14 @@ class CompactionIterator {
   // or seqnum be zero-ed out even if all other conditions for it are met.
   inline bool ikeyNotNeededForIncrementalSnapshot();
 
+#ifdef INDIRECT_VALUE_SUPPORT
+// When indirect values are enabled, the compaction input must pass through a stage that counts all the indirect references in the input stream.  This is how
+// we account for size and frag of the VLogRings
+  shared_ptr<VLogCountingIterator> input_;  // this iterator goes before input_ to count all the VLog references read during compaction
+  InternalIterator* originput_;   // the iterator we were started with
+#else
   InternalIterator* input_;
+#endif
   const Comparator* cmp_;
   MergeHelper* merge_helper_;
   const std::vector<SequenceNumber>* snapshots_;
@@ -211,10 +221,10 @@ class CompactionIterator {
   // Used to avoid purging uncommitted values. The application can specify
   // uncommitted values by providing a SnapshotChecker object.
   bool current_key_committed_;
-#ifdef INDIRECT_VALUE_SUPPORT
-  std::vector<int64_t> ring_bytes_refd_;  // for each ring, the total number of bytes referred to in the ring.  This represents all the indirect data going into compaction.  Anything that is not passed through becomes fragmentation
-  void CountIndirectRefs(ValueType keytype, Slice& value);
-#endif
+// obsolete #ifdef INDIRECT_VALUE_SUPPORT
+// obsolete   std::vector<int64_t> ring_bytes_refd_;  // for each ring, the total number of bytes referred to in the ring.  This represents all the indirect data going into compaction.  Anything that is not passed through becomes fragmentation
+// obsolete   void CountIndirectRefs(ValueType keytype, Slice& value);
+// obsolete #endif
 
 
   bool IsShuttingDown() {

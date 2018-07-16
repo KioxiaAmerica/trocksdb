@@ -17,12 +17,73 @@
 #include "options/cf_options.h"
 #include "table/internal_iterator.h"
 #include "db/column_family.h"
+#include "db/compaction.h"
 #include "db/compaction_iterator.h"
 #include "db/value_log.h"
 
 
 
 namespace rocksdb {
+
+// Iterator class to count VLog references coming into compaction
+// This iterator sits between the CompactionIterator/MergeHelper and the MergingIterator, and takes a look at everything going into a Compaction.
+// It counts the number of bytes of data referred to in each ring.  At the end of the compaction these values are compared with the
+// amounts passed through to see how much fragmentation was added
+
+class VLogCountingIterator : public InternalIterator {
+
+ public:
+  explicit VLogCountingIterator(const Comparator *cmp_, InternalIterator *input_) : cmp(cmp_), input(input_), ring_bytes_refd(std::vector<int64_t>(4)) {}
+
+  virtual void SeekToFirst() override { input->SeekToFirst(); }  // set up to get the first record
+  // We count the indirect references at Next time.  If we terminate the compaction before end-of-input, we need to make sure we do Next() only for the
+  // keys we actually processed.  Reading to skip over counts as processing
+  virtual void Next() override {
+    rocksdb::Slice key = input->key();
+    rocksdb::Slice value = input->value();
+    ParsedInternalKey ikey;
+    if (ParseInternalKey(key, &ikey)) {
+      if(IsTypeIndirect(ikey.type)) {  // if value is indirect...
+        if(value.size()==VLogRingRef::sstrefsize){  // if length is wrong, the reference is mangled.  We'll catch it later; ignore it for now
+          VLogRingRef ref(value.data());   // analyze the (valid) reference
+          if(ref.Ringno()<ring_bytes_refd.size()){    // if invalid ring#, mangled reference; we'll catch it later
+            ring_bytes_refd[ref.Ringno()] += ref.Len();
+          }
+        }
+      }
+    }
+    input->Next();  // after we have counted the key we used, move to the next one
+  }
+  virtual Slice key() const override { return input->key(); }
+  virtual Slice value() const override { return input->value(); }
+  // Return good status to a read past the end of keys.  Have to, because there is no benign EOF status
+  virtual Status status() const override { return input->status(); }
+  virtual bool Valid() const override { return input->Valid(); }
+
+  // The following are needed to meet the requirements of the InternalIterator:
+  virtual void SeekToLast() override {};
+  virtual void SeekForPrev(const Slice& /*unused*/) override {};
+  // Seeks (which are invoked by filters) must go through the keys one by one so that we can account for all the references to the VLogs.
+  // The seek stops when a key is >= the target.
+  virtual void Seek(const Slice& target) override {
+    while(Valid() && cmp->Compare(target, key()) > 0)Next();
+  }
+  virtual void Prev() override {};
+
+  // Additional function used by MergeHelper
+  virtual bool IsValuePinned() const override { return input->IsValuePinned(); }
+
+  std::vector<int64_t>& RingBytesRefd() { return ring_bytes_refd;}
+  
+private:
+
+  const Comparator *cmp;  // Comparison function
+  InternalIterator *input;  // the iterator we call for input
+  std::vector<int64_t> ring_bytes_refd;  // for each ring, the total number of bytes referred to in the ring.  This represents all the indirect data going into compaction.  Anything that is not passed through becomes fragmentation
+};
+
+
+
 
 // Iterator class to go through the files for Active Recycling, in order
 //

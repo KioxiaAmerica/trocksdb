@@ -169,7 +169,7 @@ printf("\n");
     size_t totalsstlen=0;  // total length so far that will be written to the SST
     size_t bytesresvindiskdata=0;  // total length that we will write to disk.  diskdata contains a mixture of references and actual data
     while(c_iter->Valid() && 
-           !(recyciter==nullptr && end != nullptr && pcfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0)) {
+           !(recyciter==nullptr && end != nullptr && pcfd->user_comparator()->Compare(c_iter->user_key(), *end) >= 0)) {  // When the key is too big, don't process it
 #ifdef IITIMING
     iitimevec[0] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 0 - top of loop
 #endif
@@ -311,6 +311,8 @@ printf("\n");
 #endif
 
       // We have processed one key from the compaction iterator - get the next one
+      // This is the last thing we do in processng a kv.  If the key is out of bounds, we don't use it AND we don't call Next().
+      // Next() is what accounts for the VLog space used by an indirect reference that contributes to a compaction.
       c_iter->Next();
 #ifdef IITIMING
     iitimevec[6] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 6 - after Next
@@ -429,7 +431,8 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
     if(ref0_[prevringfno.ringno]>prevringfno.fileno)
       ref0_[prevringfno.ringno]=prevringfno.fileno;  // if current > new, switch to new
 
-    if((valid_ = keyno_ < valueclass.size())) {
+    valid_ = keyno_ < valueclass.size();
+    if(valid_) {
       // There is another key to return.  Retrieve the key info and parse it
 
       // If there are errors about, we need to make sure we attach the errors to the correct keys.

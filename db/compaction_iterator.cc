@@ -9,6 +9,9 @@
 #include "port/likely.h"
 #include "rocksdb/listener.h"
 #include "table/internal_iterator.h"
+#ifdef INDIRECT_VALUE_SUPPORT  // create listener events for indirect types
+#include "db/value_log_iterator.h"
+#endif
 
 namespace rocksdb {
 
@@ -71,7 +74,13 @@ CompactionIterator::CompactionIterator(
     const CompactionFilter* compaction_filter,
     const std::atomic<bool>* shutting_down,
     const SequenceNumber preserve_deletes_seqnum)
-    : input_(input),
+    :
+#ifdef INDIRECT_VALUE_SUPPORT
+      input_(std::make_shared<VLogCountingIterator>(cmp, input)),
+      originput_(input),
+#else
+      input_(input),
+#endif
       cmp_(cmp),
       merge_helper_(merge_helper),
       snapshots_(snapshots),
@@ -89,9 +98,9 @@ CompactionIterator::CompactionIterator(
       current_user_key_snapshot_(0),
       merge_out_iter_(merge_helper_),
       current_key_committed_(false)
-#ifdef INDIRECT_VALUE_SUPPORT
-      ,ring_bytes_refd_(std::vector<int64_t>(4))  // we don't know how many rings this compaction has; init to max supported
-#endif
+// obsolete #ifdef INDIRECT_VALUE_SUPPORT
+// obsolete       ,ring_bytes_refd_(std::vector<int64_t>(4))  // we don't know how many rings this compaction has; init to max supported
+// obsolete #endif
   {
   assert(compaction_filter_ == nullptr || compaction_ != nullptr);
   bottommost_level_ =
@@ -117,12 +126,22 @@ CompactionIterator::CompactionIterator(
   } else {
     ignore_snapshots_ = false;
   }
-  input_->SetPinnedItersMgr(&pinned_iters_mgr_);
+#ifdef INDIRECT_VALUE_SUPPORT
+  input_
+#else
+  originput_
+#endif
+  ->SetPinnedItersMgr(&pinned_iters_mgr_);
 }
 
 CompactionIterator::~CompactionIterator() {
-  // input_ Iteartor lifetime is longer than pinned_iters_mgr_ lifetime
-  input_->SetPinnedItersMgr(nullptr);
+  // input_ Iterator lifetime is longer than pinned_iters_mgr_ lifetime
+#ifdef INDIRECT_VALUE_SUPPORT
+  input_
+#else
+  originput_
+#endif
+  ->SetPinnedItersMgr(nullptr);
 }
 
 void CompactionIterator::ResetRecordCounts() {
@@ -133,6 +152,10 @@ void CompactionIterator::ResetRecordCounts() {
   iter_stats_.num_range_del_drop_obsolete = 0;
   iter_stats_.num_optimized_del_drop_obsolete = 0;
 }
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  void CompactionIterator::RingBytesRefd(std::vector<int64_t>& refbytes) { refbytes=input_->RingBytesRefd(); }  // the total length of all indirect data referred to, in each ring.  Pass to the iterator that has it
+#endif
 
 void CompactionIterator::SeekToFirst() {
   NextFromInput();
@@ -194,20 +217,6 @@ void CompactionIterator::Next() {
   PrepareOutput();
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
-// Inspect a key/value to see if it refers to data in the VLog.  Count all the bytes in the VLog.
-// Associate them with their rings
-void CompactionIterator::CountIndirectRefs(ValueType keytype, Slice& value) {
-  if(IsTypeIndirect(keytype)) {  // if value is indirect...
-    if(value.size()==VLogRingRef::sstrefsize){  // if length is wrong, the reference is mangled.  We'll catch it later; ignore it for now
-      VLogRingRef ref(value.data());   // analyze the (valid) reference
-      if(ref.Ringno()<ring_bytes_refd_.size()){    // if invalid ring#, mangled reference; we'll catch it later
-        ring_bytes_refd_[ref.Ringno()] += ref.Len();
-      }
-    }
-  }
-}
-#endif
 
 
 void CompactionIterator::InvokeFilterIfNeeded(bool* need_skip,
@@ -309,7 +318,7 @@ void CompactionIterator::InvokeFilterIfNeeded(bool* need_skip,
 void CompactionIterator::NextFromInput() {
 #ifdef INDIRECT_VALUE_SUPPORT
   // If this is an Active Recycling operation, the compaction iterator is simply going through the kvs in order, with no
-  // comparisons.
+  // comparisons..  We have to do the work here rather than in Next() because SeekToFirst() starts with a call to here to move to the first key
   if(compaction_!=nullptr && compaction_->compaction_reason() == CompactionReason::kActiveRecycling){
     // read new values from the RecyclingIterator
     valid_ = input_->Valid();
@@ -320,8 +329,8 @@ void CompactionIterator::NextFromInput() {
       status_ = input_->status();
       // Calculate other derived info required by the interface
       ParseInternalKey(key_, &ikey_);
-      // collect the stats we need for fragmentation control
-      CountIndirectRefs(ikey_.type,value_);  // see if the key is an indirect reference & account for it
+// obsolete       // collect the stats we need for fragmentation control
+// obsolete       CountIndirectRefs(ikey_.type,value_);  // see if the key is an indirect reference & account for it
     }
     return;  // user will pick up the new values
   }
@@ -353,9 +362,9 @@ void CompactionIterator::NextFromInput() {
     }
 
     // Update input statistics
-#ifdef INDIRECT_VALUE_SUPPORT
-            CountIndirectRefs(ikey_.type,value_);  // check the discarded value for indirect refs
-#endif
+// obsolete #ifdef INDIRECT_VALUE_SUPPORT
+// obsolete     CountIndirectRefs(ikey_.type,value_);  // check the discarded value for indirect refs
+// obsolete #endif
     if (ikey_.type == kTypeDeletion || ikey_.type == kTypeSingleDeletion) {
       iter_stats_.num_input_deletion_records++;
     }
@@ -528,10 +537,10 @@ void CompactionIterator::NextFromInput() {
             ++iter_stats_.num_record_drop_obsolete;
             // Already called input_->Next() once.  Call it a second time to
             // skip past the second key.
-#ifdef INDIRECT_VALUE_SUPPORT
-            Slice s = input_->value();
-            CountIndirectRefs(next_ikey.type,s);  // check the discarded value for indirect refs
-#endif
+// obsolete #ifdef INDIRECT_VALUE_SUPPORT
+// obsolete             Slice s = input_->value();
+// obsolete             CountIndirectRefs(next_ikey.type,s);  // check the discarded value for indirect refs
+// obsolete #endif
             input_->Next();
           } else {
             // Found a matching value, but we cannot drop both keys since
@@ -640,8 +649,8 @@ void CompactionIterator::NextFromInput() {
       // have hit (A)
       // We encapsulate the merge related state machine in a different
       // object to minimize change to the existing flow.
-      Status s = merge_helper_->MergeUntil(input_, range_del_agg_,
-                                           prev_snapshot, bottommost_level_);
+      Status s = merge_helper_->MergeUntil(&*input_, range_del_agg_,
+                                           prev_snapshot, bottommost_level_);  // the &* is to allow input_ to be a shared_ptr or a regular pointer
       merge_out_iter_.SeekToFirst();
 
       if (!s.ok() && !s.IsMergeInProgress()) {
