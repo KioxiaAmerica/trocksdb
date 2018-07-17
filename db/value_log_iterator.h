@@ -69,7 +69,7 @@ class VLogCountingIterator : public InternalIterator {
   // to go faster than one-by-one.
   virtual void Seek(const Slice& target) override {
     if(GetVlogForIteratorCF()==nullptr){input->Seek(target);}  // no VLog: use Seek iterator
-    else{while(Valid() && cmp->Compare(target, key()) > 0)Next();}  // with VLog, we do it by hand
+    else{Slice ukey = ExtractUserKey(target); while(Valid() && cmp->Compare(ukey, ExtractUserKey(key())) > 0)Next();}  // with VLog, we do it by hand.  Compare only on user key
   }
   virtual void Prev() override {};
 

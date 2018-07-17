@@ -37,7 +37,6 @@ class MergeHelper {
               const SnapshotChecker* snapshot_checker = nullptr, int level = 0,
               Statistics* stats = nullptr,
               const std::atomic<bool>* shutting_down = nullptr);
-  virtual ~MergeHelper() {};  // scaf
 
   // Wrapper around MergeOperator::FullMergeV2() that records perf statistics.
   // Result of merge will be written to result if status returned is OK.
