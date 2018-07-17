@@ -691,6 +691,7 @@ private:
 
 public:
 
+  VLog(){}  // used during testing for creating dummy VLog that is never used
   VLog(
   ColumnFamilyData *cfd,  // the info for the column family
   const ImmutableDBOptions& immdbopts,   // The current options

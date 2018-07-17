@@ -65,9 +65,11 @@ class VLogCountingIterator : public InternalIterator {
   virtual void SeekToLast() override {};
   virtual void SeekForPrev(const Slice& /*unused*/) override {};
   // Seeks (which are invoked by filters) must go through the keys one by one so that we can account for all the references to the VLogs.
-  // The seek stops when a key is >= the target.
+  // The seek stops when a key is >= the target.  If this iterator doesn't have a VLog, we call Seek in the input - it may be able
+  // to go faster than one-by-one.
   virtual void Seek(const Slice& target) override {
-    while(Valid() && cmp->Compare(target, key()) > 0)Next();
+    if(GetVlogForIteratorCF()==nullptr){input->Seek(target);}  // no VLog: use Seek iterator
+    else{while(Valid() && cmp->Compare(target, key()) > 0)Next();}  // with VLog, we do it by hand
   }
   virtual void Prev() override {};
 

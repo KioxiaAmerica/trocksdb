@@ -247,6 +247,9 @@ class CompactionIteratorTest : public testing::TestWithParam<bool> {
 
     iter_.reset(new LoggingForwardVectorIterator(ks, vs));
     iter_->SeekToFirst();
+#ifdef INDIRECT_VALUE_SUPPORT
+    iter_->SetVlogForIteratorCF(std::make_shared<VLog>());  // install a VLog so that the iterator will behave like a compaction iterator with VLog
+#endif
     c_iter_.reset(new CompactionIterator(
         iter_.get(), cmp_, merge_helper_.get(), last_sequence, &snapshots_,
         earliest_write_conflict_snapshot, snapshot_checker_.get(),
@@ -445,6 +448,7 @@ TEST_P(CompactionIteratorTest, CompactionFilterSkipUntil) {
       {"av50", "am45", "bv60", "bv40", "cv35", "dm70", "em71", "fm65", "fm30",
        "fv25", "gv90", "hv91", "im95", "jv99"},
       {}, {}, kMaxSequenceNumber, kMaxSequenceNumber, &merge_op, &filter);
+  
 
   // Compaction should output just "a", "e" and "h" keys.
   c_iter_->SeekToFirst();
