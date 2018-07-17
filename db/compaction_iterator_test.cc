@@ -466,6 +466,16 @@ TEST_P(CompactionIteratorTest, CompactionFilterSkipUntil) {
   // the underlying iterator.
   using A = LoggingForwardVectorIterator::Action;
   using T = A::Type;
+#ifdef INDIRECT_VALUE_SUPPORT
+  // When there are indirect values, we have to visit each one for space accounting on the VLogRing, so we will issue only
+  // Next calls to the underlying iterator.
+  std::vector<A> expected_actions = {
+      A(T::SEEK_TO_FIRST),
+      A(T::NEXT), A(T::NEXT), A(T::NEXT), A(T::NEXT), A(T::NEXT),
+      A(T::NEXT), A(T::NEXT), A(T::NEXT), A(T::NEXT), A(T::NEXT),
+      A(T::NEXT), A(T::NEXT), A(T::NEXT), A(T::NEXT)
+      };
+#else
   std::vector<A> expected_actions = {
       A(T::SEEK_TO_FIRST),
       A(T::NEXT),
@@ -476,6 +486,7 @@ TEST_P(CompactionIteratorTest, CompactionFilterSkipUntil) {
       A(T::SEEK, test::KeyStr("g+", kMaxSequenceNumber, kValueTypeForSeek)),
       A(T::NEXT),
       A(T::SEEK, test::KeyStr("z", kMaxSequenceNumber, kValueTypeForSeek))};
+#endif
   ASSERT_EQ(expected_actions, iter_->log);
 }
 
