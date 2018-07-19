@@ -194,6 +194,7 @@ class KeepFilterFactory : public CompactionFilterFactory {
     if (check_context_cf_id_) {
       EXPECT_EQ(expect_cf_id_.load(), context.column_family_id);
     }
+
     compaction_filter_created_ = true;
     return std::unique_ptr<CompactionFilter>(new KeepFilter());
   }

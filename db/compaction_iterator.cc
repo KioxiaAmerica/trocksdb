@@ -127,9 +127,9 @@ CompactionIterator::CompactionIterator(
     ignore_snapshots_ = false;
   }
 #ifdef INDIRECT_VALUE_SUPPORT
-  input_
-#else
   originput_
+#else
+  input_
 #endif
   ->SetPinnedItersMgr(&pinned_iters_mgr_);
 }
@@ -137,9 +137,9 @@ CompactionIterator::CompactionIterator(
 CompactionIterator::~CompactionIterator() {
   // input_ Iterator lifetime is longer than pinned_iters_mgr_ lifetime
 #ifdef INDIRECT_VALUE_SUPPORT
-  input_
-#else
   originput_
+#else
+  input_
 #endif
   ->SetPinnedItersMgr(nullptr);
 }
