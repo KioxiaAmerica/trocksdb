@@ -301,11 +301,7 @@ TEST_F(DBTest, PutSingleDeleteGet) {
     // universal compaction do not apply to the test case. Skip MergePut
     // because single delete does not get removed when it encounters a merge.
   } while (ChangeOptions(kSkipHashCuckoo | kSkipFIFOCompaction |
-                         kSkipUniversalCompaction | kSkipMergePut
-#ifdef INDIRECT_VALUE_SUPPORT
-           | kSkipDirectIO
-#endif
-          ));
+                         kSkipUniversalCompaction | kSkipMergePut));
 }
 
 TEST_F(DBTest, ReadFromPersistedTier) {
@@ -419,9 +415,6 @@ TEST_F(DBTest, ReadFromPersistedTier) {
       }
     }
   } while (ChangeOptions(kSkipHashCuckoo
-#ifdef INDIRECT_VALUE_SUPPORT
-           | kSkipDirectIO
-#endif
           ));
 }
 
@@ -462,11 +455,7 @@ TEST_F(DBTest, SingleDeleteFlush) {
     // universal compaction do not apply to the test case. Skip MergePut
     // because merges cannot be combined with single deletions.
   } while (ChangeOptions(kSkipHashCuckoo | kSkipFIFOCompaction |
-                         kSkipUniversalCompaction | kSkipMergePut
-#ifdef INDIRECT_VALUE_SUPPORT
-           | kSkipDirectIO
-#endif
-          ));
+                         kSkipUniversalCompaction | kSkipMergePut));
 }
 
 TEST_F(DBTest, SingleDeletePutFlush) {
@@ -489,11 +478,7 @@ TEST_F(DBTest, SingleDeletePutFlush) {
     // universal compaction do not apply to the test case. Skip MergePut
     // because merges cannot be combined with single deletions.
   } while (ChangeOptions(kSkipHashCuckoo | kSkipFIFOCompaction |
-                         kSkipUniversalCompaction | kSkipMergePut
-#ifdef INDIRECT_VALUE_SUPPORT
-           | kSkipDirectIO
-#endif
-          ));
+                         kSkipUniversalCompaction | kSkipMergePut));
 }
 
 // Disable because not all platform can run it.
@@ -600,9 +585,6 @@ TEST_F(DBTest, GetFromImmutableLayer) {
     // Release sync calls
     env_->delay_sstable_sync_.store(false, std::memory_order_release);
   } while (ChangeOptions(
-#ifdef INDIRECT_VALUE_SUPPORT
-           kSkipDirectIO
-#endif
           ));
 }
 
@@ -620,11 +602,7 @@ TEST_F(DBTest, GetLevel0Ordering) {
     ASSERT_OK(Put(1, "foo", "v2"));
     ASSERT_OK(Flush(1));
     ASSERT_EQ("v2", Get(1, "foo"));
-  } while (ChangeOptions(
-#ifdef INDIRECT_VALUE_SUPPORT
-           kSkipDirectIO
-#endif
-          ));
+  } while (ChangeOptions());
 }
 
 TEST_F(DBTest, WrongLevel0Config) {
@@ -648,11 +626,7 @@ TEST_F(DBTest, GetOrderedByLevels) {
     ASSERT_EQ("v2", Get(1, "foo"));
     ASSERT_OK(Flush(1));
     ASSERT_EQ("v2", Get(1, "foo"));
-  } while (ChangeOptions(
-#ifdef INDIRECT_VALUE_SUPPORT
-           kSkipDirectIO
-#endif
-          ));
+  } while (ChangeOptions());
 }
 
 TEST_F(DBTest, GetPicksCorrectFile) {
@@ -668,11 +642,7 @@ TEST_F(DBTest, GetPicksCorrectFile) {
     ASSERT_EQ("va", Get(1, "a"));
     ASSERT_EQ("vf", Get(1, "f"));
     ASSERT_EQ("vx", Get(1, "x"));
-  } while (ChangeOptions(
-#ifdef INDIRECT_VALUE_SUPPORT
-           kSkipDirectIO
-#endif
-          ));
+  } while (ChangeOptions());
 }
 
 TEST_F(DBTest, GetEncountersEmptyLevel) {
@@ -714,11 +684,7 @@ TEST_F(DBTest, GetEncountersEmptyLevel) {
     dbfull()->TEST_WaitForCompact();
 
     ASSERT_EQ(NumTableFilesAtLevel(0, 1), 1);  // XXX
-  } while (ChangeOptions(kSkipUniversalCompaction | kSkipFIFOCompaction
-#ifdef INDIRECT_VALUE_SUPPORT
-           | kSkipDirectIO
-#endif
-          ));
+  } while (ChangeOptions(kSkipUniversalCompaction | kSkipFIFOCompaction));
 }
 #endif  // ROCKSDB_LITE
 
@@ -1311,11 +1277,7 @@ TEST_F(DBTest, ApproximateSizes) {
     }
     // ApproximateOffsetOf() is not yet implemented in plain table format.
   } while (ChangeOptions(kSkipUniversalCompaction | kSkipFIFOCompaction |
-                         kSkipPlainTable | kSkipHashIndex
-#ifdef INDIRECT_VALUE_SUPPORT
-           | kSkipDirectIO
-#endif
-          ));
+                         kSkipPlainTable | kSkipHashIndex));
 }
 
 TEST_F(DBTest, ApproximateSizes_MixOfSmallAndLarge) {
@@ -1355,11 +1317,7 @@ TEST_F(DBTest, ApproximateSizes_MixOfSmallAndLarge) {
       dbfull()->TEST_CompactRange(0, nullptr, nullptr, handles_[1]);
     }
     // ApproximateOffsetOf() is not yet implemented in plain table format.
-  } while (ChangeOptions(kSkipPlainTable
-#ifdef INDIRECT_VALUE_SUPPORT
-           | kSkipDirectIO
-#endif
-          ));
+  } while (ChangeOptions(kSkipPlainTable));
 }
 #endif
 #endif  // ROCKSDB_LITE
@@ -1426,11 +1384,7 @@ TEST_F(DBTest, Snapshot) {
     ASSERT_EQ(0U, GetNumSnapshots());
     ASSERT_EQ("0v4", Get(0, "foo"));
     ASSERT_EQ("1v4", Get(1, "foo"));
-  } while (ChangeOptions(kSkipHashCuckoo
-#ifdef INDIRECT_VALUE_SUPPORT
-           | kSkipDirectIO
-#endif
-          ));
+  } while (ChangeOptions(kSkipHashCuckoo));
 }
 
 TEST_F(DBTest, HiddenValuesAreRemoved) {
@@ -1469,11 +1423,7 @@ TEST_F(DBTest, HiddenValuesAreRemoved) {
     // which is used by Size().
     // skip HashCuckooRep as it does not support snapshot
   } while (ChangeOptions(kSkipUniversalCompaction | kSkipFIFOCompaction |
-                         kSkipPlainTable | kSkipHashCuckoo
-#ifdef INDIRECT_VALUE_SUPPORT
-           | kSkipDirectIO
-#endif
-          ));
+                         kSkipPlainTable | kSkipHashCuckoo));
 }
 #endif  // ROCKSDB_LITE
 
@@ -1526,11 +1476,7 @@ TEST_F(DBTest, UnremovableSingleDelete) {
     // universal compaction do not apply to the test case.  Skip MergePut
     // because single delete does not get removed when it encounters a merge.
   } while (ChangeOptions(kSkipHashCuckoo | kSkipFIFOCompaction |
-                         kSkipUniversalCompaction | kSkipMergePut
-#ifdef INDIRECT_VALUE_SUPPORT
-           | kSkipDirectIO
-#endif
-          ));
+                         kSkipUniversalCompaction | kSkipMergePut));
 }
 
 #ifndef ROCKSDB_LITE
@@ -1641,11 +1587,7 @@ TEST_F(DBTest, OverlapInLevel0) {
     Flush(1);
     ASSERT_EQ("3", FilesPerLevel(1));
     ASSERT_EQ("NOT_FOUND", Get(1, "600"));
-  } while (ChangeOptions(kSkipUniversalCompaction | kSkipFIFOCompaction
-#ifdef INDIRECT_VALUE_SUPPORT
-           | kSkipDirectIO
-#endif
-          ));
+  } while (ChangeOptions(kSkipUniversalCompaction | kSkipFIFOCompaction));
 }
 #endif  // ROCKSDB_LITE
 
@@ -2259,11 +2201,7 @@ TEST_F(DBTest, GroupCommitTest) {
     HistogramData hist_data;
     options.statistics->histogramData(DB_WRITE, &hist_data);
     ASSERT_GT(hist_data.average, 0.0);
-  } while (ChangeOptions(kSkipNoSeekToLast
-#ifdef INDIRECT_VALUE_SUPPORT
-           | kSkipDirectIO
-#endif
-          ));
+  } while (ChangeOptions(kSkipNoSeekToLast));
 }
 
 namespace {
@@ -2695,9 +2633,6 @@ class DBTestRandomized : public DBTest,
     for (int option_config = kDefault; option_config < kEnd; ++option_config) {
       if (!ShouldSkipOptions(option_config, kSkipDeletesFilterFirst |
                                                 kSkipNoSeekToLast |
-#ifdef INDIRECT_VALUE_SUPPORT
-                                                kSkipDirectIO |
-#endif
                                                 kSkipHashCuckoo)) {
         option_configs.push_back(option_config);
       }

@@ -377,11 +377,7 @@ TEST_F(ExternalSSTFileTest, Basic) {
       ASSERT_EQ(Get(Key(k)), value);
     }
     DestroyAndRecreateExternalSSTFilesDir();
-  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction
-#ifdef INDIRECT_VALUE_SUPPORT
-    | kSkipDirectIO
-#endif
-    ));
+  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction));
 }
 class SstFileWriterCollector : public TablePropertiesCollector {
  public:
@@ -623,11 +619,7 @@ TEST_F(ExternalSSTFileTest, AddList) {
       ASSERT_EQ(Get(Key(k)), value);
     }
     DestroyAndRecreateExternalSSTFilesDir();
-  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction
-#ifdef INDIRECT_VALUE_SUPPORT
-    | kSkipDirectIO
-#endif
-    ));
+  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction));
 }
 
 TEST_F(ExternalSSTFileTest, AddListAtomicity) {
@@ -669,11 +661,7 @@ TEST_F(ExternalSSTFileTest, AddListAtomicity) {
       ASSERT_EQ(Get(Key(k)), value);
     }
     DestroyAndRecreateExternalSSTFilesDir();
-  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction
-#ifdef INDIRECT_VALUE_SUPPORT
-    | kSkipDirectIO
-#endif
-    ));
+  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction));
 }
 // This test reporduce a bug that can happen in some cases if the DB started
 // purging obsolete files when we are adding an external sst file.
@@ -904,11 +892,7 @@ TEST_F(ExternalSSTFileTest, MultiThreaded) {
 
     fprintf(stderr, "Verified %d values\n", num_files * keys_per_file);
     DestroyAndRecreateExternalSSTFilesDir();
-  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction
-#ifdef INDIRECT_VALUE_SUPPORT
-    | kSkipDirectIO
-#endif
-    ));
+  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction));
 }
 
 TEST_F(ExternalSSTFileTest, OverlappingRanges) {
@@ -1041,11 +1025,7 @@ if(option_config_==10)
     }
     printf("keys/values verified\n");
     DestroyAndRecreateExternalSSTFilesDir();
-  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction
-#ifdef INDIRECT_VALUE_SUPPORT
-    | kSkipDirectIO
-#endif
-    ));
+  } while (ChangeOptions(kSkipPlainTable | kSkipFIFOCompaction));
 }
 
 TEST_F(ExternalSSTFileTest, PickedLevel) {

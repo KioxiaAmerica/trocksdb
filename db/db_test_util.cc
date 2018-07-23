@@ -149,11 +149,9 @@ bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
     if ((skip_mask & kSkipMmapReads) && option_config == kWalDirAndMmapReads) {
       return true;
     }
-#ifndef INDIRECT_VALUE_SUPPORT
     if ((skip_mask & kSkipDirectIO) && option_config == kDirectIO) {
       return true;
     }
-#endif
     return false;
 }
 
@@ -351,7 +349,6 @@ Options DBTestBase::GetOptions(
           NewHashCuckooRepFactory(options.write_buffer_size));
       options.allow_concurrent_memtable_write = false;
       break;
-#ifndef INDIRECT_VALUE_SUPPORT
       case kDirectIO: {
         options.use_direct_reads = true;
         options.use_direct_io_for_flush_and_compaction = true;
@@ -372,7 +369,6 @@ Options DBTestBase::GetOptions(
   #endif
         break;
       }
-#endif //INDIRECT_VALUE_SUPPORT
 #endif  // ROCKSDB_LITE
     case kMergePut:
       options.merge_operator = MergeOperators::CreatePutOperator();
