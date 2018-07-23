@@ -286,6 +286,9 @@ TEST_F(DBVLogTest, IndirectTest) {
   options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
   options.vlogfile_max_size = std::vector<uint64_t>({4LL << 20});  // 4MB
 
+  options.use_direct_reads = true;
+  options.use_direct_io_for_flush_and_compaction = true;
+
   DestroyAndReopen(options);
   int32_t value_size = 18;  // 10 KB
   int32_t key_size = 10 * 1024 - value_size;
