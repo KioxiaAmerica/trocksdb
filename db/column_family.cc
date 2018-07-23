@@ -388,13 +388,8 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
   }
 
   if (!vlogring_pass) {
-    size_t len = result.vlogring_activation_level.size();
-    result.vlogring_activation_level.clear();
-    for (size_t i = 0; i < len; ++i) {
-      if (i <= (size_t)result.num_levels){
-       result.vlogring_activation_level.emplace_back((int32_t)i);
-      }
-    }
+    //Revert to default settings.
+    result.vlogring_activation_level.emplace_back((int32_t)0);
   }
 
   for (size_t i = 0; i < result.fraction_remapped_during_compaction.size();

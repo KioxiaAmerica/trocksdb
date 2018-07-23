@@ -100,7 +100,9 @@ struct LevelStat {
 class InternalStats {
  public:
   static const std::map<LevelStatType, LevelStat> compaction_level_stats;
+#ifdef INDIRECT_VALUE_SUPPORT
   static const std::map<RingStatType, LevelStat> compaction_ring_stats;
+#endif //INDIRECT_VALUE_SUPPORT
 
   enum InternalCFStatsType {
     L0_FILE_COUNT_LIMIT_SLOWDOWNS,
