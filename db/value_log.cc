@@ -634,10 +634,13 @@ printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.si
   // The data for the records is in diskdata, but it is a mixture of compressed data for new values and references to remapped values.
   // We traverse the records, copying them to filedata, reading from disk to resolve references.  We use the valueclass vector to
   // tell which records require reading.  Many of the valueclass entries are for other key types; we skip them.
-  std::vector<NoInitChar> filebuffer(maxallosize);  // this is where we build the records to disk
+
+  // In case we are using direct I/O, we align the file buffer to a sector boundary.  It's not worth checking
+  std::vector<NoInitChar> filebuffer(((maxallosize-1)|(directioalignlength-1))+directioalignbdy);  // this is where we build the records to disk, big enough to round up to sector size and sector boundary
   size_t runningvaluex=0;   // index of next valueclass entry to examine
   size_t runningbytesx=0;   // index of next byte of bytes to be used
   size_t runningrcdx=0;  // index of next rcdend entry to be used
+  int64_t filebufferalignoffset = (directioalignbdy-1)&-(int64_t)filebuffer.data();  // offset to sector-aligned portion of filebuffer
 
   for(uint32_t i=0;i<filecumreccnts.size();++i) {   // Loop to create each file
     Status iostatus;  // where we save status from the file I/O
@@ -654,7 +657,7 @@ printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.si
     // Buffer up the data for the file.  We copy each file's data to the output area; if the data is being moved from the
     // VLog for defrag, read it from the VLog into the buffer.  By delaying till now we avoid having to keep all the recycled data in memory.
     size_t rcdendx = filecumreccnts[i];  // index of last+1 record in the current file
-    size_t filebufferx = 0;  // write pointer into the file buffer
+    size_t filebufferx = filebufferalignoffset;  // write pointer into the file buffer.  Starts at sector alignment
     for(;runningrcdx<rcdendx;++runningrcdx){
       // Move the records one by one, reading references from disk
       // Get the length that will be added to filebuffer
@@ -672,6 +675,7 @@ printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.si
         // the compression/CRC do not depend on anything outside the actual value
         VLogRingRef ref((char *)bytes.data()+runningbytesx);   // analyze the reference
 
+#if 0  // scaf
         // point to the fdring to use for reading indirect values.  Whatever value is current now will be sufficient to translate any indirect that we find
         // in this compaction; however, the ring may be resized while we are using it, so we have to look out for that.  We could set this at the beginning
         // and change only on a change of ring, but we don't take the trouble
@@ -713,6 +717,15 @@ ProbDelay();
           memset((char *)filebuffer.data()+filebufferx,0,ref.Len());  // error: zero the value
           remappingerror = 1;  // indicate error remapping the file
         }
+#else
+        std::string diskreadarea; size_t offset;  // disk buffer and returned data offset
+        if((current_vlog->rings_[ref.Ringno()]->VLogRingGet(ref,diskreadarea,offset)).ok()){
+          memcpy((char *)filebuffer.data()+filebufferx,diskreadarea.data()+offset,valuelen);
+        }else{
+          memset((char *)filebuffer.data()+filebufferx,0,valuelen);
+          remappingerror = 1;  // indicate error remapping the file
+        }
+#endif
 
         // Housekeep for next iteration
         runningbytesx += VLogRingRef::sstrefsize;  // indicate that we have moved the reference out of 'bytes'
@@ -733,7 +746,11 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
 #endif
 
       if(iostatus.ok()) {
-        iostatus = writable_file->Append(Slice((char *)filebuffer.data(),filebufferx));  // write out the data
+        // For paranoid security purposes, clear the end of the sector.  It might contain passwords or something that a user with mere
+        // file access shouldn't see.  This is required only for direct I/O
+        int64_t padlen = (directioalignlength-1)&-(int64_t)(filebufferx-filebufferalignoffset);
+        memset((char *)filebuffer.data()+filebufferx,0,padlen);
+        iostatus = writable_file->Append(Slice((char *)filebuffer.data()+filebufferalignoffset,filebufferx+padlen-filebufferalignoffset));  // write out the data
         if(!iostatus.ok()) {
           ROCKS_LOG_ERROR(immdbopts_->info_log,
             "Error writing to VLog file %s, Status code/subcode=%d/%d",pathnames.back().c_str(),iostatus.code(),iostatus.subcode());
@@ -744,7 +761,7 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
     ROCKS_LOG_INFO(
         current_vlog->immdbopts_->info_log, "[%s] wrote file# %" PRIu64 ", %" PRIu64 " bytes",
         current_vlog->cfd_->GetName().c_str(), 
-        VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber(), filebufferx);
+        VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber(), filebufferx-filebufferalignoffset);
 
       // Sync the written data.  We must make sure it is synced before the SSTs referring to it are committed to the manifest.
       // We might as well sync it right now
@@ -789,7 +806,7 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
 
     // if there was an I/O error, return the error, localized to the file by a negative offset in the return area.
     // (the offset can never be zero)
-    VLogRingRefFileOffset reportedlen = filebufferx;
+    VLogRingRefFileOffset reportedlen = filebufferx-filebufferalignoffset;
     if(!iostatus.ok()) {
       resultstatus.push_back(iostatus);  // save the error details
       reportedlen = -reportedlen;  // flag the offending file
@@ -855,10 +872,10 @@ ProbDelay();
 // Returns the bytes.  ?? Should this return to user area to avoid copying?
 Status VLogRing::VLogRingGet(
   VLogRingRef& request,  // the values to read
-  std::string& response   // return value - the data pointed to by the reference
+  std::string& response,   // return value - the data pointed to by the reference
+  size_t& offset   // return value - offset in response of the start of the data
 )
 {
-  response.resize(request.Len());  // allocate area for return
   Slice resultslice;  // place to get back pointer to data, which may be different from scratch (if cached)
   // Read the reference.  Make sure we have the most recent copy of the ring information, and the most recent
   // copy of the file pointer.
@@ -965,14 +982,33 @@ ProbDelay();
       response.clear();   // error, return empty string
     } 
   } else {  // no error on file pointer, resolve the reference
-    iostatus = selectedfile->Read(request.Offset(), request.Len(), &resultslice, (char *)response.data());  // Read the reference
+    VLogRingRefFileLen readlen;  // the length of the read request
+    VLogRingRefFileLen readfileoffset;  // the offset of the read from beginning-of-file
+    size_t alignoffset;  // the offset in response of the actual read buffer
+    // Make the user's buffer long enough to hold the string, and set the offset to the data within the allocated block
+    if(envopts_.use_direct_reads){
+     readfileoffset=request.Offset()&-directioalignbdy;   // the offset within the file of the sector containing the requested data
+     readlen=((request.Offset()-readfileoffset+request.Len()-1)|(directioalignlength-1))+1;  // starting offset in sector; add len of read; back up to last byte; round up to last byte of sector; add 1 to get true length
+     response.resize(readlen+directioalignbdy-1);  // make the buffer big enough to ensure there is an aligned section within it
+     alignoffset=(directioalignbdy-1)&-(int64_t)response.data();   // calculate number of bytes to skip to get to aligned part
+     offset=alignoffset+request.Offset()-readfileoffset;  // position of payload is alignment distance plus offset from start of sector
+    }else{
+     // not direct I/O.  Read only the amount needed, from its given offset
+     readfileoffset=request.Offset();  // start at the data location
+     readlen = request.Len();  // just the amount needed
+     response.resize(readlen);  // make the buffer big enough to hold the read
+     alignoffset=0;  // read into the beginning of the response buffer
+     offset=0; // tell the caller the result is at the beginning of the read buffer
+    }
+    iostatus = selectedfile->Read(readfileoffset, readlen, &resultslice, (char *)response.data()+alignoffset);  // Read the reference
     if(!iostatus.ok()) {
       ROCKS_LOG_ERROR(immdbopts_->info_log,
         "Error reading reference from file number %zd in ring %d",request.Fileno(),ringno_);
       response.clear();   // error, return empty string
     } else {
       // normal path.  if the data was read into the user's buffer, leave it there; otherwise copy it in
-      if(response.data()!=resultslice.data())response.assign(resultslice.data(),resultslice.size());
+      // this copy should never be needed for direct I/O, so we don't bother discarding the padding for that case
+      if(response.data()+alignoffset!=resultslice.data())response.replace(alignoffset,readlen,resultslice.data());
     }
   }
   return iostatus;
@@ -1373,21 +1409,23 @@ Status VLog::VLogGet(
   // (nonexistent) 0-length file, and we'd better not try to read it
   if(!ref.Len()){ result.clear(); return s; }   // length 0; return empty string, no error
 
-  // Vector to the appropriate ring to do the read
-  std::string ringresult;  // place where ring value will be read
-  if(!(s = rings_[ref.Ringno()]->VLogRingGet(ref,ringresult)).ok())return s;  // read the data; if error reading, return the error.  Was logged in the ring
-
-  // check the CRC
-  // CRC the type/data and compare the CRC to the value in the record
-  if(ringresult.size()<(1+4)){
+  if(ref.Len()<(1+4)){
       ROCKS_LOG_ERROR(immdbopts_->info_log,
         "Reference too short in file %zd in ring %d",ref.Fileno(),ref.Ringno());
     return s = Status::Corruption("indirect reference is too short.");
   }
-  uint32_t crcint = crc32c::Value(ringresult.data(),ringresult.size()-4);  // take CRC of the header byte/data
+
+  // Vector to the appropriate ring to do the read
+  std::string ringresult;  // place where ring value will be read
+  size_t dataoffset;   // offset in ringresult where the data starts (0 except for direct I/O)
+  if(!(s = rings_[ref.Ringno()]->VLogRingGet(ref,ringresult,dataoffset)).ok())return s;  // read the data; if error reading, return the error.  Was logged in the ring
+
+  // check the CRC
+  // CRC the type/data and compare the CRC to the value in the record
+  uint32_t crcint = crc32c::Value(ringresult.data()+dataoffset,ref.Len()-4);  // take CRC of the header byte/data
   // this code uses a byte-oriented format for transportability.  This code must match the IndirectIterator that writes the data file
   for(int i = 0;i<4;++i){
-    if(ringresult[ringresult.size()-4+i]!=(char)crcint) {
+    if(ringresult[dataoffset+ref.Len()-4+i]!=(char)crcint) {
       ROCKS_LOG_ERROR(immdbopts_->info_log,
         "CRC error reading from file number %zd in ring %d",ref.Fileno(),ref.Ringno());
       return s = Status::Corruption("indirect reference CRC mismatch.");
@@ -1396,16 +1434,16 @@ Status VLog::VLogGet(
   }
 
    // extract the compression type and decompress the data
-  unsigned char ctype = ringresult[0];
+  unsigned char ctype = ringresult[dataoffset];
   if(ctype==CompressionType::kNoCompression) {
     // data is uncompressed; move it to the user's area
-    result.assign(&ringresult[1],ringresult.size()-(1+4));   // data starts at offset 1, and doesn't include 1-byte header or 4-byte trailer 
+    result.assign(&ringresult[dataoffset+1],ref.Len()-(1+4));   // data starts at offset 1, and doesn't include 1-byte header or 4-byte trailer 
   } else {
     BlockContents contents;
    const UncompressionContext ucontext((CompressionType)ctype);
 // scaf this moves the data twice, which we could avoid if we rewrite the subroutine
     if(!(s = UncompressBlockContentsForCompressionType(ucontext,
-        &ringresult[1], ringresult.size()-(1+4), &contents,
+        &ringresult[dataoffset+1], ref.Len()-(1+4), &contents,
           kVLogCompressionVersionFormat,
         *(cfd_->ioptions()))).ok()){
       ROCKS_LOG_ERROR(immdbopts_->info_log,
