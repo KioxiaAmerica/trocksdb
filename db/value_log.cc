@@ -635,7 +635,8 @@ printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.si
   // We traverse the records, copying them to filedata, reading from disk to resolve references.  We use the valueclass vector to
   // tell which records require reading.  Many of the valueclass entries are for other key types; we skip them.
 
-  // In case we are using direct I/O, we align the file buffer to a sector boundary.  It's not worth checking
+  // In case we are using direct I/O, we align the file buffer to a sector boundary.  It's not worth checking; even if it were, it's inconvenient, because
+  // the routines that tell you whether direct I/O is active require a file to run against.  So we just always align, using our own estimate of the required alignment
   std::vector<NoInitChar> filebuffer(((maxallosize-1)|(directioalignlength-1))+directioalignbdy);  // this is where we build the records to disk, big enough to round up to sector size and sector boundary
   size_t runningvaluex=0;   // index of next valueclass entry to examine
   size_t runningbytesx=0;   // index of next byte of bytes to be used
@@ -646,8 +647,6 @@ printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.si
     Status iostatus;  // where we save status from the file I/O
     int remappingerror = 0;  // set if we get an error remapping a value
 // obsolete    size_t lenofthisfile = rcdend[filecumreccnts[i]-1] - startofnextfile;  // total len up through new file, minus starting position
-
-    // Pass aligned buffer when use_direct_io() returns true.   scaf ??? what do we do for direct_io?
 
     // Create filename for the file to write
 // scaf can't we get by with just one pathname?
@@ -675,49 +674,6 @@ printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.si
         // the compression/CRC do not depend on anything outside the actual value
         VLogRingRef ref((char *)bytes.data()+runningbytesx);   // analyze the reference
 
-#if 0  // scaf
-        // point to the fdring to use for reading indirect values.  Whatever value is current now will be sufficient to translate any indirect that we find
-        // in this compaction; however, the ring may be resized while we are using it, so we have to look out for that.  We could set this at the beginning
-        // and change only on a change of ring, but we don't take the trouble
-#if DELAYPROB
-ProbDelay();
-#endif 
-        std::vector<VLogRingFile> *fdring = current_vlog->rings_[ref.Ringno()]->fd_ring + current_vlog->rings_[ref.Ringno()]->atomics.currentarrayx.load(std::memory_order_acquire);
-#if DELAYPROB
-ProbDelay();
-#endif 
-        // Get the pointer to the file
-        RandomAccessFile *fileptr = (*fdring)[current_vlog->rings_[ref.Ringno()]->Ringx(*fdring,ref.Fileno())].filepointer.get();
-#if DELAYPROB
-ProbDelay();
-#endif 
-        if(fileptr==nullptr){
-          // Retry the above with the new ring.  It's ugly to repeat the code, but this is the price we pay for allowing references to the possibly-changing
-          // ring from outside a lock
-#if DELAYPROB
-ProbDelay();
-#endif 
-          current_vlog->rings_[ref.Ringno()]->AcquireLock();
-            fdring = current_vlog->rings_[ref.Ringno()]->fd_ring + current_vlog->rings_[ref.Ringno()]->atomics.currentarrayx.load(std::memory_order_acquire);
-            fileptr = (*fdring)[current_vlog->rings_[ref.Ringno()]->Ringx(*fdring,ref.Fileno())].filepointer.get();
-          current_vlog->rings_[ref.Ringno()]->ReleaseLock();
-        }
-
-        // We have found the file, now read the data into filebuffer
-
-        Slice val;  // where we find out what was read
-        if(fileptr!=nullptr && fileptr->Read(ref.Offset(), ref.Len(), &val, (char *)filebuffer.data()+filebufferx).ok()){  // read the data
-          // Here the data was read with no error.  It was probably read straight into the buffer, but in case not, move it there
-          if((char *)filebuffer.data()+filebufferx!=val.data())memcpy((char *)filebuffer.data()+filebufferx,val.data(),val.size());
-        } else {
-          if(fileptr==nullptr)ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
-            "During compaction: reference to file %zd in ring %d, but that file is not open",ref.Fileno(),ref.Ringno());
-          else ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
-            "During compaction: error reading indirect reference to file %zd in ring %d",ref.Fileno(),ref.Ringno());  // LOG_ERROR requires constant string
-          memset((char *)filebuffer.data()+filebufferx,0,ref.Len());  // error: zero the value
-          remappingerror = 1;  // indicate error remapping the file
-        }
-#else
         std::string diskreadarea; size_t offset;  // disk buffer and returned data offset
         if((current_vlog->rings_[ref.Ringno()]->VLogRingGet(ref,diskreadarea,offset)).ok()){
           memcpy((char *)filebuffer.data()+filebufferx,diskreadarea.data()+offset,valuelen);
@@ -725,7 +681,6 @@ ProbDelay();
           memset((char *)filebuffer.data()+filebufferx,0,valuelen);
           remappingerror = 1;  // indicate error remapping the file
         }
-#endif
 
         // Housekeep for next iteration
         runningbytesx += VLogRingRef::sstrefsize;  // indicate that we have moved the reference out of 'bytes'
@@ -913,8 +868,7 @@ Status VLogRing::VLogRingGet(
 
   // loop until we have resolved the pointer:
   int retrystate = 0;   // number of times we have retried
-  //Warning: Unused Variable.
-  //int retrycount = 0;  // scaf debug
+
   while(1) {
     // acquire the head pointer
     VLogRingRefFileno headfile = atomics.fd_ring_head_fileno.load(std::memory_order_acquire);
@@ -979,8 +933,8 @@ ProbDelay();
       ROCKS_LOG_ERROR(immdbopts_->info_log,
         "Reference to file number %zd in ring %d, but file was not opened",request.Fileno(),ringno_);
       iostatus = Status::Corruption("Indirect reference to unopened file");
-      response.clear();   // error, return empty string
     } 
+    response.clear();   // error, return empty string
   } else {  // no error on file pointer, resolve the reference
     VLogRingRefFileLen readlen;  // the length of the read request
     VLogRingRefFileLen readfileoffset;  // the offset of the read from beginning-of-file
@@ -1008,7 +962,7 @@ ProbDelay();
     } else {
       // normal path.  if the data was read into the user's buffer, leave it there; otherwise copy it in
       // this copy should never be needed for direct I/O, so we don't bother discarding the padding for that case
-      if(response.data()+alignoffset!=resultslice.data())response.replace(alignoffset,readlen,resultslice.data());
+      if(response.data()+alignoffset!=resultslice.data())response.replace(alignoffset,readlen,resultslice.data(),readlen);
     }
   }
   return iostatus;
@@ -1392,7 +1346,7 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
 // Returns the bytes.  ?? Should this return to user area to avoid copying?
 Status VLog::VLogGet(
   const Slice& reference,  // the reference
-  std::string& result   // where the result is built    scaf should make this a reference
+  std::string& result   // where the result is built
 )
 {
   Status s = VLogRingRef::VLogRefAuditOpaque(reference);  // return status, initialized to ok
