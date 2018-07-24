@@ -317,7 +317,7 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   //Activation level should be in increasing order.  Values >= 0 indicate the level; values less than 0 are relative to the END of the ring AT THE TIME THE VLOG IS CREATED, i. e.
   //  a value of -1 means 'the last level'
   // This is 'mutable' only in the sense that it can change when the system is restarted.  After initialization we don't look at it.
-  std::vector<int32_t> vlogring_activation_level = std::vector<int32_t>({0});
+  std::vector<int32_t> vlogring_activation_level = std::vector<int32_t>({});
 
   //Minimum Indirect Value Size : only values this size or larger are written to the Value Log
   std::vector<uint64_t> min_indirect_val_size = std::vector<uint64_t>({(0)}); //1MB

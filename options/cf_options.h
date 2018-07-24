@@ -204,7 +204,7 @@ struct MutableCFOptions {
 // Tuning parameters are mutable
         allow_trivial_move(false),
         compaction_score_limit_L0(0),
-        vlogring_activation_level(std::vector<int32_t>({0})),
+        vlogring_activation_level(std::vector<int32_t>({})),
         min_indirect_val_size(std::vector<uint64_t>({0})),
         fraction_remapped_during_compaction(std::vector<int32_t>({0})),
         fraction_remapped_during_active_recycling(std::vector<int32_t>({0})),
