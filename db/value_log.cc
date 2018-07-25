@@ -636,12 +636,12 @@ printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.si
   // tell which records require reading.  Many of the valueclass entries are for other key types; we skip them.
 
   // In case we are using direct I/O, we align the file buffer to a sector boundary.  It's not worth checking; even if it were, it's inconvenient, because
-  // the routines that tell you whether direct I/O is active require a file to run against.  So we just always align, using our own estimate of the required alignment
-  std::vector<NoInitChar> filebuffer(((maxallosize-1)|(directioalignlength-1))+directioalignbdy);  // this is where we build the records to disk, big enough to round up to sector size and sector boundary
+  // the routines that tell you whether direct I/O is active require a file to run against.  So we just always align, using our own conservative estimate of the required alignment
+  std::vector<NoInitChar> filebuffer(((maxallosize-1)|(directioalign-1))+directioalign);  // this is where we build the records to disk, big enough to round up to sector size and sector boundary
   size_t runningvaluex=0;   // index of next valueclass entry to examine
   size_t runningbytesx=0;   // index of next byte of bytes to be used
   size_t runningrcdx=0;  // index of next rcdend entry to be used
-  int64_t filebufferalignoffset = (directioalignbdy-1)&-(int64_t)filebuffer.data();  // offset to sector-aligned portion of filebuffer
+  int64_t filebufferalignoffset = (directioalign-1)&-(int64_t)filebuffer.data();  // offset to sector-aligned portion of filebuffer
 
   for(uint32_t i=0;i<filecumreccnts.size();++i) {   // Loop to create each file
     Status iostatus;  // where we save status from the file I/O
@@ -657,6 +657,7 @@ printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.si
     // VLog for defrag, read it from the VLog into the buffer.  By delaying till now we avoid having to keep all the recycled data in memory.
     size_t rcdendx = filecumreccnts[i];  // index of last+1 record in the current file
     size_t filebufferx = filebufferalignoffset;  // write pointer into the file buffer.  Starts at sector alignment
+    int64_t padlen = 0;  // amount extra we must write for boundary alignment
     for(;runningrcdx<rcdendx;++runningrcdx){
       // Move the records one by one, reading references from disk
       // Get the length that will be added to filebuffer
@@ -701,10 +702,14 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
 #endif
 
       if(iostatus.ok()) {
-        // For paranoid security purposes, clear the end of the sector.  It might contain passwords or something that a user with mere
-        // file access shouldn't see.  This is required only for direct I/O
-        int64_t padlen = (directioalignlength-1)&-(int64_t)(filebufferx-filebufferalignoffset);
-        memset((char *)filebuffer.data()+filebufferx,0,padlen);
+        // For direct I/O only, extend the length of the write to the required alignment.  RocksDB seems to think 4K is the needed alignment; we will go with what it tells us
+        if(writable_file->use_direct_io()){
+          // See how much we must add to pad to sector length
+          padlen = (writable_file->GetRequiredBufferAlignment()-1)&-(int64_t)(filebufferx-filebufferalignoffset);
+          // For paranoid security purposes, clear the end of the sector.  It might contain passwords or something that a user with mere
+          // file access shouldn't see.  This is required only for direct I/O
+          memset((char *)filebuffer.data()+filebufferx,0,padlen);
+        }        // no extension needed if not direct I/O
         iostatus = writable_file->Append(Slice((char *)filebuffer.data()+filebufferalignoffset,filebufferx+padlen-filebufferalignoffset));  // write out the data
         if(!iostatus.ok()) {
           ROCKS_LOG_ERROR(immdbopts_->info_log,
@@ -716,7 +721,7 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
     ROCKS_LOG_INFO(
         current_vlog->immdbopts_->info_log, "[%s] wrote file# %" PRIu64 ", %" PRIu64 " bytes",
         current_vlog->cfd_->GetName().c_str(), 
-        VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber(), filebufferx-filebufferalignoffset);
+        VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber(), filebufferx+padlen-filebufferalignoffset);
 
       // Sync the written data.  We must make sure it is synced before the SSTs referring to it are committed to the manifest.
       // We might as well sync it right now
@@ -761,12 +766,13 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
 
     // if there was an I/O error, return the error, localized to the file by a negative offset in the return area.
     // (the offset can never be zero)
-    VLogRingRefFileOffset reportedlen = filebufferx-filebufferalignoffset;
+    VLogRingRefFileOffset reportedlen = filebufferx+padlen-filebufferalignoffset;
     if(!iostatus.ok()) {
       resultstatus.push_back(iostatus);  // save the error details
       reportedlen = -reportedlen;  // flag the offending file
     }
 
+    // return the actual length written.  It will give the size added to the database
     fileendoffsets.push_back(reportedlen);
   }
 
@@ -940,11 +946,12 @@ ProbDelay();
     VLogRingRefFileLen readfileoffset;  // the offset of the read from beginning-of-file
     size_t alignoffset;  // the offset in response of the actual read buffer
     // Make the user's buffer long enough to hold the string, and set the offset to the data within the allocated block
-    if(envopts_.use_direct_reads){
-     readfileoffset=request.Offset()&-directioalignbdy;   // the offset within the file of the sector containing the requested data
-     readlen=((request.Offset()-readfileoffset+request.Len()-1)|(directioalignlength-1))+1;  // starting offset in sector; add len of read; back up to last byte; round up to last byte of sector; add 1 to get true length
-     response.resize(readlen+directioalignbdy-1);  // make the buffer big enough to ensure there is an aligned section within it
-     alignoffset=(directioalignbdy-1)&-(int64_t)response.data();   // calculate number of bytes to skip to get to aligned part
+    if(selectedfile->use_direct_io()){
+     int64_t alignbdy = selectedfile->GetRequiredBufferAlignment();   // align buffers & lengths to this size
+     readfileoffset=request.Offset()&-alignbdy;   // the offset within the file of the sector containing the requested data
+     readlen=((request.Offset()-readfileoffset+request.Len()-1)|(alignbdy-1))+1;  // starting offset in sector; add len of read; back up to last byte; round up to last byte of sector; add 1 to get true length
+     response.resize(readlen+alignbdy-1);  // make the buffer big enough to ensure there is an aligned section within it
+     alignoffset=(alignbdy-1)&-(int64_t)response.data();   // calculate number of bytes to skip to get to aligned part
      offset=alignoffset+request.Offset()-readfileoffset;  // position of payload is alignment distance plus offset from start of sector
     }else{
      // not direct I/O.  Read only the amount needed, from its given offset

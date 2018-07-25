@@ -557,32 +557,16 @@ ifdef COMPILE_WITH_UBSAN
 endif
 #LOCK/CRASH test cases
 #[unit] \
-FAIL	backupable_db_test 			trocks Bug144+Bug128\
-FAIL	db_basic_test 				trocks Bug134\
-FAIL	db_bloom_filter_test 			trocks Bug137\
-FAIL	db_compaction_test 			trocks Bug152\
-SEGF	db_iterator_test 			trocks Bug139\
-FAIL	db_properties_test 			trocks Bug140\
-FAIL	db_range_del_test 			trocks Bug127\
-FIXED?	db_range_del_test 			noflags Bug98\
-FAIL	db_test 				trocks Bug136\
-FAIL	db_universal_compaction_test 		trocks Bug147\
-FAIL	external_sst_file_test			trocks Bug142\
-FAIL	vlog_files_test 			trocks Bug163\
-FAIL	write_prepared_transaction_test 	trocks Bug151\
-FAIL	write_prepared_transaction_test 	noflags Bug151\
+	backupable_db_test 			trocks Bug128\
+	db_iterator_test 			trocks Bug139\
+	vlog_files_test 			trocks Bug196\
+	write_prepared_transaction_test 	trocks Bug151\
+	write_prepared_transaction_test 	noflags Bug151\
 
 ifdef INDIRECT_VALUE_SUPPORT
 LOCKS= \
 	backupable_db_test \
-	db_basic_test \
-	db_bloom_filter_test \
-	db_compaction_test \
 	db_iterator_test \
-	db_properties_test \
-	db_test \
-	db_universal_compaction_test \
-	external_sst_file_test \
 	vlog_files_test \
 	write_prepared_transaction_test \
 
