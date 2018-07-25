@@ -405,7 +405,7 @@ TEST_F(DBCompactionTest, SkipStatsUpdateTest) {
   // Note that this number must be changed accordingly if we change
   // the number of files needed to be opened in the DB::Open process.
 #ifdef INDIRECT_VALUE_SUPPORT
-  const int kMaxFileOpenCount = 62;  // more files when there is Value Logging
+  const int kMaxFileOpenCount = 20;  // more files when there is Value Logging
 #else
   const int kMaxFileOpenCount = 10;
 #endif
