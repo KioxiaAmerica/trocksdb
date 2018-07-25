@@ -440,7 +440,7 @@ TEST_F(DBVLogTest, VlogFileSizeTest) {
   // # files should be correct, and files should be close to the same size
   printf("Stopping at %zd:",10*options.vlogfile_max_size[0]/value_size);
   for(size_t nkeys = options.vlogfile_max_size[0]/value_size; nkeys<10*options.vlogfile_max_size[0]/value_size; nkeys += (1LL<<20)/value_size){
-    printf(" %zd",nkeys);
+    printf(" %zd",nkeys); // scaf for faster test  if(nkeys>options.vlogfile_max_size[0]/value_size)break;
     DestroyAndReopen(options);
     // write the kvs
     for(int key = 0;key<(int)nkeys;++key){
@@ -508,7 +508,7 @@ TEST_F(DBVLogTest, MinIndirectValSizeTest) {
   // total # bytes in files should go down as the minimum remapping size goes up
   printf("Stopping at %d:",nkeys*value_size_incr);
   for(size_t minsize=0; minsize<nkeys*value_size_incr; minsize+=500){
-    printf(" %zd",minsize);
+    printf(" %zd",minsize); // scaf for faster test  if(minsize>0)break;
     options.min_indirect_val_size[0]=minsize;
     DestroyAndReopen(options);
     // write the kvs
