@@ -111,13 +111,8 @@ TEST_F(DBRangeDelTest, CompactionOutputFilesExactlyFilled) {
   dbfull()->TEST_CompactRange(0, nullptr, nullptr, nullptr,
                               true /* disallow_trivial_move */);
   ASSERT_EQ(0, NumTableFilesAtLevel(0));
-#ifdef INDIRECT_VALUE_SUPPORT
-  // We try to honor the file-size limit of 9K, and there are 24K of kvs.  That takes 3 files
-  const int expfiles = 3;
-#else
   // If each file is overlong by 1 kv, they fit into 2 files.
   const int expfiles = 2;
-#endif
   ASSERT_EQ(expfiles, NumTableFilesAtLevel(1));
   db_->ReleaseSnapshot(snapshot);
 }
@@ -924,11 +919,9 @@ TEST_F(DBRangeDelTest, CompactionTreatsSplitInputLevelDeletionAtomically) {
   options.memtable_factory.reset(
       new SpecialSkipListFactory(2 /* num_entries_flush */));
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.target_file_size_base = (uint64_t)(kValueBytes*1.7);  // allow 2 keys per file for both indirect and direct values
   options.allow_trivial_move = true;
-#else
-  options.target_file_size_base = kValueBytes;
 #endif
+  options.target_file_size_base = kValueBytes;
   // i == 0: CompactFiles
   // i == 1: CompactRange
   // i == 2: automatic compaction
