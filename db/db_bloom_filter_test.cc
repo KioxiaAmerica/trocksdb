@@ -926,8 +926,8 @@ TEST_F(DBBloomFilterTest, PrefixScan) {
 
 TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
 #ifdef INDIRECT_VALUE_SUPPORT
-// kv size is 1+9+1+16 = 27
-const int kvblock = (27*73);
+// kv size is 1+9+1+9 = 20
+const int kvblock = (20*73);
 #else
 // kv size is 1+9+1+3 = 14
 const int kvblock = (14*73);
