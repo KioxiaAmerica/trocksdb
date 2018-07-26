@@ -72,10 +72,10 @@ enum class LevelStatType {
   KEY_IN,
   KEY_DROP,
 #ifdef INDIRECT_VALUE_SUPPORT
-  W_VLOG_GB,
-  W_VLOGUNCOMP_GB,
-  W_VLOGREMAP_GB,
-  W_VLOGFILES,
+  W_VLOG_GB,   // bytes written to VLog files
+  W_VLOGUNCOMP_GB,  // uncompressed bytes presented for writing to VLog files
+  W_VLOGREMAP_GB,  // bytes that were copied from the tail of the VLog to the head
+  W_VLOGFILES,   // number of VLog files created
 #endif
   TOTAL  // total number of types
 };

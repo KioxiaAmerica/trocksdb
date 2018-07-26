@@ -143,6 +143,10 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBase2) {
   options.table_factory.reset(NewBlockBasedTableFactory(table_options));
 
   DestroyAndReopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
   ASSERT_OK(dbfull()->SetOptions({
       {"disable_auto_compactions", "true"},
   }));
@@ -157,7 +161,7 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBase2) {
   // Put about 28K to L0
   for (int i = 0; i < 70; i++) {
     ASSERT_OK(PutBig(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
-                  RandomString(&rnd, 380)));
+                  RandomString(&rnd, 380),values_are_indirect));
   }
   ASSERT_OK(dbfull()->SetOptions({
       {"disable_auto_compactions", "false"},
@@ -174,7 +178,7 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBase2) {
   }));
   for (int i = 0; i < 70; i++) {
     ASSERT_OK(PutBig(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
-                  RandomString(&rnd, 380)));
+                  RandomString(&rnd, 380),values_are_indirect));
   }
 
   ASSERT_OK(dbfull()->SetOptions({
@@ -202,7 +206,7 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBase2) {
   // Write about 40K more
   for (int i = 0; i < 100; i++) {
     ASSERT_OK(PutBig(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
-                  RandomString(&rnd, 380)));
+                  RandomString(&rnd, 380),values_are_indirect));
   }
   ASSERT_OK(dbfull()->SetOptions({
       {"disable_auto_compactions", "false"},
@@ -227,7 +231,7 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBase2) {
   // Each file is about 11KB, with 9KB of data.
   for (int i = 0; i < 1300; i++) {
     ASSERT_OK(PutBig(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
-                  RandomString(&rnd, 380)));
+                  RandomString(&rnd, 380),values_are_indirect));
   }
   ASSERT_OK(dbfull()->SetOptions({
       {"disable_auto_compactions", "false"},
@@ -260,7 +264,7 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBase2) {
   TEST_SYNC_POINT("DynamicLevelMaxBytesBase2:0");
   for (int i = 0; i < 2; i++) {
     ASSERT_OK(PutBig(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
-                  RandomString(&rnd, 380)));
+                  RandomString(&rnd, 380),values_are_indirect));
   }
   TEST_SYNC_POINT("DynamicLevelMaxBytesBase2:1");
 
@@ -300,6 +304,10 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesCompactRange) {
   options.table_factory.reset(NewBlockBasedTableFactory(table_options));
 
   DestroyAndReopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
 
   // Compact against empty DB
   dbfull()->CompactRange(CompactRangeOptions(), nullptr, nullptr);
@@ -314,14 +322,14 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesCompactRange) {
   // Put about 7K to L0
   for (int i = 0; i < 140; i++) {
     ASSERT_OK(PutBig(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
-                  RandomString(&rnd, 80)));
+                  RandomString(&rnd, 80),values_are_indirect));
   }
   Flush();
   dbfull()->TEST_WaitForCompact();
   if (NumTableFilesAtLevel(0) == 0) {
     // Make sure level 0 is not empty
     ASSERT_OK(PutBig(Key(static_cast<int>(rnd.Uniform(kMaxKey))),
-                  RandomString(&rnd, 80)));
+                  RandomString(&rnd, 80),values_are_indirect));
     Flush();
   }
 
@@ -377,6 +385,10 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBaseInc) {
 #endif
 
   DestroyAndReopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
 
   int non_trivial = 0;
   rocksdb::SyncPoint::GetInstance()->SetCallBack(
@@ -391,7 +403,7 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBaseInc) {
     std::string value;
     PutFixed32(&value, static_cast<uint32_t>(i));
     value.append(RandomString(&rnd, random_part_size));
-    ASSERT_OK(Put(KeyBig(i, random_part_size), ValueBig(value)));
+    ASSERT_OK(Put(KeyBig(i, random_part_size,values_are_indirect), ValueBig(value,values_are_indirect)));
   }
   Flush();
   dbfull()->TEST_WaitForCompact();
@@ -400,7 +412,7 @@ TEST_F(DBTestDynamicLevel, DynamicLevelMaxBytesBaseInc) {
   ASSERT_EQ(non_trivial, 0);
 
   for (int i = 0; i < total_keys; i++) {
-    std::string value = Get(KeyBig(i, random_part_size));
+    std::string value = Get(KeyBig(i, random_part_size,values_are_indirect));
     ASSERT_EQ(DecodeFixed32(value.c_str()),
               static_cast<uint32_t>(i));
   }

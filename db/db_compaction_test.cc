@@ -404,10 +404,9 @@ TEST_F(DBCompactionTest, SkipStatsUpdateTest) {
   // random file open.
   // Note that this number must be changed accordingly if we change
   // the number of files needed to be opened in the DB::Open process.
+  int kMaxFileOpenCount = 10;
 #ifdef INDIRECT_VALUE_SUPPORT
-  const int kMaxFileOpenCount = 62;  // more files when there is Value Logging
-#else
-  const int kMaxFileOpenCount = 10;
+  if(options.vlogring_activation_level.size())kMaxFileOpenCount = 62;  // more files when there is Value Logging
 #endif
   ASSERT_LT(env_->random_file_open_counter_.load(), kMaxFileOpenCount);
 
@@ -769,6 +768,10 @@ TEST_P(DBCompactionTestWithParam, CompactionsGenerateMultipleFiles) {
   options.write_buffer_size = 100000000;        // Large write buffer
   options.max_subcompactions = max_subcompactions_;
   CreateAndReopenWithCF({"pikachu"}, options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
   const int value_size=100000;
 
   Random rnd(301);
@@ -778,7 +781,7 @@ TEST_P(DBCompactionTestWithParam, CompactionsGenerateMultipleFiles) {
   std::vector<std::string> values;
   for (int i = 0; i < 80; i++) {
     values.push_back(RandomString(&rnd, value_size));
-    ASSERT_OK(PutBig(1, i, value_size, values[i]));
+    ASSERT_OK(PutBig(1, i, value_size, values[i],values_are_indirect));
   }
 
   // Reopening moves updates to level-0
@@ -789,7 +792,7 @@ TEST_P(DBCompactionTestWithParam, CompactionsGenerateMultipleFiles) {
   ASSERT_EQ(NumTableFilesAtLevel(0, 1), 0);
   ASSERT_GT(NumTableFilesAtLevel(1, 1), 1);
   for (int i = 0; i < 80; i++) {
-    ASSERT_EQ(Get(1, KeyBig(i,value_size)), ValueBig(values[i]));
+    ASSERT_EQ(Get(1, KeyBig(i,value_size,values_are_indirect)), ValueBig(values[i],values_are_indirect));
   }
 }
 
@@ -1509,6 +1512,10 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
 #endif
 
   DestroyAndReopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
   int32_t value_size = 10 * 1024;  // 10 KB
 
   // Add 2 non-overlapping files
@@ -1518,14 +1525,14 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
   // file 1 [0 => 100]
   for (int32_t i = 0; i < 100; i++) {
     values[i] = RandomString(&rnd, value_size);
-    ASSERT_OK(PutBig(i, value_size, values[i]));
+    ASSERT_OK(PutBig(i, value_size, values[i],values_are_indirect));
   }
   ASSERT_OK(Flush());
 
   // file 2 [100 => 300]
   for (int32_t i = 100; i < 300; i++) {
     values[i] = RandomString(&rnd, value_size);
-    ASSERT_OK(PutBig(i, value_size, values[i]));
+    ASSERT_OK(PutBig(i, value_size, values[i],values_are_indirect));
   }
   ASSERT_OK(Flush());
 
@@ -1540,7 +1547,7 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
   // file 3 [ 0 => 200]
   for (int32_t i = 0; i < 200; i++) {
     values[i] = RandomString(&rnd, value_size);
-    ASSERT_OK(PutBig(i, value_size, values[i]));
+    ASSERT_OK(PutBig(i, value_size, values[i],values_are_indirect));
   }
   ASSERT_OK(Flush());
 
@@ -1552,7 +1559,7 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
         dbfull()->TEST_WaitForFlushMemTable();
       }
       values[j] = RandomString(&rnd, value_size);
-      ASSERT_OK(PutBig(j, value_size, values[j]));
+      ASSERT_OK(PutBig(j, value_size, values[j],values_are_indirect));
     }
   }
   ASSERT_OK(Flush());
@@ -1568,8 +1575,8 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
   }
 
   size_t old_num_files = CountFiles();
-  std::string begin_string = KeyBig(1000, value_size);
-  std::string end_string = KeyBig(2000, value_size);
+  std::string begin_string = KeyBig(1000, value_size,values_are_indirect);
+  std::string end_string = KeyBig(2000, value_size,values_are_indirect);
   Slice begin(begin_string);
   Slice end(end_string);
   ASSERT_OK(DeleteFilesInRange(db_, db_->DefaultColumnFamily(), &begin, &end));
@@ -1577,11 +1584,11 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
   int32_t deleted_count = 0;
   for (int32_t i = 0; i < 4300; i++) {
     if (i < 1000 || i > 2000) {
-      ASSERT_EQ(Get(KeyBig(i, value_size)), ValueBig(values[i]));
+      ASSERT_EQ(Get(KeyBig(i, value_size,values_are_indirect)), ValueBig(values[i],values_are_indirect));
     } else {
       ReadOptions roptions;
       std::string result;
-      Status s = db_->Get(roptions, KeyBig(i, value_size), &result);
+      Status s = db_->Get(roptions, KeyBig(i, value_size,values_are_indirect), &result);
       ASSERT_TRUE(s.IsNotFound() || s.ok());
       if (s.IsNotFound()) {
         deleted_count++;
@@ -1589,8 +1596,8 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
     }
   }
   ASSERT_GT(deleted_count, 0);
-  begin_string = KeyBig(5000, value_size);
-  end_string = KeyBig(6000, value_size);
+  begin_string = KeyBig(5000, value_size,values_are_indirect);
+  end_string = KeyBig(6000, value_size,values_are_indirect);
   Slice begin1(begin_string);
   Slice end1(end_string);
   // Try deleting files in range which contain no keys
@@ -1610,7 +1617,7 @@ TEST_F(DBCompactionTest, DeleteFileRange) {
   for (int32_t i = 0; i < 4300; i++) {
     ReadOptions roptions;
     std::string result;
-    Status s = db_->Get(roptions, KeyBig(i, value_size), &result);
+    Status s = db_->Get(roptions, KeyBig(i, value_size,values_are_indirect), &result);
     ASSERT_TRUE(s.IsNotFound());
     deleted_count2++;
   }
@@ -1630,6 +1637,10 @@ TEST_F(DBCompactionTest, DeleteFilesInRanges) {
 #endif
 
   DestroyAndReopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
   int32_t value_size = 10 * 1024;  // 10 KB
 
   Random rnd(301);
@@ -1640,7 +1651,7 @@ TEST_F(DBCompactionTest, DeleteFilesInRanges) {
     for (auto j = 0; j < 100; j++) {
       auto k = i * 100 + j;
       values[k] = RandomString(&rnd, value_size);
-      ASSERT_OK(PutBig(k, value_size, values[k]));
+      ASSERT_OK(PutBig(k, value_size, values[k],values_are_indirect));
     }
     ASSERT_OK(Flush());
   }
@@ -1655,7 +1666,7 @@ TEST_F(DBCompactionTest, DeleteFilesInRanges) {
   for (auto i = 0; i < 10; i+=2) {
     for (auto j = 0; j < 100; j++) {
       auto k = i * 100 + j;
-      ASSERT_OK(PutBig(k, value_size, values[k]));
+      ASSERT_OK(PutBig(k, value_size, values[k],values_are_indirect));
 // obsolete       ASSERT_OK(Put(Key(k), values[k]));
     }
     ASSERT_OK(Flush());
@@ -1666,9 +1677,9 @@ TEST_F(DBCompactionTest, DeleteFilesInRanges) {
 
   // Delete files in range [0, 299] (inclusive)
   {
-    auto begin_str1 = KeyBig(0, value_size), end_str1 = KeyBig(100, value_size);
-    auto begin_str2 = KeyBig(100, value_size), end_str2 = KeyBig(200, value_size);
-    auto begin_str3 = KeyBig(200, value_size), end_str3 = KeyBig(299, value_size);
+    auto begin_str1 = KeyBig(0, value_size,values_are_indirect), end_str1 = KeyBig(100, value_size,values_are_indirect);
+    auto begin_str2 = KeyBig(100, value_size,values_are_indirect), end_str2 = KeyBig(200, value_size,values_are_indirect);
+    auto begin_str3 = KeyBig(200, value_size,values_are_indirect), end_str3 = KeyBig(299, value_size,values_are_indirect);
     Slice begin1(begin_str1), end1(end_str1);
     Slice begin2(begin_str2), end2(end_str2);
     Slice begin3(begin_str3), end3(end_str3);
@@ -1684,19 +1695,19 @@ TEST_F(DBCompactionTest, DeleteFilesInRanges) {
     for (auto i = 0; i < 300; i++) {
       ReadOptions ropts;
       std::string result;
-      auto s = db_->Get(ropts, KeyBig(i, value_size), &result);
+      auto s = db_->Get(ropts, KeyBig(i, value_size,values_are_indirect), &result);
       ASSERT_TRUE(s.IsNotFound());
     }
     for (auto i = 300; i < 1000; i++) {
-      ASSERT_EQ(Get(KeyBig(i, value_size)), ValueBig(values[i]));
+      ASSERT_EQ(Get(KeyBig(i, value_size,values_are_indirect)), ValueBig(values[i],values_are_indirect));
     }
   }
 
   // Delete files in range [600, 999) (exclusive)
   {
-    auto begin_str1 = KeyBig(600, value_size), end_str1 = KeyBig(800, value_size);
-    auto begin_str2 = KeyBig(700, value_size), end_str2 = KeyBig(900, value_size);
-    auto begin_str3 = KeyBig(800, value_size), end_str3 = KeyBig(999, value_size);
+    auto begin_str1 = KeyBig(600, value_size,values_are_indirect), end_str1 = KeyBig(800, value_size,values_are_indirect);
+    auto begin_str2 = KeyBig(700, value_size,values_are_indirect), end_str2 = KeyBig(900, value_size,values_are_indirect);
+    auto begin_str3 = KeyBig(800, value_size,values_are_indirect), end_str3 = KeyBig(999, value_size,values_are_indirect);
     Slice begin1(begin_str1), end1(end_str1);
     Slice begin2(begin_str2), end2(end_str2);
     Slice begin3(begin_str3), end3(end_str3);
@@ -1712,14 +1723,14 @@ TEST_F(DBCompactionTest, DeleteFilesInRanges) {
     for (auto i = 600; i < 900; i++) {
       ReadOptions ropts;
       std::string result;
-      auto s = db_->Get(ropts, KeyBig(i, value_size), &result);
+      auto s = db_->Get(ropts, KeyBig(i, value_size,values_are_indirect), &result);
       ASSERT_TRUE(s.IsNotFound());
     }
     for (auto i = 300; i < 600; i++) {
-      ASSERT_EQ(Get(KeyBig(i, value_size)), ValueBig(values[i]));
+      ASSERT_EQ(Get(KeyBig(i, value_size,values_are_indirect)), ValueBig(values[i],values_are_indirect));
     }
     for (auto i = 900; i < 1000; i++) {
-      ASSERT_EQ(Get(KeyBig(i, value_size)), ValueBig(values[i]));
+      ASSERT_EQ(Get(KeyBig(i, value_size,values_are_indirect)), ValueBig(values[i],values_are_indirect));
     }
   }
 
@@ -1732,7 +1743,7 @@ TEST_F(DBCompactionTest, DeleteFilesInRanges) {
     for (auto i = 0; i < 1000; i++) {
       ReadOptions ropts;
       std::string result;
-      auto s = db_->Get(ropts, KeyBig(i, value_size), &result);
+      auto s = db_->Get(ropts, KeyBig(i, value_size,values_are_indirect), &result);
       ASSERT_TRUE(s.IsNotFound());
     }
   }
@@ -1810,6 +1821,10 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveToLastLevelWithFiles) {
   options.allow_trivial_move = true;
 #endif
   DestroyAndReopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
 
   int32_t value_size = 10 * 1024;  // 10 KB
 
@@ -1818,7 +1833,7 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveToLastLevelWithFiles) {
   // File with keys [ 0 => 99 ]
   for (int i = 0; i < 100; i++) {
     values.push_back(RandomString(&rnd, value_size));
-    ASSERT_OK(PutBig(i, value_size, values[i]));
+    ASSERT_OK(PutBig(i, value_size, values[i],values_are_indirect));
   }
   ASSERT_OK(Flush());
 
@@ -1836,7 +1851,7 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveToLastLevelWithFiles) {
   // File with keys [ 100 => 199 ]
   for (int i = 100; i < 200; i++) {
     values.push_back(RandomString(&rnd, value_size));
-    ASSERT_OK(PutBig(i, value_size, values[i]));
+    ASSERT_OK(PutBig(i, value_size, values[i],values_are_indirect));
   }
   ASSERT_OK(Flush());
 
@@ -1850,7 +1865,7 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveToLastLevelWithFiles) {
   ASSERT_EQ(non_trivial_move, 0);
 
   for (int i = 0; i < 200; i++) {
-    ASSERT_EQ(Get(KeyBig(i, value_size)), ValueBig(values[i]));
+    ASSERT_EQ(Get(KeyBig(i, value_size,values_are_indirect)), ValueBig(values[i],values_are_indirect));
   }
 
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
@@ -1871,10 +1886,11 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionThirdPath) {
   options.max_bytes_for_level_base = 400 * 1024;
   options.max_subcompactions = max_subcompactions_;
   //  options = CurrentOptions(options);
+  int largevaluesize = 990;  // RandomFileBig produces value length of either 1 or this
+  bool values_are_indirect = false;
 #ifdef INDIRECT_VALUE_SUPPORT
-  const int largevaluesize = 16;  // RandomFileBig produces value length of either 1 or this
+    if(options.vlogring_activation_level.size()!=0){largevaluesize = 16; values_are_indirect=true;}  // If VLogging, set so
 #else
-  const int largevaluesize = 990;  // RandomFileBig produces value length of either 1 or this
 #endif
 
   std::vector<std::string> filenames;
@@ -1892,77 +1908,77 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionThirdPath) {
   // First three 110KB files are not going to second path.
   // After that, (100K, 200K)
   for (int num = 0; num < 3; num++) {
-    GenerateNewFileBig(&rnd, &key_idx);
+    GenerateNewFileBig(&rnd, &key_idx,values_are_indirect);
   }
 
   // Another 110KB triggers a compaction to 400K file to fill up first path
-  GenerateNewFileBig(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx,values_are_indirect);
   ASSERT_EQ(3, GetSstFileCount(options.db_paths[1].path));
 
   // (1, 4)
-  GenerateNewFileBig(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx,values_are_indirect);
   ASSERT_EQ("1,4", FilesPerLevel(0));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 4, 1)
-  GenerateNewFileBig(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx,values_are_indirect);
   ASSERT_EQ("1,4,1", FilesPerLevel(0));
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 4, 2)
-  GenerateNewFileBig(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx,values_are_indirect);
   ASSERT_EQ("1,4,2", FilesPerLevel(0));
   ASSERT_EQ(2, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 4, 3)
-  GenerateNewFileBig(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx,values_are_indirect);
   ASSERT_EQ("1,4,3", FilesPerLevel(0));
   ASSERT_EQ(3, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 4, 4)
-  GenerateNewFileBig(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx,values_are_indirect);
   ASSERT_EQ("1,4,4", FilesPerLevel(0));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 4, 5)
-  GenerateNewFileBig(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx,values_are_indirect);
   ASSERT_EQ("1,4,5", FilesPerLevel(0));
   ASSERT_EQ(5, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 4, 6)
-  GenerateNewFileBig(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx,values_are_indirect);
   ASSERT_EQ("1,4,6", FilesPerLevel(0));
   ASSERT_EQ(6, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 4, 7)
-  GenerateNewFileBig(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx,values_are_indirect);
   ASSERT_EQ("1,4,7", FilesPerLevel(0));
   ASSERT_EQ(7, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   // (1, 4, 8)
-  GenerateNewFileBig(&rnd, &key_idx);
+  GenerateNewFileBig(&rnd, &key_idx,values_are_indirect);
   ASSERT_EQ("1,4,8", FilesPerLevel(0));
   ASSERT_EQ(8, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(4, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(1, GetSstFileCount(dbname_));
 
   for (int i = 0; i < key_idx; i++) {
-    auto v = Get(KeyBigNewFile(i,i%100));
+    auto v = Get(KeyBigNewFile(i,i%100,values_are_indirect));
     ASSERT_NE(v, "NOT_FOUND");
     ASSERT_TRUE(v.size() == 1 || v.size() == largevaluesize);
   }
@@ -1970,7 +1986,7 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionThirdPath) {
   Reopen(options);
 
   for (int i = 0; i < key_idx; i++) {
-    auto v = Get(KeyBigNewFile(i,i%100));
+    auto v = Get(KeyBigNewFile(i,i%100,values_are_indirect));
     ASSERT_NE(v, "NOT_FOUND");
     ASSERT_TRUE(v.size() == 1 || v.size() == largevaluesize);
   }
@@ -2110,10 +2126,10 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionCFPathUse) {
   options.num_levels = 4;
   options.max_bytes_for_level_base = 400 * 1024;
   options.max_subcompactions = max_subcompactions_;
+  int allowedvlen3 = 1;  // length used for values
+  bool values_are_indirect = false;  // set if we are VLogging
 #ifdef INDIRECT_VALUE_SUPPORT
-  const int allowedvlen3 = 16;  // length of a reference, used as length for values
-#else
-  const int allowedvlen3 = 1;
+    if(options.vlogring_activation_level.size()!=0){allowedvlen3 = 16; values_are_indirect = true;} // length of a reference, used as length for values
 #endif
 
   std::vector<Options> option_vector;
@@ -2141,9 +2157,9 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionCFPathUse) {
   int key_idx2 = 0;
 
   auto generate_file = [&]() {
-    GenerateNewFileBig(0, &rnd, &key_idx);
-    GenerateNewFileBig(1, &rnd, &key_idx1);
-    GenerateNewFileBig(2, &rnd, &key_idx2);
+    GenerateNewFileBig(0, &rnd, &key_idx, values_are_indirect);
+    GenerateNewFileBig(1, &rnd, &key_idx1, values_are_indirect);
+    GenerateNewFileBig(2, &rnd, &key_idx2, values_are_indirect);
   };
 
   auto check_sstfilecount = [&](int path_id, int expected) {
@@ -2160,19 +2176,19 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionCFPathUse) {
 
   auto check_getvalues = [&]() {
     for (int i = 0; i < key_idx; i++) {
-      auto v = Get(0, KeyBigNewFile(i,i%KNumKeysByGenerateNewFile));
+      auto v = Get(0, KeyBigNewFile(i,i%KNumKeysByGenerateNewFile,values_are_indirect));
       ASSERT_NE(v, "NOT_FOUND");
       ASSERT_TRUE(v.size() == 1 || v.size() == 990 || v.size() == allowedvlen3);
     }
 
     for (int i = 0; i < key_idx1; i++) {
-      auto v = Get(1, KeyBigNewFile(i,i%KNumKeysByGenerateNewFile));
+      auto v = Get(1, KeyBigNewFile(i,i%KNumKeysByGenerateNewFile,values_are_indirect));
       ASSERT_NE(v, "NOT_FOUND");
       ASSERT_TRUE(v.size() == 1 || v.size() == 990 || v.size() == allowedvlen3);
     }
 
     for (int i = 0; i < key_idx2; i++) {
-      auto v = Get(2, KeyBigNewFile(i,i%KNumKeysByGenerateNewFile));
+      auto v = Get(2, KeyBigNewFile(i,i%KNumKeysByGenerateNewFile,values_are_indirect));
       ASSERT_NE(v, "NOT_FOUND");
       ASSERT_TRUE(v.size() == 1 || v.size() == 990 || v.size() == allowedvlen3);
     }
@@ -2658,6 +2674,10 @@ TEST_P(DBCompactionTestWithParam, PartialCompactionFailure) {
   options.env = env_;
 
   DestroyAndReopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
 
   const int kNumInsertedKeys =
       options.level0_file_num_compaction_trigger *
@@ -2670,7 +2690,7 @@ TEST_P(DBCompactionTestWithParam, PartialCompactionFailure) {
   for (int k = 0; k < kNumInsertedKeys; ++k) {
     keys.emplace_back(RandomString(&rnd, kKeySize));
     values.emplace_back(RandomString(&rnd, kKvSize - kKeySize));
-    ASSERT_OK(Put(Slice(KeyBig(keys[k],kKvSize - kKeySize)), Slice(ValueBig(values[k]))));
+    ASSERT_OK(Put(Slice(KeyBig(keys[k],kKvSize - kKeySize,values_are_indirect)), Slice(ValueBig(values[k],values_are_indirect))));
     dbfull()->TEST_WaitForFlushMemTable();
   }
 
@@ -2698,7 +2718,7 @@ TEST_P(DBCompactionTestWithParam, PartialCompactionFailure) {
 
   // All key-values must exist after compaction fails.
   for (int k = 0; k < kNumInsertedKeys; ++k) {
-    ASSERT_EQ(ValueBig(values[k]), Get(KeyBig(keys[k],kKvSize - kKeySize)));
+    ASSERT_EQ(ValueBig(values[k],values_are_indirect), Get(KeyBig(keys[k],kKvSize - kKeySize,values_are_indirect)));
   }
 
   env_->non_writable_count_ = 0;
@@ -2708,7 +2728,7 @@ TEST_P(DBCompactionTestWithParam, PartialCompactionFailure) {
 
   // Verify again after reopen.
   for (int k = 0; k < kNumInsertedKeys; ++k) {
-    ASSERT_EQ(ValueBig(values[k]), Get(KeyBig(keys[k],kKvSize - kKeySize)));
+    ASSERT_EQ(ValueBig(values[k],values_are_indirect), Get(KeyBig(keys[k],kKvSize - kKeySize,values_are_indirect)));
   }
 }
 
@@ -2740,7 +2760,7 @@ TEST_P(DBCompactionTestWithParam, DeleteMovedFileAfterCompaction) {
     for (int i = 0; i < 2; ++i) {
       // Create 1MB sst file
       for (int j = 0; j < 100; ++j) {
-        ASSERT_OK(PutBig(i * 50 + j, value_size, RandomString(&rnd, value_size)));
+        ASSERT_OK(PutBig(i * 50 + j, value_size, RandomString(&rnd, value_size),values_are_indirect));
       }
       ASSERT_OK(Flush());
     }
@@ -2775,7 +2795,7 @@ TEST_P(DBCompactionTestWithParam, DeleteMovedFileAfterCompaction) {
     for (int i = 0; i < 2; ++i) {
       // Create 1MB sst file
       for (int j = 0; j < 100; ++j) {
-        ASSERT_OK(PutBig(i * 50 + j + 100, value_size, RandomString(&rnd, value_size)));
+        ASSERT_OK(PutBig(i * 50 + j + 100, value_size, RandomString(&rnd, value_size),values_are_indirect));
       }
       ASSERT_OK(Flush());
     }
@@ -3085,6 +3105,10 @@ TEST_P(DBCompactionTestWithParam, IntraL0Compaction) {
   options.allow_trivial_move = true;
 #endif
   DestroyAndReopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
 
   const size_t kValueSize = 1 << 20;
   Random rnd(301);
@@ -3109,9 +3133,9 @@ TEST_P(DBCompactionTestWithParam, IntraL0Compaction) {
   for (int i = 0; i < 10; ++i) {
     ASSERT_OK(Put(Key(0), ""));  // prevents trivial move
     if (i == 5) {
-      ASSERT_OK(Put(KeyBig(i + 1,2*kValueSize), ValueBig(value + value)));
+      ASSERT_OK(Put(KeyBig(i + 1,2*kValueSize,values_are_indirect), ValueBig(value + value,values_are_indirect)));
     } else {
-      ASSERT_OK(Put(KeyBig(i + 1,kValueSize), ValueBig(value)));
+      ASSERT_OK(Put(KeyBig(i + 1,kValueSize,values_are_indirect), ValueBig(value,values_are_indirect)));
     }
     ASSERT_OK(Flush());
   }
@@ -3142,6 +3166,10 @@ TEST_P(DBCompactionTestWithParam, IntraL0CompactionDoesNotObsoleteDeletions) {
   options.allow_trivial_move = true;
 #endif
   DestroyAndReopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
 
   const size_t kValueSize = 1 << 20;
   Random rnd(301);
@@ -3172,7 +3200,7 @@ TEST_P(DBCompactionTestWithParam, IntraL0CompactionDoesNotObsoleteDeletions) {
     } else {
       ASSERT_OK(Delete(Key(0)));
     }
-    ASSERT_OK(Put(KeyBig(i + 1,kValueSize), ValueBig(value)));
+    ASSERT_OK(Put(KeyBig(i + 1,kValueSize,values_are_indirect), ValueBig(value,values_are_indirect)));
     ASSERT_OK(Flush());
   }
   dbfull()->TEST_WaitForCompact();
@@ -3364,13 +3392,17 @@ TEST_F(DBCompactionTest, CompactBottomLevelFilesWithDeletions) {
   options.allow_trivial_move = true;
 #endif
   Reopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
 
   Random rnd(301);
   const Snapshot* snapshot = nullptr;
   for (int i = 0; i < kNumLevelFiles; ++i) {
     for (int j = 0; j < kNumKeysPerFile; ++j) {
       ASSERT_OK(
-          PutBig(i * kNumKeysPerFile + j, kValueSize, RandomString(&rnd, kValueSize)));
+          PutBig(i * kNumKeysPerFile + j, kValueSize, RandomString(&rnd, kValueSize),values_are_indirect));
     }
     if (i == kNumLevelFiles - 1) {
       snapshot = db_->GetSnapshot();
@@ -3378,7 +3410,7 @@ TEST_F(DBCompactionTest, CompactBottomLevelFilesWithDeletions) {
       // and the keys they cover can't be dropped until after the snapshot is
       // released.
       for (int j = 0; j < kNumLevelFiles * kNumKeysPerFile; j += 2) {
-        ASSERT_OK(Delete(KeyBig(j,kValueSize)));
+        ASSERT_OK(Delete(KeyBig(j,kValueSize,values_are_indirect)));
       }
     }
     Flush();
@@ -3911,6 +3943,10 @@ TEST_P(CompactionPriTest, Test) {
   options.compression = kNoCompression;
 
   DestroyAndReopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
 
   Random rnd(301);
   const int kNKeys = 5000;
@@ -3921,12 +3957,12 @@ TEST_P(CompactionPriTest, Test) {
   std::random_shuffle(std::begin(keys), std::end(keys));
 
   for (int i = 0; i < kNKeys; i++) {
-    ASSERT_OK(Put(KeyBig(keys[i],102), ValueBig(RandomString(&rnd, 102))));
+    ASSERT_OK(Put(KeyBig(keys[i],102,values_are_indirect), ValueBig(RandomString(&rnd, 102),values_are_indirect)));
   }
 
   dbfull()->TEST_WaitForCompact();
   for (int i = 0; i < kNKeys; i++) {
-    ASSERT_NE("NOT_FOUND", Get(KeyBig(i,102)));
+    ASSERT_NE("NOT_FOUND", Get(KeyBig(i,102,values_are_indirect)));
   }
 }
 INSTANTIATE_TEST_CASE_P(

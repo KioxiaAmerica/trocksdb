@@ -380,11 +380,12 @@ void PersistentCacheDBTest::RunTest(
 
     std::vector<std::string> values;
     // insert data
-    Insert(options, table_options, num_iter, &values);
+    bool values_are_indirect;  // Insert will set if we are using indirect values
+    Insert(options, table_options, num_iter, &values, values_are_indirect);
     // flush all data in cache to device
     pcache->TEST_Flush();
     // verify data
-    Verify(num_iter, values);
+    Verify(num_iter, values, values_are_indirect);
 
     auto block_miss = TestGetTickerCount(options, BLOCK_CACHE_MISS);
     auto compressed_block_hit =

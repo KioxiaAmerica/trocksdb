@@ -657,6 +657,7 @@ void VLogRingFindLaggingSsts(
 // Alas, we do not have access to the mutable_db_options here, where the max number of background jobs is kept.  So we will take a guess, and apply a factor of safety,
 // and pass the incoming number of files written through a first-order low-pass filter to set the deadzone
 // scaf  this needs to be replaced by a positive interlock with version creation?  It has effect only when the database is small
+// NOTE: this is called outside the mutex, so there is a chance that an update request could be lost.  That's OK.
 void UpdateDeadband(size_t nfileswritten, int64_t arsizetrigger) {
   if(arsizetrigger!=armagictestingvalue){
     deletion_deadband = nfileswritten + (size_t)std::round(deletion_deadband * (1.0 - 1.0/(15*10)));  // estimate 15 compactions, 10x margin of safety, for filter gain of 150

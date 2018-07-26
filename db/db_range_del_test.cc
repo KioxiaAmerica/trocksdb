@@ -85,6 +85,10 @@ TEST_F(DBRangeDelTest, CompactionOutputFilesExactlyFilled) {
   table_options.block_size_deviation = 50;  // each block holds two keys
   options.table_factory.reset(NewBlockBasedTableFactory(table_options));
   Reopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
 
   // snapshot protects range tombstone from dropping due to becoming obsolete.
   const Snapshot* snapshot = db_->GetSnapshot();
@@ -96,7 +100,7 @@ TEST_F(DBRangeDelTest, CompactionOutputFilesExactlyFilled) {
     // Write 12K (4 values, each 3K)
     for (int j = 0; j < kNumPerFile; j++) {
       values.push_back(RandomString(&rnd, 3 << 10));
-      ASSERT_OK(PutBig(Key(i * kNumPerFile + j), values[j]));
+      ASSERT_OK(PutBig(Key(i * kNumPerFile + j), values[j],values_are_indirect));
       if (j == 0 && i > 0) {
         dbfull()->TEST_WaitForFlushMemTable();
       }
@@ -111,12 +115,11 @@ TEST_F(DBRangeDelTest, CompactionOutputFilesExactlyFilled) {
   dbfull()->TEST_CompactRange(0, nullptr, nullptr, nullptr,
                               true /* disallow_trivial_move */);
   ASSERT_EQ(0, NumTableFilesAtLevel(0));
+  // If each file is overlong by 1 kv, they fit into 2 files.
+  int expfiles = 2;
 #ifdef INDIRECT_VALUE_SUPPORT
   // We try to honor the file-size limit of 9K, and there are 24K of kvs.  That takes 3 files
-  const int expfiles = 3;
-#else
-  // If each file is overlong by 1 kv, they fit into 2 files.
-  const int expfiles = 2;
+  if(values_are_indirect)expfiles = 3;
 #endif
   ASSERT_EQ(expfiles, NumTableFilesAtLevel(1));
   db_->ReleaseSnapshot(snapshot);
@@ -350,6 +353,10 @@ TEST_F(DBRangeDelTest, ValidLevelSubcompactionBoundaries) {
   options.allow_trivial_move = true;
 #endif
   Reopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
 
   Random rnd(301);
   for (int i = 0; i < 2; ++i) {
@@ -364,7 +371,7 @@ TEST_F(DBRangeDelTest, ValidLevelSubcompactionBoundaries) {
       // Write 100KB (100 values, each 1K)
       for (int k = 0; k < kNumPerFile; k++) {
         values.push_back(RandomString(&rnd, 990));
-        ASSERT_OK(PutBig(Key(j * kNumPerFile + k), values[k]));
+        ASSERT_OK(PutBig(Key(j * kNumPerFile + k), values[k],values_are_indirect));
       }
       // put extra key to trigger flush
       ASSERT_OK(Put("", ""));
@@ -412,6 +419,10 @@ TEST_F(DBRangeDelTest, ValidUniversalSubcompactionBoundaries) {
   options.allow_trivial_move = true;
 #endif
   Reopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
 
   Random rnd(301);
   for (int i = 0; i < kNumLevels - 1; ++i) {
@@ -427,7 +438,7 @@ TEST_F(DBRangeDelTest, ValidUniversalSubcompactionBoundaries) {
       // Write 100KB (100 values, each 1K)
       for (int k = 0; k < kNumPerFile; k++) {
         values.push_back(RandomString(&rnd, 990));
-        ASSERT_OK(PutBig(Key(j * kNumPerFile + k), values[k]));
+        ASSERT_OK(PutBig(Key(j * kNumPerFile + k), values[k],values_are_indirect));
       }
       // put extra key to trigger flush
       ASSERT_OK(Put("", ""));
@@ -923,11 +934,14 @@ TEST_F(DBRangeDelTest, CompactionTreatsSplitInputLevelDeletionAtomically) {
   options.level0_file_num_compaction_trigger = kNumFilesPerLevel;
   options.memtable_factory.reset(
       new SpecialSkipListFactory(2 /* num_entries_flush */));
-#ifdef INDIRECT_VALUE_SUPPORT
-  options.target_file_size_base = (uint64_t)(kValueBytes*1.7);  // allow 2 keys per file for both indirect and direct values
-  options.allow_trivial_move = true;
-#else
   options.target_file_size_base = kValueBytes;
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+  if(values_are_indirect){
+    options.target_file_size_base = (uint64_t)(kValueBytes*1.7);  // allow 2 keys per file for both indirect and direct values
+    options.allow_trivial_move = true;
+  }
 #endif
   // i == 0: CompactFiles
   // i == 1: CompactRange
@@ -949,8 +963,8 @@ TEST_F(DBRangeDelTest, CompactionTreatsSplitInputLevelDeletionAtomically) {
     std::string value = RandomString(&rnd, kValueBytes);
     for (int j = 0; j < kNumFilesPerLevel; ++j) {
       // give files overlapping key-ranges to prevent trivial move
-      ASSERT_OK(PutBig(Key(j), value));
-      ASSERT_OK(PutBig(Key(2 * kNumFilesPerLevel - 1 - j), value));
+      ASSERT_OK(PutBig(Key(j), value,values_are_indirect));
+      ASSERT_OK(PutBig(Key(2 * kNumFilesPerLevel - 1 - j), value,values_are_indirect));
       if (j > 0) {
         dbfull()->TEST_WaitForFlushMemTable();
         ASSERT_EQ(j, NumTableFilesAtLevel(0));

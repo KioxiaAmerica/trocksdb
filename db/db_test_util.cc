@@ -650,41 +650,41 @@ Status DBTestBase::Flush(int cf) {
 
 // perform a Put, giving a predictable size to the key/value even if the value is indirect,
 // by transferring length from the value to the key if the value is longer than a reference
-Status DBTestBase::PutBig(const Slice& k, const Slice& v, WriteOptions wo) {
-#ifdef INDIRECT_VALUE_SUPPORT
-  if(v.size()<=16)return Put(k,v,wo);  // return if no excess length to move
-  // transfer the length of the data to the key, and make the data 16 bytes long
-  std::string newkey(k.data(),k.size());
-  for(size_t i = 16;i<v.size();++i)newkey.push_back(v[i]);  // move data from value to key
-  std::string newval(v.data(),16);  // cut the value off at the length of a reference
-  return Put(Slice(newkey),Slice(newval),wo);
-#else
-  return Put(k,v,wo);
-#endif
+Status DBTestBase::PutBig(const Slice& k, const Slice& v, bool vlogging, WriteOptions wo) {
+  if(vlogging){
+    if(v.size()<=16)return Put(k,v,wo);  // return if no excess length to move
+    // transfer the length of the data to the key, and make the data 16 bytes long
+    std::string newkey(k.data(),k.size());
+    for(size_t i = 16;i<v.size();++i)newkey.push_back(v[i]);  // move data from value to key
+    std::string newval(v.data(),16);  // cut the value off at the length of a reference
+    return Put(Slice(newkey),Slice(newval),wo);
+  }else{
+    return Put(k,v,wo);
+  }
 }
-Status DBTestBase::PutBig(int k, size_t valuelen, const Slice& v) {  // use valuelen as the implied value length, overriding the actual length.  Key is numeric
-  std::string bigkeypos = KeyBig(k,valuelen);  // get key string
+Status DBTestBase::PutBig(int k, size_t valuelen, const Slice& v, bool vlogging) {  // use valuelen as the implied value length, overriding the actual length.  Key is numeric
+  std::string bigkeypos = KeyBig(k,valuelen,vlogging);  // get key string
   Slice val{v};  // get the data
-  return Put(bigkeypos,ValueBig(v.ToString()));   // Write it out
+  return Put(bigkeypos,ValueBig(v.ToString(),vlogging));   // Write it out
 }
 
-Status DBTestBase::PutBig(int cf, const Slice& k, const Slice& v) {
-#ifdef INDIRECT_VALUE_SUPPORT
-  if(v.size()<=16)Put(cf,k,v);  // return if no excess length to move
-  // transfer the length of the data to the key, and make the data 16 bytes long
-  std::string newkey(k.data(),k.size());
-  for(size_t i = 16;i<v.size();++i)newkey.push_back(v[i]);  // move data from value to key
-  std::string newval(v.data(),16);  // cut the value off at the length of a reference
-  return Put(cf,Slice(newkey),Slice(newval));
-#else
-  return Put(cf,k,v);
-#endif
+Status DBTestBase::PutBig(int cf, const Slice& k, const Slice& v, bool vlogging) {
+  if(vlogging){
+    if(v.size()<=16)Put(cf,k,v);  // return if no excess length to move
+    // transfer the length of the data to the key, and make the data 16 bytes long
+    std::string newkey(k.data(),k.size());
+    for(size_t i = 16;i<v.size();++i)newkey.push_back(v[i]);  // move data from value to key
+    std::string newval(v.data(),16);  // cut the value off at the length of a reference
+    return Put(cf,Slice(newkey),Slice(newval));
+  }else{
+    return Put(cf,k,v);
+  }
 }
 
-Status DBTestBase::PutBig(int cf, int k, size_t valuelen, const Slice& v){ // use valuelen as the implied value length, overriding the actual length.  Key is numeric
-  std::string bigkeypos = KeyBig(k,valuelen);  // get key string
+Status DBTestBase::PutBig(int cf, int k, size_t valuelen, const Slice& v, bool vlogging){ // use valuelen as the implied value length, overriding the actual length.  Key is numeric
+  std::string bigkeypos = KeyBig(k,valuelen,vlogging);  // get key string
   Slice val{v};  // get the data
-  return Put(cf, bigkeypos,ValueBig(v.ToString()));   // Write it out
+  return Put(cf, bigkeypos,ValueBig(v.ToString(),vlogging));   // Write it out
 }
 
 Status DBTestBase::Put(const Slice& k, const Slice& v, WriteOptions wo) {
@@ -1144,33 +1144,33 @@ void DBTestBase::GenerateNewFile(Random* rnd, int* key_idx, bool nowait) {
 }
 // this version guarantees a predictable size for the kv even if the value was replaced with an indirect reference
 // key-size is chosen so that 100 keys fits in under 100000B, like the normal version
-void DBTestBase::GenerateNewFileBig(int cf, Random* rnd, int* key_idx, bool nowait) {
-#ifdef INDIRECT_VALUE_SUPPORT
-  for (int i = 0; i < KNumKeysByGenerateNewFile; i++) {
-    ASSERT_OK(Put(cf, KeyBigNewFile(*key_idx, i), ValueBig(RandomString(rnd, (i == 99) ? 1 : 990))));
-    (*key_idx)++;
+void DBTestBase::GenerateNewFileBig(int cf, Random* rnd, int* key_idx, bool vlogging, bool nowait) {
+  if(vlogging){
+    for (int i = 0; i < KNumKeysByGenerateNewFile; i++) {
+      ASSERT_OK(Put(cf, KeyBigNewFile(*key_idx, i,vlogging), ValueBig(RandomString(rnd, (i == 99) ? 1 : 990),vlogging)));
+      (*key_idx)++;
+    }
+    if (!nowait) {
+      dbfull()->TEST_WaitForFlushMemTable();
+      dbfull()->TEST_WaitForCompact();
+    }
+  }else{
+    GenerateNewFile(cf,rnd,key_idx,nowait);
   }
-  if (!nowait) {
-    dbfull()->TEST_WaitForFlushMemTable();
-    dbfull()->TEST_WaitForCompact();
-  }
-#else
-  GenerateNewFile(cf,rnd,key_idx,nowait);
-#endif
 }
-void DBTestBase::GenerateNewFileBig(Random* rnd, int* key_idx, bool nowait) {
-#ifdef INDIRECT_VALUE_SUPPORT
-  for (int i = 0; i < KNumKeysByGenerateNewFile; i++) {
-    ASSERT_OK(Put(KeyBigNewFile(*key_idx, i), ValueBig(RandomString(rnd, (i == 99) ? 1 : 990))));
-    (*key_idx)++;
+void DBTestBase::GenerateNewFileBig(Random* rnd, int* key_idx, bool vlogging, bool nowait) {
+  if(vlogging){
+    for (int i = 0; i < KNumKeysByGenerateNewFile; i++) {
+      ASSERT_OK(Put(KeyBigNewFile(*key_idx, i,vlogging), ValueBig(RandomString(rnd, (i == 99) ? 1 : 990),vlogging)));
+      (*key_idx)++;
+    }
+    if (!nowait) {
+      dbfull()->TEST_WaitForFlushMemTable();
+      dbfull()->TEST_WaitForCompact();
+    }
+  }else{
+    GenerateNewFile(rnd,key_idx,nowait);
   }
-  if (!nowait) {
-    dbfull()->TEST_WaitForFlushMemTable();
-    dbfull()->TEST_WaitForCompact();
-  }
-#else
-  GenerateNewFile(rnd,key_idx,nowait);
-#endif
 }
 
 const int DBTestBase::kNumKeysByGenerateNewRandomFile = 51;
@@ -1186,11 +1186,11 @@ void DBTestBase::GenerateNewRandomFile(Random* rnd, bool nowait) {
   }
 }
 // this version guarantees a predictable size for the kv even if the value was replaced with an indirect reference
-void DBTestBase::GenerateNewRandomFileBig(Random* rnd, bool nowait) {
+void DBTestBase::GenerateNewRandomFileBig(Random* rnd, bool vlogging, bool nowait) {
   for (int i = 0; i < kNumKeysByGenerateNewRandomFile; i++) {
-    ASSERT_OK(PutBig("key" + RandomString(rnd, 7), RandomString(rnd, 2000)));
+    ASSERT_OK(PutBig("key" + RandomString(rnd, 7), RandomString(rnd, 2000),vlogging));
   }
-  ASSERT_OK(PutBig("key" + RandomString(rnd, 7), RandomString(rnd, 200)));
+  ASSERT_OK(PutBig("key" + RandomString(rnd, 7), RandomString(rnd, 200),vlogging));
   if (!nowait) {
     dbfull()->TEST_WaitForFlushMemTable();
     dbfull()->TEST_WaitForCompact();

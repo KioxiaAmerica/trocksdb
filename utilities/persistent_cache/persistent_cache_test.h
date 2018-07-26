@@ -234,7 +234,9 @@ class PersistentCacheDBTest : public DBTestBase {
   // insert data to table
   void Insert(const Options& options,
               const BlockBasedTableOptions& /*table_options*/,
-              const int num_iter, std::vector<std::string>* values) {
+              const int num_iter, std::vector<std::string>* values,
+              bool& values_are_indirect
+      ) {
     CreateAndReopenWithCF({"pikachu"}, options);
     // default column family doesn't have block cache
     Options no_block_cache_opts;
@@ -247,6 +249,10 @@ class PersistentCacheDBTest : public DBTestBase {
     ReopenWithColumnFamilies(
         {"default", "pikachu"},
         std::vector<Options>({no_block_cache_opts, options}));
+    values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+    values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
 
     Random rnd(301);
 
@@ -258,7 +264,7 @@ class PersistentCacheDBTest : public DBTestBase {
         str = RandomString(&rnd, 1000);
       }
       values->push_back(str);
-      ASSERT_OK(Put(1, KeyBig(i,1000), ValueBig((*values)[i])));
+      ASSERT_OK(Put(1, KeyBig(i,1000,values_are_indirect), ValueBig((*values)[i],values_are_indirect)));
     }
 
     // flush all data from memtable so that reads are from block cache
@@ -266,10 +272,10 @@ class PersistentCacheDBTest : public DBTestBase {
   }
 
   // verify data
-  void Verify(const int num_iter, const std::vector<std::string>& values) {
+  void Verify(const int num_iter, const std::vector<std::string>& values,bool values_are_indirect) {
     for (int j = 0; j < 2; ++j) {
       for (int i = 0; i < num_iter; i++) {
-        ASSERT_EQ(Get(1, KeyBig(i,1000)), ValueBig(values[i]));
+        ASSERT_EQ(Get(1, KeyBig(i,1000,values_are_indirect)), ValueBig(values[i],values_are_indirect));
       }
     }
   }

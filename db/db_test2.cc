@@ -1219,11 +1219,15 @@ TEST_F(DBTest2, CompressionOptions) {
     }
 
     DestroyAndReopen(options);
+    bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+    values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
     // Write 10 random files
     for (int i = 0; i < 10; i++) {
       for (int j = 0; j < 5; j++) {
         ASSERT_OK(
-            PutBig(RandomString(&rnd, kKeySize), RandomString(&rnd, kValSize)));
+            PutBig(RandomString(&rnd, kKeySize), RandomString(&rnd, kValSize),values_are_indirect));
       }
       ASSERT_OK(Flush());
       dbfull()->TEST_WaitForCompact();
@@ -1529,11 +1533,15 @@ TEST_F(DBTest2, MaxCompactionBytesTest) {
 #endif
 
   Reopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
 
   Random rnd(301);
 
   for (int num = 0; num < 8; num++) {
-    GenerateNewRandomFileBig(&rnd);
+    GenerateNewRandomFileBig(&rnd,values_are_indirect);
   }
   CompactRangeOptions cro;
   cro.bottommost_level_compaction = BottommostLevelCompaction::kForce;
@@ -1553,8 +1561,12 @@ TEST_F(DBTest2, MaxCompactionBytesTest) {
   options.max_compaction_bytes = options.target_file_size_base * 3;
 #endif
   Reopen(options);
+  values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
 
-  GenerateNewRandomFileBig(&rnd);
+  GenerateNewRandomFileBig(&rnd,values_are_indirect);
   // Add three more small files that overlap with the previous file
   for (int i = 0; i < 3; i++) {
     Put("key5", "z");

@@ -131,6 +131,10 @@ TEST_F(DBOptionsTest, SetBytesPerSync) {
   options.allow_trivial_move=true;
 #endif
   Reopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
   int counter = 0;
   int low_bytes_per_sync = 0;
   int i = 0;
@@ -144,7 +148,7 @@ TEST_F(DBOptionsTest, SetBytesPerSync) {
   WriteOptions write_opts;
   // should sync approximately 40MB/1MB ~= 40 times.
   for (i = 0; i < 40; i++) {
-    PutBig(i, kValue, write_opts);
+    PutBig(i, kValue,values_are_indirect, write_opts);
   }
   rocksdb::SyncPoint::GetInstance()->EnableProcessing();
   ASSERT_OK(dbfull()->CompactRange(CompactRangeOptions(), nullptr, nullptr));
@@ -160,7 +164,7 @@ TEST_F(DBOptionsTest, SetBytesPerSync) {
   // should sync approximately 40MB*2/8MB ~= 10 times.
   // data will be 40*2MB because of previous Puts too.
   for (i = 0; i < 40; i++) {
-    PutBig(i, kValue, write_opts);
+    PutBig(i, kValue,values_are_indirect, write_opts);
   }
   rocksdb::SyncPoint::GetInstance()->EnableProcessing();
   ASSERT_OK(dbfull()->CompactRange(CompactRangeOptions(), nullptr, nullptr));

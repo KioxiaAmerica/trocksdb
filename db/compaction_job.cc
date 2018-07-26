@@ -922,7 +922,7 @@ if(sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecy
   printf("Starting kv capture for Active Recycling (%zd SSTs, VLogFiles up to %zd)\n",sub_compact->compaction->num_input_levels(),sub_compact->compaction->lastfileno());  // scaf
 #endif
   std::unique_ptr<IndirectIterator> value_iter(new IndirectIterator(
-    c_iter,cfd,sub_compact->compaction,end,cfd->vlog()!=nullptr,
+    c_iter,cfd,sub_compact->compaction,end,cfd->vlog()!=nullptr && cfd->vlog()->rings().size()!=0,
     // For Active Recycling we pass a pointer to the RecyclingIterator, so the IndirectIterator can query it directly about end-of-file
     sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling ? (RecyclingIterator*)input.get() : nullptr
     ));  // keep iterator around till end of function
@@ -1576,7 +1576,7 @@ Status CompactionJob::InstallCompactionResults(
 #ifdef INDIRECT_VALUE_SUPPORT
       // For Active Recycling there is no concept of 'output level', because each file is put back into the level it started at.
       // We take advantage of the fact that subcompactions are disabled for AR, and thus that the output files in the sole subcompaction
-      // match one-for-one with the files in the input.  Since we have already installed the correct level into the FileMetaData, just use that level here
+      // match one-for-one with the files in the input.  For other types, since we have already installed the correct level into the FileMetaData, just use that level here
       int outlevel = sub_compact.outputs[i].meta.level;
 #else
       int outlevel = compaction->output_level();

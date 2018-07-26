@@ -1069,13 +1069,13 @@ TEST_F(DBVLogTest, VLogRefsTest) {
           if(kfx==(num_files-1) && slot==(kpf-1))keylen-=1000;  // shorten the last key so the SSTs end where we expect
 
           // Write the key
-          std::string keystring = KeyBig(permkey,keylen);
+          std::string keystring = KeyBig(permkey,keylen,true);
           Slice keyslice = keystring;  // the key we will add
           std::string valstring = RandomString(&rnd, value_size);
           Slice valslice = valstring;
           ASSERT_OK(Put(keyslice, valslice));
           // Read it back
-          ASSERT_EQ(valslice, Get(KeyBig(permkey,keylen)));
+          ASSERT_EQ(valslice, Get(KeyBig(permkey,keylen,true)));
           // Flush into L0
           ASSERT_OK(Flush());
           // Compact into L1, which will write the VLog files.  At this point there is nothing to remap

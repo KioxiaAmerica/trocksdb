@@ -259,7 +259,7 @@ bool Compaction::IsTrivialMove() const {
   // If we are building a VLog for this CF, we must avoid trivial moves.  Compaction is the place where values get written to the VLog,
   // and if we allow trivial moves we will end up with a full database with no VLogs.  We might have to revisit this for the case of
   // bulk-loading the database
-  if(cfd_!=nullptr&&cfd_->vlog().get()!=nullptr && !mutable_cf_options_.allow_trivial_move)return false;  // If VLogging, disallow trivial moves except for running tests.  cfd_ can be null if running tests that don't open a CF
+  if(cfd_!=nullptr&&cfd_->vlog().get()!=nullptr && cfd_->vlog()->rings().size()!=0 && !mutable_cf_options_.allow_trivial_move)return false;  // If VLogging, disallow trivial moves except for running tests.  cfd_ can be null if running tests that don't open a CF
   // Don't allow a trivial move if we are doing Active Recycling, since the essence of the compaction is to pass over the inputs
   if(compaction_reason_ == CompactionReason::kActiveRecycling)return false;
 #endif
