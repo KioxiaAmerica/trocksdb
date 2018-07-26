@@ -978,24 +978,6 @@ rocksdb_options_set_compaction_picker_age_importance(
 extern ROCKSDB_LIBRARY_API void
 rocksdb_options_set_ring_compression_style(
     rocksdb_options_t*, int32_t* values, size_t num_levels);
-extern ROCKSDB_LIBRARY_API void
-rocksdb_options_set_(
-    rocksdb_options_t*, int32_t* values, size_t num_levels);
-extern ROCKSDB_LIBRARY_API void
-rocksdb_options_set_(
-    rocksdb_options_t*, int32_t* values, size_t num_levels);
-extern ROCKSDB_LIBRARY_API void
-rocksdb_options_set_(
-    rocksdb_options_t*, int32_t* values, size_t num_levels);
-extern ROCKSDB_LIBRARY_API void
-rocksdb_options_set_(
-    rocksdb_options_t*, int32_t* values, size_t num_levels);
-extern ROCKSDB_LIBRARY_API void
-rocksdb_options_set_(
-    rocksdb_options_t*, int32_t* values, size_t num_levels);
-extern ROCKSDB_LIBRARY_API void
-rocksdb_options_set_(
-    rocksdb_options_t*, int32_t* values, size_t num_levels);
 #endif //INDIRECT_VALUE_SUPPORT
 
 extern ROCKSDB_LIBRARY_API void rocksdb_options_set_memtable_huge_page_size(

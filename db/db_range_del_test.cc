@@ -120,7 +120,6 @@ TEST_F(DBRangeDelTest, CompactionOutputFilesExactlyFilled) {
 #ifdef INDIRECT_VALUE_SUPPORT
   // We try to honor the file-size limit of 9K, and there are 24K of kvs.  That takes 3 files
   if(values_are_indirect)expfiles = 3;
-#endif
   ASSERT_EQ(expfiles, NumTableFilesAtLevel(1));
   db_->ReleaseSnapshot(snapshot);
 }
@@ -942,7 +941,6 @@ TEST_F(DBRangeDelTest, CompactionTreatsSplitInputLevelDeletionAtomically) {
     options.target_file_size_base = (uint64_t)(kValueBytes*1.7);  // allow 2 keys per file for both indirect and direct values
     options.allow_trivial_move = true;
   }
-#endif
   // i == 0: CompactFiles
   // i == 1: CompactRange
   // i == 2: automatic compaction

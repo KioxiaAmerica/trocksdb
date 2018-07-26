@@ -390,6 +390,9 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
   if (!vlogring_pass) {
     //Revert to default settings.
     result.vlogring_activation_level.clear();
+    result.vlogring_activation_level.emplace_back((int32_t)0);
+    ROCKS_LOG_WARN(db_options.info_log.get(),
+                 "INVALID CONFIGURATION: vlogring_activation_level set to default settings");
   }
 
   for (size_t i = 0; i < result.fraction_remapped_during_compaction.size();
@@ -510,54 +513,31 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
 
 // If vlogring_activation_level is larger than any other trocks options
 // extend those options to be the same length as vlogring_activation_level
-  if (result.vlogring_activation_level.size() > result.min_indirect_val_size.size()) {
-    while (result.vlogring_activation_level.size() > result.min_indirect_val_size.size())
+  for (size_t i = 0; i < result.vlogring_activation_level.size(); ++i){
+    if (i >= result.min_indirect_val_size.size())
       result.min_indirect_val_size.emplace_back(0);
-  }
-  if (result.vlogring_activation_level.size() > result.fraction_remapped_during_compaction.size()) {
-    while (result.vlogring_activation_level.size() > result.fraction_remapped_during_compaction.size())
+    if (i >= result.fraction_remapped_during_compaction.size())
       result.fraction_remapped_during_compaction.emplace_back(50);
-  }
-  if (result.vlogring_activation_level.size() > result.fraction_remapped_during_active_recycling.size()) {
-    while (result.vlogring_activation_level.size() > result.fraction_remapped_during_active_recycling.size())
+    if (i >= result.fraction_remapped_during_active_recycling.size())
       result.fraction_remapped_during_active_recycling.emplace_back(25);
-  }
-  if (result.vlogring_activation_level.size() > result.fragmentation_active_recycling_trigger.size()) {
-    while (result.vlogring_activation_level.size() > result.fragmentation_active_recycling_trigger.size())
+    if (i >= result.fragmentation_active_recycling_trigger.size())
       result.fragmentation_active_recycling_trigger.emplace_back(25);
-  }
-  if (result.vlogring_activation_level.size() > result.fragmentation_active_recycling_klaxon.size()) {
-    while (result.vlogring_activation_level.size() > result.fragmentation_active_recycling_klaxon.size())
+    if (i >= result.fragmentation_active_recycling_klaxon.size())
       result.fragmentation_active_recycling_klaxon.emplace_back(50);
-  }
-  if (result.vlogring_activation_level.size() > result.active_recycling_sst_minct.size()) {
-    while (result.vlogring_activation_level.size() > result.active_recycling_sst_minct.size())
+    if (i >= result.active_recycling_sst_minct.size())
       result.active_recycling_sst_minct.emplace_back(5);
-  }
-  if (result.vlogring_activation_level.size() > result.active_recycling_sst_maxct.size()) {
-    while (result.vlogring_activation_level.size() > result.active_recycling_sst_maxct.size())
+    if (i >= result.active_recycling_sst_maxct.size())
       result.active_recycling_sst_maxct.emplace_back(15);
-  }
-  if (result.vlogring_activation_level.size() > result.active_recycling_vlogfile_freed_min.size()) {
-    while (result.vlogring_activation_level.size() > result.active_recycling_vlogfile_freed_min.size())
+    if (i >= result.active_recycling_vlogfile_freed_min.size())
       result.active_recycling_vlogfile_freed_min.emplace_back(7);
-  }
-  if (result.vlogring_activation_level.size() > result.active_recycling_size_trigger.size()) {
-    while (result.vlogring_activation_level.size() > result.active_recycling_size_trigger.size())
+    if (i >= result.active_recycling_size_trigger.size())
       result.active_recycling_size_trigger.emplace_back(1LL<<30);
-  }
-  if (result.vlogring_activation_level.size() > result.vlogfile_max_size.size()) {
-    while (result.vlogring_activation_level.size() > result.vlogfile_max_size.size())
+    if (i >= result.vlogfile_max_size.size())
       result.vlogfile_max_size.emplace_back(40 * (1LL << 20));
-  }
-  if (result.vlogring_activation_level.size() > result.compaction_picker_age_importance.size()) {
-    while (result.vlogring_activation_level.size() > result.compaction_picker_age_importance.size())
+    if (i >= result.compaction_picker_age_importance.size())
       result.compaction_picker_age_importance.emplace_back(100);
-  }
-  if (result.vlogring_activation_level.size() > result.ring_compression_style.size()) {
-    while (result.vlogring_activation_level.size() > result.ring_compression_style.size()) {
+    if (i >= result.ring_compression_style.size())
       result.ring_compression_style.emplace_back(kZlibCompression);
-    }
   }
 #endif //INDIRECT_VALUE_SUPPORT
 
