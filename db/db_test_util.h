@@ -757,7 +757,7 @@ class DBTestBase : public testing::Test {
 
   // like Key, but give a big Key suitable for keeping constant kv size regardless of indirects
   // The kv is Invariant under Indirection: it makes the keys long and the values 16 bytes, so that an indirect reference has the same length as a direct value
-  std::string KeyBig(int i, size_t valuelen, bool vlogging) {
+  std::string KeyInvInd(int i, size_t valuelen, bool vlogging) {
     std::string retstg;
     char buf[100];
     snprintf(buf, sizeof(buf), "key%06d", i);
@@ -774,10 +774,10 @@ class DBTestBase : public testing::Test {
   }
   // This version used for generatng new files.  The tests are exquisitely tuned to the file sizes, so we just copy what was done
   // key_idx is the key#, i is the index of that key within the file it is in.  For sequentially-generated files, i==key_idx%KNumKeysByGenerateNewFile
-  std::string KeyBigNewFile(int key_idx, int i, bool vlogging) { return KeyBig(key_idx, (i==99) ? 1 : 999, vlogging) ; }
+  std::string KeyInvIndNewFile(int key_idx, int i, bool vlogging) { return KeyInvInd(key_idx, (i==99) ? 1 : 999, vlogging) ; }
   
   // like Key, but give a big Key suitable for keeping constant kv size regardless of indirects
-  std::string KeyBig(const std::string& k, size_t valuelen, bool vlogging) {
+  std::string KeyInvInd(const std::string& k, size_t valuelen, bool vlogging) {
     std::string retstg;
     retstg.assign(k);
     if(vlogging){
@@ -859,14 +859,14 @@ class DBTestBase : public testing::Test {
   Status Flush(int cf = 0);
 
  // The InvInd version is Invariant under Indirection: it makes the keys long and the values 16 bytes, so that an indirect reference has the same length as a direct value
-  Status PutBig(const Slice& k, const Slice& v, bool vlogging, WriteOptions wo = WriteOptions());  // write kv of constant total size regardless of indirect values
-  Status PutBig(int k, size_t valuelen, const Slice& v, bool vlogging); // use valuelen as the implied value length, overriding the actual length.  Key is numeric
-  Status PutBig(int k, const Slice& v, bool vlogging, WriteOptions wo = WriteOptions()) {return PutBig(Key(k), v, vlogging, wo);}
-  Status PutBig(int cf, const Slice& k, const Slice& v, bool vlogging);  // write kv of constant total size regardless of indirect values to column family
-  Status PutBig(int cf, int k, size_t valuelen, const Slice& v, bool vlogging); // use valuelen as the implied value length, overriding the actual length.  Key is numeric
+  Status PutInvInd(const Slice& k, const Slice& v, bool vlogging, WriteOptions wo = WriteOptions());  // write kv of constant total size regardless of indirect values
+  Status PutInvInd(int k, size_t valuelen, const Slice& v, bool vlogging); // use valuelen as the implied value length, overriding the actual length.  Key is numeric
+  Status PutInvInd(int k, const Slice& v, bool vlogging, WriteOptions wo = WriteOptions()) {return PutInvInd(Key(k), v, vlogging, wo);}
+  Status PutInvInd(int cf, const Slice& k, const Slice& v, bool vlogging);  // write kv of constant total size regardless of indirect values to column family
+  Status PutInvInd(int cf, int k, size_t valuelen, const Slice& v, bool vlogging); // use valuelen as the implied value length, overriding the actual length.  Key is numeric
  
 // return the value that would have been written to make constant kv size.  This is all of v for direct;  1st 16 bytes of v for indirect
-  std::string ValueBig(std::string s, bool vlogging){if(vlogging)return (s).substr(0,16); return s; }
+  std::string ValueInvInd(std::string s, bool vlogging){if(vlogging)return (s).substr(0,16); return s; }
 
   Status Put(const Slice& k, const Slice& v, WriteOptions wo = WriteOptions());
 
@@ -964,16 +964,16 @@ class DBTestBase : public testing::Test {
   // this will generate non-overlapping files since it keeps increasing key_idx
  // The InvInd version is Invariant under Indirection: it makes the keys long and the values 16 bytes, so that an indirect reference has the same length as a direct value
   void GenerateNewFile(Random* rnd, int* key_idx, bool nowait = false);
-  void GenerateNewFileBig(Random* rnd, int* key_idx, bool vlogging, bool nowait = false);
+  void GenerateNewFileInvInd(Random* rnd, int* key_idx, bool vlogging, bool nowait = false);
 
   void GenerateNewFile(int fd, Random* rnd, int* key_idx, bool nowait = false);
-  void GenerateNewFileBig(int fd, Random* rnd, int* key_idx, bool vlogging, bool nowait = false);
+  void GenerateNewFileInvInd(int fd, Random* rnd, int* key_idx, bool vlogging, bool nowait = false);
 
   static const int kNumKeysByGenerateNewRandomFile;
   static const int KNumKeysByGenerateNewFile = 100;
 
   void GenerateNewRandomFile(Random* rnd, bool nowait = false);
-  void GenerateNewRandomFileBig(Random* rnd, bool vlogging, bool nowait = false);
+  void GenerateNewRandomFileInvInd(Random* rnd, bool vlogging, bool nowait = false);
 
   std::string IterStatus(Iterator* iter);
 

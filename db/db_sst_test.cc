@@ -145,7 +145,7 @@ TEST_F(DBSSTTest, DontDeleteMovedFile) {
   for (int i = 0; i < 2; ++i) {
     // Create 1MB sst file
     for (int j = 0; j < 100; ++j) {
-      ASSERT_OK(PutBig(Key(i * 50 + j), RandomString(&rnd, 10 * 1024),values_are_indirect));
+      ASSERT_OK(PutInvInd(Key(i * 50 + j), RandomString(&rnd, 10 * 1024),values_are_indirect));
     }
     ASSERT_OK(Flush());
   }
@@ -197,7 +197,7 @@ TEST_F(DBSSTTest, DeleteObsoleteFilesPendingOutputs) {
   for (int i = 0; i < 2; ++i) {
     // Create 1MB sst file
     for (int j = 0; j < 100; ++j) {
-      ASSERT_OK(PutBig(Key(i * 50 + j), RandomString(&rnd, 10 * 1024),values_are_indirect));
+      ASSERT_OK(PutInvInd(Key(i * 50 + j), RandomString(&rnd, 10 * 1024),values_are_indirect));
     }
     ASSERT_OK(Flush());
   }
@@ -228,7 +228,7 @@ TEST_F(DBSSTTest, DeleteObsoleteFilesPendingOutputs) {
   // write_buffer_size. The flush will be blocked with block_first_time
   // pending_file is protecting all the files created after
   for (int j = 0; j < 256; ++j) {
-    ASSERT_OK(PutBig(Key(j), RandomString(&rnd, 10 * 1024),values_are_indirect));
+    ASSERT_OK(PutInvInd(Key(j), RandomString(&rnd, 10 * 1024),values_are_indirect));
   }
   blocking_thread.WaitUntilSleeping();
 

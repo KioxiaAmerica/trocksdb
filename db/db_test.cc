@@ -274,7 +274,7 @@ TEST_F(DBTest, LevelLimitReopen) {
   const std::string value(1024 * 1024, ' ');
   int i = 0;
   while (NumTableFilesAtLevel(2, 1) == 0) {
-    ASSERT_OK(Put(1, KeyBig(i++,value.size(),values_are_indirect), ValueBig(value,values_are_indirect)));
+    ASSERT_OK(Put(1, KeyInvInd(i++,value.size(),values_are_indirect), ValueInvInd(value,values_are_indirect)));
   }
 
   options.num_levels = 1;
@@ -1250,11 +1250,11 @@ TEST_F(DBTest, ApproximateSizes) {
     static const int S2 = 105000;  // Allow some expansion from metadata
     Random rnd(301);
     for (int i = 0; i < N; i++) {
-      ASSERT_OK(Put(1, KeyBig(i,S1,values_are_indirect), ValueBig(RandomString(&rnd, S1))));
+      ASSERT_OK(Put(1, KeyInvInd(i,S1,values_are_indirect), ValueInvInd(RandomString(&rnd, S1))));
     }
 
     // 0 because GetApproximateSizes() does not account for memtable space
-    ASSERT_TRUE(Between(Size("", KeyBig(50,S1,values_are_indirect), 1), 0, 0));
+    ASSERT_TRUE(Between(Size("", KeyInvInd(50,S1,values_are_indirect), 1), 0, 0));
 
     // Check sizes across recovery by reopening a few times
     for (int run = 0; run < 3; run++) {
@@ -1262,17 +1262,17 @@ TEST_F(DBTest, ApproximateSizes) {
 
       for (int compact_start = 0; compact_start < N; compact_start += 10) {
         for (int i = 0; i < N; i += 10) {
-          ASSERT_TRUE(Between(Size("", KeyBig(i,S1,values_are_indirect), 1), S1 * i, S2 * i));
-          ASSERT_TRUE(Between(Size("", KeyBig(i,S1,values_are_indirect) + ".suffix", 1), S1 * (i + 1),
+          ASSERT_TRUE(Between(Size("", KeyInvInd(i,S1,values_are_indirect), 1), S1 * i, S2 * i));
+          ASSERT_TRUE(Between(Size("", KeyInvInd(i,S1,values_are_indirect) + ".suffix", 1), S1 * (i + 1),
                               S2 * (i + 1)));
-          ASSERT_TRUE(Between(Size(KeyBig(i,S1,values_are_indirect), KeyBig(i + 10,S1,values_are_indirect), 1), S1 * 10, S2 * 10));
+          ASSERT_TRUE(Between(Size(KeyInvInd(i,S1,values_are_indirect), KeyInvInd(i + 10,S1,values_are_indirect), 1), S1 * 10, S2 * 10));
         }
-        ASSERT_TRUE(Between(Size("", KeyBig(50,S1,values_are_indirect), 1), S1 * 50, S2 * 50));
+        ASSERT_TRUE(Between(Size("", KeyInvInd(50,S1,values_are_indirect), 1), S1 * 50, S2 * 50));
         ASSERT_TRUE(
-            Between(Size("", KeyBig(50,S1,values_are_indirect) + ".suffix", 1), S1 * 50, S2 * 50));
+            Between(Size("", KeyInvInd(50,S1,values_are_indirect) + ".suffix", 1), S1 * 50, S2 * 50));
 
-        std::string cstart_str = KeyBig(compact_start,S1,values_are_indirect);
-        std::string cend_str = KeyBig(compact_start + 9,S1,values_are_indirect);
+        std::string cstart_str = KeyInvInd(compact_start,S1,values_are_indirect);
+        std::string cend_str = KeyInvInd(compact_start + 9,S1,values_are_indirect);
         Slice cstart = cstart_str;
         Slice cend = cend_str;
         dbfull()->TEST_CompactRange(0, &cstart, &cend, handles_[1]);
@@ -1299,30 +1299,30 @@ TEST_F(DBTest, ApproximateSizes_MixOfSmallAndLarge) {
 
     Random rnd(301);
     std::string big1 = RandomString(&rnd, 100000);
-    ASSERT_OK(Put(1, KeyBig(0,S1,values_are_indirect), ValueBig(RandomString(&rnd, S1),values_are_indirect)));
-    ASSERT_OK(Put(1, KeyBig(1,S1,values_are_indirect), ValueBig(RandomString(&rnd, S1),values_are_indirect)));
-    ASSERT_OK(Put(1, KeyBig(2,big1.size(),values_are_indirect), ValueBig(big1,values_are_indirect)));
-    ASSERT_OK(Put(1, KeyBig(3,S1,values_are_indirect), ValueBig(RandomString(&rnd, S1),values_are_indirect)));
-    ASSERT_OK(Put(1, KeyBig(4,big1.size(),values_are_indirect), ValueBig(big1,values_are_indirect)));
-    ASSERT_OK(Put(1, KeyBig(5,S1,values_are_indirect), ValueBig(RandomString(&rnd, S1),values_are_indirect)));
-    ASSERT_OK(Put(1, KeyBig(6,300000,values_are_indirect), ValueBig(RandomString(&rnd, 300000),values_are_indirect)));
-    ASSERT_OK(Put(1, KeyBig(7,S1,values_are_indirect), ValueBig(RandomString(&rnd, S1),values_are_indirect)));
+    ASSERT_OK(Put(1, KeyInvInd(0,S1,values_are_indirect), ValueInvInd(RandomString(&rnd, S1),values_are_indirect)));
+    ASSERT_OK(Put(1, KeyInvInd(1,S1,values_are_indirect), ValueInvInd(RandomString(&rnd, S1),values_are_indirect)));
+    ASSERT_OK(Put(1, KeyInvInd(2,big1.size(),values_are_indirect), ValueInvInd(big1,values_are_indirect)));
+    ASSERT_OK(Put(1, KeyInvInd(3,S1,values_are_indirect), ValueInvInd(RandomString(&rnd, S1),values_are_indirect)));
+    ASSERT_OK(Put(1, KeyInvInd(4,big1.size(),values_are_indirect), ValueInvInd(big1,values_are_indirect)));
+    ASSERT_OK(Put(1, KeyInvInd(5,S1,values_are_indirect), ValueInvInd(RandomString(&rnd, S1),values_are_indirect)));
+    ASSERT_OK(Put(1, KeyInvInd(6,300000,values_are_indirect), ValueInvInd(RandomString(&rnd, 300000),values_are_indirect)));
+    ASSERT_OK(Put(1, KeyInvInd(7,S1,values_are_indirect), ValueInvInd(RandomString(&rnd, S1),values_are_indirect)));
 
     // Check sizes across recovery by reopening a few times
     for (int run = 0; run < 3; run++) {
       ReopenWithColumnFamilies({"default", "pikachu"}, options);
 
-      ASSERT_TRUE(Between(Size("", KeyBig(0,S1,values_are_indirect), 1), 0, 0));
-      ASSERT_TRUE(Between(Size("", KeyBig(1,S1,values_are_indirect), 1), 10000, 11000));
-      ASSERT_TRUE(Between(Size("", KeyBig(2,big1.size(),values_are_indirect), 1), 20000, 21000));
-      ASSERT_TRUE(Between(Size("", KeyBig(3,S1,values_are_indirect), 1), 120000, 121000));
-      ASSERT_TRUE(Between(Size("", KeyBig(4,big1.size(),values_are_indirect), 1), 130000, 131000));
-      ASSERT_TRUE(Between(Size("", KeyBig(5,S1,values_are_indirect), 1), 230000, 231000));
-      ASSERT_TRUE(Between(Size("", KeyBig(6,300000,values_are_indirect), 1), 240000, 241000));
-      ASSERT_TRUE(Between(Size("", KeyBig(7,S1,values_are_indirect), 1), 540000, 541000));
-      ASSERT_TRUE(Between(Size("", KeyBig(8,1000,values_are_indirect), 1), 550000, 560000));
+      ASSERT_TRUE(Between(Size("", KeyInvInd(0,S1,values_are_indirect), 1), 0, 0));
+      ASSERT_TRUE(Between(Size("", KeyInvInd(1,S1,values_are_indirect), 1), 10000, 11000));
+      ASSERT_TRUE(Between(Size("", KeyInvInd(2,big1.size(),values_are_indirect), 1), 20000, 21000));
+      ASSERT_TRUE(Between(Size("", KeyInvInd(3,S1,values_are_indirect), 1), 120000, 121000));
+      ASSERT_TRUE(Between(Size("", KeyInvInd(4,big1.size(),values_are_indirect), 1), 130000, 131000));
+      ASSERT_TRUE(Between(Size("", KeyInvInd(5,S1,values_are_indirect), 1), 230000, 231000));
+      ASSERT_TRUE(Between(Size("", KeyInvInd(6,300000,values_are_indirect), 1), 240000, 241000));
+      ASSERT_TRUE(Between(Size("", KeyInvInd(7,S1,values_are_indirect), 1), 540000, 541000));
+      ASSERT_TRUE(Between(Size("", KeyInvInd(8,1000,values_are_indirect), 1), 550000, 560000));
 
-      ASSERT_TRUE(Between(Size(KeyBig(3,S1,values_are_indirect), KeyBig(5,S1,values_are_indirect), 1), 110000, 111000));
+      ASSERT_TRUE(Between(Size(KeyInvInd(3,S1,values_are_indirect), KeyInvInd(5,S1,values_are_indirect), 1), 110000, 111000));
 
       dbfull()->TEST_CompactRange(0, nullptr, nullptr, handles_[1]);
     }
@@ -2864,7 +2864,7 @@ TEST_F(DBTest, FIFOCompactionTestWithCompaction) {
   for (int i = 0; i < 60; i++) {
     // Generate and flush a file about 20KB.
     for (int j = 0; j < 20; j++) {
-      ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
+      ASSERT_OK(PutInvInd(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
     }
     Flush();
     ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -2875,7 +2875,7 @@ TEST_F(DBTest, FIFOCompactionTestWithCompaction) {
   for (int i = 0; i < 60; i++) {
     // Generate and flush a file about 20KB.
     for (int j = 0; j < 20; j++) {
-      ASSERT_OK(PutBig(ToString(i * 20 + j + 2000), RandomString(&rnd, 980),values_are_indirect));
+      ASSERT_OK(PutInvInd(ToString(i * 20 + j + 2000), RandomString(&rnd, 980),values_are_indirect));
     }
     Flush();
     ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -3003,7 +3003,7 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     for (int i = 0; i < 10; i++) {
       // Generate and flush a file about 10KB.
       for (int j = 0; j < 10; j++) {
-        ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
+        ASSERT_OK(PutInvInd(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
       }
       Flush();
       ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -3045,7 +3045,7 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     for (int i = 0; i < 10; i++) {
       // Generate and flush a file about 10KB.
       for (int j = 0; j < 10; j++) {
-        ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
+        ASSERT_OK(PutInvInd(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
       }
       Flush();
       ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -3061,7 +3061,7 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     // Create 1 more file to trigger TTL compaction. The old files are dropped.
     for (int i = 0; i < 1; i++) {
       for (int j = 0; j < 10; j++) {
-        ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
+        ASSERT_OK(PutInvInd(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
       }
       Flush();
     }
@@ -3094,7 +3094,7 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     for (int i = 0; i < 3; i++) {
       // Generate and flush a file about 10KB.
       for (int j = 0; j < 10; j++) {
-        ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
+        ASSERT_OK(PutInvInd(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
       }
       Flush();
       ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -3109,7 +3109,7 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
 
     for (int i = 0; i < 5; i++) {
       for (int j = 0; j < 140; j++) {
-        ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
+        ASSERT_OK(PutInvInd(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
       }
       Flush();
       ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -3139,7 +3139,7 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     for (int i = 0; i < 10; i++) {
       // Generate and flush a file about 10KB.
       for (int j = 0; j < 10; j++) {
-        ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
+        ASSERT_OK(PutInvInd(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
       }
       Flush();
       ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -3158,7 +3158,7 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     // Create 10 more files. The old 5 files are dropped as their ttl expired.
     for (int i = 0; i < 10; i++) {
       for (int j = 0; j < 10; j++) {
-        ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
+        ASSERT_OK(PutInvInd(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
       }
       Flush();
       ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -3190,7 +3190,7 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     for (int i = 0; i < 60; i++) {
       // Generate and flush a file about 20KB.
       for (int j = 0; j < 20; j++) {
-        ASSERT_OK(PutBig(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
+        ASSERT_OK(PutInvInd(ToString(i * 20 + j), RandomString(&rnd, 980),values_are_indirect));
       }
       Flush();
       ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -3201,7 +3201,7 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     for (int i = 0; i < 60; i++) {
       // Generate and flush a file about 20KB.
       for (int j = 0; j < 20; j++) {
-        ASSERT_OK(PutBig(ToString(i * 20 + j + 2000), RandomString(&rnd, 980),values_are_indirect));
+        ASSERT_OK(PutInvInd(ToString(i * 20 + j + 2000), RandomString(&rnd, 980),values_are_indirect));
       }
       Flush();
       ASSERT_OK(dbfull()->TEST_WaitForCompact());
@@ -4113,7 +4113,7 @@ TEST_F(DBTest, DynamicLevelCompressionPerLevel) {
   // Insert more than 80K. L4 should be base level. Neither L0 nor L4 should
   // be compressed, so total data size should be more than 80K.
   for (int i = 0; i < 20; i++) {
-    ASSERT_OK(PutBig(Key(keys[i]), CompressibleString(&rnd, 4000),values_are_indirect));
+    ASSERT_OK(PutInvInd(Key(keys[i]), CompressibleString(&rnd, 4000),values_are_indirect));
   }
   Flush();
   dbfull()->TEST_WaitForCompact();
@@ -4126,7 +4126,7 @@ TEST_F(DBTest, DynamicLevelCompressionPerLevel) {
 
   // Insert 400KB. Some data will be compressed
   for (int i = 21; i < 120; i++) {
-    ASSERT_OK(PutBig(Key(keys[i]), CompressibleString(&rnd, 4000),values_are_indirect));
+    ASSERT_OK(PutInvInd(Key(keys[i]), CompressibleString(&rnd, 4000),values_are_indirect));
   }
   Flush();
   dbfull()->TEST_WaitForCompact();
@@ -4315,7 +4315,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
   auto gen_l0_kb = [this,values_are_indirect](int start, int size, int stride) {
     Random rnd(301);
     for (int i = 0; i < size; i++) {
-      ASSERT_OK(PutBig(Key(start + stride * i), RandomString(&rnd, 1024),values_are_indirect));
+      ASSERT_OK(PutInvInd(Key(start + stride * i), RandomString(&rnd, 1024),values_are_indirect));
     }
     dbfull()->TEST_WaitForFlushMemTable();
   };
@@ -4410,7 +4410,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
   Random rnd(301);
   WriteOptions wo;
   while (count < 64) {
-    ASSERT_OK(PutBig(Key(count), RandomString(&rnd, 1024),values_are_indirect, wo));
+    ASSERT_OK(PutInvInd(Key(count), RandomString(&rnd, 1024),values_are_indirect, wo));
     dbfull()->TEST_FlushMemTable(true);
     count++;
     if (dbfull()->TEST_write_controler().IsStopped()) {
@@ -4438,7 +4438,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
   sleeping_task_low.WaitUntilSleeping();
   count = 0;
   while (count < 64) {
-    ASSERT_OK(PutBig(Key(count), RandomString(&rnd, 1024),values_are_indirect, wo));
+    ASSERT_OK(PutInvInd(Key(count), RandomString(&rnd, 1024),values_are_indirect, wo));
     dbfull()->TEST_FlushMemTable(true);
     count++;
     if (dbfull()->TEST_write_controler().IsStopped()) {
@@ -4460,7 +4460,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
   ASSERT_EQ(NumTableFilesAtLevel(0), 0);
 
   for (int i = 0; i < 4; ++i) {
-    ASSERT_OK(PutBig(Key(i), RandomString(&rnd, 1024),values_are_indirect));
+    ASSERT_OK(PutInvInd(Key(i), RandomString(&rnd, 1024),values_are_indirect));
     // Wait for compaction so that put won't stop
     dbfull()->TEST_FlushMemTable(true);
   }
@@ -4474,7 +4474,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
   ASSERT_EQ(NumTableFilesAtLevel(0), 0);
 
   for (int i = 0; i < 4; ++i) {
-    ASSERT_OK(PutBig(Key(i), RandomString(&rnd, 1024),values_are_indirect));
+    ASSERT_OK(PutInvInd(Key(i), RandomString(&rnd, 1024),values_are_indirect));
     // Wait for compaction so that put won't stop
     dbfull()->TEST_FlushMemTable(true);
   }
@@ -5267,39 +5267,39 @@ TEST_F(DBTest, SuggestCompactRangeTest) {
   Random rnd(301);
 
   for (int num = 0; num < 3; num++) {
-    GenerateNewRandomFileBig(&rnd,values_are_indirect);
+    GenerateNewRandomFileInvInd(&rnd,values_are_indirect);
   }
 
-  GenerateNewRandomFileBig(&rnd,values_are_indirect);
+  GenerateNewRandomFileInvInd(&rnd,values_are_indirect);
   ASSERT_EQ("0,4", FilesPerLevel(0));
   ASSERT_TRUE(!CompactionFilterFactoryGetContext::IsManual(
       options.compaction_filter_factory.get()));
 
-  GenerateNewRandomFileBig(&rnd,values_are_indirect);
+  GenerateNewRandomFileInvInd(&rnd,values_are_indirect);
   ASSERT_EQ("1,4", FilesPerLevel(0));
 
-  GenerateNewRandomFileBig(&rnd,values_are_indirect);
+  GenerateNewRandomFileInvInd(&rnd,values_are_indirect);
   ASSERT_EQ("2,4", FilesPerLevel(0));
 
-  GenerateNewRandomFileBig(&rnd,values_are_indirect);
+  GenerateNewRandomFileInvInd(&rnd,values_are_indirect);
   ASSERT_EQ("3,4", FilesPerLevel(0));
 
-  GenerateNewRandomFileBig(&rnd,values_are_indirect);
+  GenerateNewRandomFileInvInd(&rnd,values_are_indirect);
   ASSERT_EQ("0,4,4", FilesPerLevel(0));
 
-  GenerateNewRandomFileBig(&rnd,values_are_indirect);
+  GenerateNewRandomFileInvInd(&rnd,values_are_indirect);
   ASSERT_EQ("1,4,4", FilesPerLevel(0));
 
-  GenerateNewRandomFileBig(&rnd,values_are_indirect);
+  GenerateNewRandomFileInvInd(&rnd,values_are_indirect);
   ASSERT_EQ("2,4,4", FilesPerLevel(0));
 
-  GenerateNewRandomFileBig(&rnd,values_are_indirect);
+  GenerateNewRandomFileInvInd(&rnd,values_are_indirect);
   ASSERT_EQ("3,4,4", FilesPerLevel(0));
 
-  GenerateNewRandomFileBig(&rnd,values_are_indirect);
+  GenerateNewRandomFileInvInd(&rnd,values_are_indirect);
   ASSERT_EQ("0,4,8", FilesPerLevel(0));
 
-  GenerateNewRandomFileBig(&rnd,values_are_indirect);
+  GenerateNewRandomFileInvInd(&rnd,values_are_indirect);
   ASSERT_EQ("1,4,8", FilesPerLevel(0));
 
   // compact it three times
@@ -5312,7 +5312,7 @@ TEST_F(DBTest, SuggestCompactRangeTest) {
   ASSERT_EQ(0, NumTableFilesAtLevel(0));
   ASSERT_EQ(0, NumTableFilesAtLevel(1));
 
-  GenerateNewRandomFileBig(&rnd,values_are_indirect);
+  GenerateNewRandomFileInvInd(&rnd,values_are_indirect);
   ASSERT_EQ(1, NumTableFilesAtLevel(0));
 
   // nonoverlapping with the file on level 0
@@ -5422,7 +5422,7 @@ TEST_F(DBTest, CompactRangeWithEmptyBottomLevel) {
 
   Random rnd(301);
   for (int i = 0; i < kNumL0Files; ++i) {
-    ASSERT_OK(PutBig(Key(0), RandomString(&rnd, 1024),values_are_indirect));
+    ASSERT_OK(PutInvInd(Key(0), RandomString(&rnd, 1024),values_are_indirect));
     Flush();
   }
   ASSERT_EQ(NumTableFilesAtLevel(0), kNumL0Files);
@@ -5550,7 +5550,7 @@ TEST_F(DBTest, FlushesInParallelWithCompactRange) {
 
     Random rnd(301);
     for (int num = 0; num < 14; num++) {
-      GenerateNewRandomFileBig(&rnd,values_are_indirect);
+      GenerateNewRandomFileInvInd(&rnd,values_are_indirect);
     }
 
     if (iter == 1) {
@@ -5577,7 +5577,7 @@ TEST_F(DBTest, FlushesInParallelWithCompactRange) {
     // create
     // 3 memtables, and that will fail because max_write_buffer_number is 2
     for (int num = 0; num < 3; num++) {
-      GenerateNewRandomFileBig(&rnd,values_are_indirect, /* nowait */ true);
+      GenerateNewRandomFileInvInd(&rnd,values_are_indirect, /* nowait */ true);
     }
 
     TEST_SYNC_POINT("DBTest::FlushesInParallelWithCompactRange:2");
@@ -5619,14 +5619,14 @@ TEST_F(DBTest, DelayedWriteRate) {
                  Env::Priority::LOW);
 
   for (int i = 0; i < 3; i++) {
-    PutBig(Key(i), std::string(10000, 'x'),values_are_indirect);
+    PutInvInd(Key(i), std::string(10000, 'x'),values_are_indirect);
     Flush();
   }
 
   // These writes will be slowed down to 1KB/s
   uint64_t estimated_sleep_time = 0;
   Random rnd(301);
-  PutBig("", "",values_are_indirect);
+  PutInvInd("", "",values_are_indirect);
   uint64_t cur_rate = options.delayed_write_rate;
   for (int i = 0; i < kTotalFlushes; i++) {
     uint64_t size_memtable = 0;
@@ -5635,7 +5635,7 @@ TEST_F(DBTest, DelayedWriteRate) {
       // Spread the size range to more.
       size_t entry_size = rand_num * rand_num * rand_num;
       WriteOptions wo;
-      PutBig(Key(i), std::string(entry_size, 'x'),values_are_indirect, wo);
+      PutInvInd(Key(i), std::string(entry_size, 'x'),values_are_indirect, wo);
       size_memtable += entry_size + 18;
       // Occasionally sleep a while
       if (rnd.Uniform(20) == 6) {
@@ -5776,7 +5776,7 @@ TEST_F(DBTest, SoftLimit) {
 
   // Generating 360KB in Level 3
   for (int i = 0; i < 72; i++) {
-    PutBig(Key(i), std::string(5000, 'x'),values_are_indirect);
+    PutInvInd(Key(i), std::string(5000, 'x'),values_are_indirect);
     if (i % 10 == 0) {
       Flush();
     }
@@ -5786,7 +5786,7 @@ TEST_F(DBTest, SoftLimit) {
 
   // Generating 360KB in Level 2
   for (int i = 0; i < 72; i++) {
-    PutBig(Key(i), std::string(5000, 'x'),values_are_indirect);
+    PutInvInd(Key(i), std::string(5000, 'x'),values_are_indirect);
     if (i % 10 == 0) {
       Flush();
     }
@@ -5804,8 +5804,8 @@ TEST_F(DBTest, SoftLimit) {
 
   // Create 3 L0 files, making score of L0 to be 3.
   for (int i = 0; i < 3; i++) {
-    PutBig(Key(i), std::string(5000, 'x'),values_are_indirect);
-    PutBig(Key(100 - i), std::string(5000, 'x'),values_are_indirect);
+    PutInvInd(Key(i), std::string(5000, 'x'),values_are_indirect);
+    PutInvInd(Key(100 - i), std::string(5000, 'x'),values_are_indirect);
     // Flush the file. File size is around 30KB.
     Flush();
   }
@@ -5839,8 +5839,8 @@ TEST_F(DBTest, SoftLimit) {
   sleeping_task_low.WaitUntilSleeping();
   // Create 3 L0 files, making score of L0 to be 3
   for (int i = 0; i < 3; i++) {
-    PutBig(Key(10 + i), std::string(5000, 'x'),values_are_indirect);
-    PutBig(Key(90 - i), std::string(5000, 'x'),values_are_indirect);
+    PutInvInd(Key(10 + i), std::string(5000, 'x'),values_are_indirect);
+    PutInvInd(Key(90 - i), std::string(5000, 'x'),values_are_indirect);
     // Flush the file. File size is around 30KB.
     Flush();
   }
@@ -5860,8 +5860,8 @@ TEST_F(DBTest, SoftLimit) {
 
   // Create 3 L0 files, making score of L0 to be 3, higher than L0.
   for (int i = 0; i < 3; i++) {
-    PutBig(Key(20 + i), std::string(5000, 'x'),values_are_indirect);
-    PutBig(Key(80 - i), std::string(5000, 'x'),values_are_indirect);
+    PutInvInd(Key(20 + i), std::string(5000, 'x'),values_are_indirect);
+    PutInvInd(Key(80 - i), std::string(5000, 'x'),values_are_indirect);
     // Flush the file. File size is around 30KB.
     Flush();
   }

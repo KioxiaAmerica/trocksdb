@@ -100,7 +100,7 @@ TEST_F(DBRangeDelTest, CompactionOutputFilesExactlyFilled) {
     // Write 12K (4 values, each 3K)
     for (int j = 0; j < kNumPerFile; j++) {
       values.push_back(RandomString(&rnd, 3 << 10));
-      ASSERT_OK(PutBig(Key(i * kNumPerFile + j), values[j],values_are_indirect));
+      ASSERT_OK(PutInvInd(Key(i * kNumPerFile + j), values[j],values_are_indirect));
       if (j == 0 && i > 0) {
         dbfull()->TEST_WaitForFlushMemTable();
       }
@@ -370,7 +370,7 @@ TEST_F(DBRangeDelTest, ValidLevelSubcompactionBoundaries) {
       // Write 100KB (100 values, each 1K)
       for (int k = 0; k < kNumPerFile; k++) {
         values.push_back(RandomString(&rnd, 990));
-        ASSERT_OK(PutBig(Key(j * kNumPerFile + k), values[k],values_are_indirect));
+        ASSERT_OK(PutInvInd(Key(j * kNumPerFile + k), values[k],values_are_indirect));
       }
       // put extra key to trigger flush
       ASSERT_OK(Put("", ""));
@@ -437,7 +437,7 @@ TEST_F(DBRangeDelTest, ValidUniversalSubcompactionBoundaries) {
       // Write 100KB (100 values, each 1K)
       for (int k = 0; k < kNumPerFile; k++) {
         values.push_back(RandomString(&rnd, 990));
-        ASSERT_OK(PutBig(Key(j * kNumPerFile + k), values[k],values_are_indirect));
+        ASSERT_OK(PutInvInd(Key(j * kNumPerFile + k), values[k],values_are_indirect));
       }
       // put extra key to trigger flush
       ASSERT_OK(Put("", ""));
@@ -961,8 +961,8 @@ TEST_F(DBRangeDelTest, CompactionTreatsSplitInputLevelDeletionAtomically) {
     std::string value = RandomString(&rnd, kValueBytes);
     for (int j = 0; j < kNumFilesPerLevel; ++j) {
       // give files overlapping key-ranges to prevent trivial move
-      ASSERT_OK(PutBig(Key(j), value,values_are_indirect));
-      ASSERT_OK(PutBig(Key(2 * kNumFilesPerLevel - 1 - j), value,values_are_indirect));
+      ASSERT_OK(PutInvInd(Key(j), value,values_are_indirect));
+      ASSERT_OK(PutInvInd(Key(2 * kNumFilesPerLevel - 1 - j), value,values_are_indirect));
       if (j > 0) {
         dbfull()->TEST_WaitForFlushMemTable();
         ASSERT_EQ(j, NumTableFilesAtLevel(0));

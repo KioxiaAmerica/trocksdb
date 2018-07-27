@@ -650,7 +650,7 @@ Status DBTestBase::Flush(int cf) {
 
 // perform a Put, giving a predictable size to the key/value even if the value is indirect,
 // by transferring length from the value to the key if the value is longer than a reference
-Status DBTestBase::PutBig(const Slice& k, const Slice& v, bool vlogging, WriteOptions wo) {
+Status DBTestBase::PutInvInd(const Slice& k, const Slice& v, bool vlogging, WriteOptions wo) {
   if(vlogging){
     if(v.size()<=16)return Put(k,v,wo);  // return if no excess length to move
     // transfer the length of the data to the key, and make the data 16 bytes long
@@ -662,13 +662,13 @@ Status DBTestBase::PutBig(const Slice& k, const Slice& v, bool vlogging, WriteOp
     return Put(k,v,wo);
   }
 }
-Status DBTestBase::PutBig(int k, size_t valuelen, const Slice& v, bool vlogging) {  // use valuelen as the implied value length, overriding the actual length.  Key is numeric
-  std::string bigkeypos = KeyBig(k,valuelen,vlogging);  // get key string
+Status DBTestBase::PutInvInd(int k, size_t valuelen, const Slice& v, bool vlogging) {  // use valuelen as the implied value length, overriding the actual length.  Key is numeric
+  std::string bigkeypos = KeyInvInd(k,valuelen,vlogging);  // get key string
   Slice val{v};  // get the data
-  return Put(bigkeypos,ValueBig(v.ToString(),vlogging));   // Write it out
+  return Put(bigkeypos,ValueInvInd(v.ToString(),vlogging));   // Write it out
 }
 
-Status DBTestBase::PutBig(int cf, const Slice& k, const Slice& v, bool vlogging) {
+Status DBTestBase::PutInvInd(int cf, const Slice& k, const Slice& v, bool vlogging) {
   if(vlogging){
     if(v.size()<=16)Put(cf,k,v);  // return if no excess length to move
     // transfer the length of the data to the key, and make the data 16 bytes long
@@ -681,10 +681,10 @@ Status DBTestBase::PutBig(int cf, const Slice& k, const Slice& v, bool vlogging)
   }
 }
 
-Status DBTestBase::PutBig(int cf, int k, size_t valuelen, const Slice& v, bool vlogging){ // use valuelen as the implied value length, overriding the actual length.  Key is numeric
-  std::string bigkeypos = KeyBig(k,valuelen,vlogging);  // get key string
+Status DBTestBase::PutInvInd(int cf, int k, size_t valuelen, const Slice& v, bool vlogging){ // use valuelen as the implied value length, overriding the actual length.  Key is numeric
+  std::string bigkeypos = KeyInvInd(k,valuelen,vlogging);  // get key string
   Slice val{v};  // get the data
-  return Put(cf, bigkeypos,ValueBig(v.ToString(),vlogging));   // Write it out
+  return Put(cf, bigkeypos,ValueInvInd(v.ToString(),vlogging));   // Write it out
 }
 
 Status DBTestBase::Put(const Slice& k, const Slice& v, WriteOptions wo) {
@@ -1144,10 +1144,10 @@ void DBTestBase::GenerateNewFile(Random* rnd, int* key_idx, bool nowait) {
 }
 // this version guarantees a predictable size for the kv even if the value was replaced with an indirect reference
 // key-size is chosen so that 100 keys fits in under 100000B, like the normal version
-void DBTestBase::GenerateNewFileBig(int cf, Random* rnd, int* key_idx, bool vlogging, bool nowait) {
+void DBTestBase::GenerateNewFileInvInd(int cf, Random* rnd, int* key_idx, bool vlogging, bool nowait) {
   if(vlogging){
     for (int i = 0; i < KNumKeysByGenerateNewFile; i++) {
-      ASSERT_OK(Put(cf, KeyBigNewFile(*key_idx, i,vlogging), ValueBig(RandomString(rnd, (i == 99) ? 1 : 990),vlogging)));
+      ASSERT_OK(Put(cf, KeyInvIndNewFile(*key_idx, i,vlogging), ValueInvInd(RandomString(rnd, (i == 99) ? 1 : 990),vlogging)));
       (*key_idx)++;
     }
     if (!nowait) {
@@ -1158,10 +1158,10 @@ void DBTestBase::GenerateNewFileBig(int cf, Random* rnd, int* key_idx, bool vlog
     GenerateNewFile(cf,rnd,key_idx,nowait);
   }
 }
-void DBTestBase::GenerateNewFileBig(Random* rnd, int* key_idx, bool vlogging, bool nowait) {
+void DBTestBase::GenerateNewFileInvInd(Random* rnd, int* key_idx, bool vlogging, bool nowait) {
   if(vlogging){
     for (int i = 0; i < KNumKeysByGenerateNewFile; i++) {
-      ASSERT_OK(Put(KeyBigNewFile(*key_idx, i,vlogging), ValueBig(RandomString(rnd, (i == 99) ? 1 : 990),vlogging)));
+      ASSERT_OK(Put(KeyInvIndNewFile(*key_idx, i,vlogging), ValueInvInd(RandomString(rnd, (i == 99) ? 1 : 990),vlogging)));
       (*key_idx)++;
     }
     if (!nowait) {
@@ -1186,11 +1186,11 @@ void DBTestBase::GenerateNewRandomFile(Random* rnd, bool nowait) {
   }
 }
 // this version guarantees a predictable size for the kv even if the value was replaced with an indirect reference
-void DBTestBase::GenerateNewRandomFileBig(Random* rnd, bool vlogging, bool nowait) {
+void DBTestBase::GenerateNewRandomFileInvInd(Random* rnd, bool vlogging, bool nowait) {
   for (int i = 0; i < kNumKeysByGenerateNewRandomFile; i++) {
-    ASSERT_OK(PutBig("key" + RandomString(rnd, 7), RandomString(rnd, 2000),vlogging));
+    ASSERT_OK(PutInvInd("key" + RandomString(rnd, 7), RandomString(rnd, 2000),vlogging));
   }
-  ASSERT_OK(PutBig("key" + RandomString(rnd, 7), RandomString(rnd, 200),vlogging));
+  ASSERT_OK(PutInvInd("key" + RandomString(rnd, 7), RandomString(rnd, 200),vlogging));
   if (!nowait) {
     dbfull()->TEST_WaitForFlushMemTable();
     dbfull()->TEST_WaitForCompact();

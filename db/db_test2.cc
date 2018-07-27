@@ -1227,7 +1227,7 @@ TEST_F(DBTest2, CompressionOptions) {
     for (int i = 0; i < 10; i++) {
       for (int j = 0; j < 5; j++) {
         ASSERT_OK(
-            PutBig(RandomString(&rnd, kKeySize), RandomString(&rnd, kValSize),values_are_indirect));
+            PutInvInd(RandomString(&rnd, kKeySize), RandomString(&rnd, kValSize),values_are_indirect));
       }
       ASSERT_OK(Flush());
       dbfull()->TEST_WaitForCompact();
@@ -1541,7 +1541,7 @@ TEST_F(DBTest2, MaxCompactionBytesTest) {
   Random rnd(301);
 
   for (int num = 0; num < 8; num++) {
-    GenerateNewRandomFileBig(&rnd,values_are_indirect);
+    GenerateNewRandomFileInvInd(&rnd,values_are_indirect);
   }
   CompactRangeOptions cro;
   cro.bottommost_level_compaction = BottommostLevelCompaction::kForce;
@@ -1566,7 +1566,7 @@ TEST_F(DBTest2, MaxCompactionBytesTest) {
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
-  GenerateNewRandomFileBig(&rnd,values_are_indirect);
+  GenerateNewRandomFileInvInd(&rnd,values_are_indirect);
   // Add three more small files that overlap with the previous file
   for (int i = 0; i < 3; i++) {
     Put("key5", "z");

@@ -264,7 +264,7 @@ class PersistentCacheDBTest : public DBTestBase {
         str = RandomString(&rnd, 1000);
       }
       values->push_back(str);
-      ASSERT_OK(Put(1, KeyBig(i,1000,values_are_indirect), ValueBig((*values)[i],values_are_indirect)));
+      ASSERT_OK(Put(1, KeyInvInd(i,1000,values_are_indirect), ValueInvInd((*values)[i],values_are_indirect)));
     }
 
     // flush all data from memtable so that reads are from block cache
@@ -275,7 +275,7 @@ class PersistentCacheDBTest : public DBTestBase {
   void Verify(const int num_iter, const std::vector<std::string>& values,bool values_are_indirect) {
     for (int j = 0; j < 2; ++j) {
       for (int i = 0; i < num_iter; i++) {
-        ASSERT_EQ(Get(1, KeyBig(i,1000,values_are_indirect)), ValueBig(values[i],values_are_indirect));
+        ASSERT_EQ(Get(1, KeyInvInd(i,1000,values_are_indirect)), ValueInvInd(values[i],values_are_indirect));
       }
     }
   }

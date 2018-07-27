@@ -343,16 +343,16 @@ TEST_F(DBIOFailureTest, CompactSstRangeSyncError) {
 
   ASSERT_OK(Put(1, "foo", "bar"));
   // First 1MB doesn't get range synced
-  ASSERT_OK(PutBig(1, "foo0_0", rnd_str_512kb,values_are_indirect));
-  ASSERT_OK(PutBig(1, "foo0_1", rnd_str_512kb,values_are_indirect));
-  ASSERT_OK(PutBig(1, "foo1_1", rnd_str,values_are_indirect));
-  ASSERT_OK(PutBig(1, "foo1_2", rnd_str,values_are_indirect));
-  ASSERT_OK(PutBig(1, "foo1_3", rnd_str,values_are_indirect));
+  ASSERT_OK(PutInvInd(1, "foo0_0", rnd_str_512kb,values_are_indirect));
+  ASSERT_OK(PutInvInd(1, "foo0_1", rnd_str_512kb,values_are_indirect));
+  ASSERT_OK(PutInvInd(1, "foo1_1", rnd_str,values_are_indirect));
+  ASSERT_OK(PutInvInd(1, "foo1_2", rnd_str,values_are_indirect));
+  ASSERT_OK(PutInvInd(1, "foo1_3", rnd_str,values_are_indirect));
   Flush(1);
   ASSERT_OK(Put(1, "foo", "bar"));
-  ASSERT_OK(PutBig(1, "foo3_1", rnd_str,values_are_indirect));
-  ASSERT_OK(PutBig(1, "foo3_2", rnd_str,values_are_indirect));
-  ASSERT_OK(PutBig(1, "foo3_3", rnd_str,values_are_indirect));
+  ASSERT_OK(PutInvInd(1, "foo3_1", rnd_str,values_are_indirect));
+  ASSERT_OK(PutInvInd(1, "foo3_2", rnd_str,values_are_indirect));
+  ASSERT_OK(PutInvInd(1, "foo3_3", rnd_str,values_are_indirect));
   ASSERT_OK(Put(1, "foo4", "bar"));
   Flush(1);
   dbfull()->TEST_WaitForFlushMemTable(handles_[1]);
