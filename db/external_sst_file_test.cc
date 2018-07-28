@@ -974,6 +974,10 @@ if(option_config_==10)
         s = DeprecatedAddFile({file_name});
         auto it = true_data.lower_bound(Key(range_start));
         if (option_config_ != kUniversalCompaction &&
+#ifdef INDIRECT_VALUE_SUPPORT
+            option_config_ != kUniversalCompactionInd &&
+            option_config_ != kUniversalCompactionMultiLevelInd &&
+#endif
             option_config_ != kUniversalCompactionMultiLevel) {
           if (it != true_data.end() && it->first <= Key(range_end)) {
             // This range overlap with data already exist in DB

@@ -283,7 +283,11 @@ TEST_F(DBWALTest, RecoverWithTableHandle) {
     ASSERT_EQ(total_files, 3);
     for (const auto& level : files) {
       for (const auto& file : level) {
-        if (kInfiniteMaxOpenFiles == option_config_) {
+        if (kInfiniteMaxOpenFiles == option_config_
+#ifdef INDIRECT_VALUE_SUPPORT
+            || kInfiniteMaxOpenFilesInd == option_config_
+#endif
+          ) {
           ASSERT_TRUE(file.table_reader_handle != nullptr);
         } else {
           ASSERT_TRUE(file.table_reader_handle == nullptr);

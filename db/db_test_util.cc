@@ -109,6 +109,10 @@ bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
       option_config == kVectorRep || option_config == kHashLinkList ||
       option_config == kHashCuckoo || option_config == kUniversalCompaction ||
       option_config == kUniversalCompactionMultiLevel ||
+#ifdef INDIRECT_VALUE_SUPPORT
+      option_config == kUniversalCompactionMultiLevelInd ||
+      option_config == kUniversalCompactionInd ||
+#endif
       option_config == kUniversalSubcompactions ||
       option_config == kFIFOCompaction ||
       option_config == kConcurrentSkipList) {
@@ -118,12 +122,19 @@ bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
 
     if ((skip_mask & kSkipUniversalCompaction) &&
         (option_config == kUniversalCompaction ||
+#ifdef INDIRECT_VALUE_SUPPORT
+        option_config == kUniversalCompactionMultiLevelInd ||
+        option_config == kUniversalCompactionInd ||
+#endif
          option_config == kUniversalCompactionMultiLevel)) {
       return true;
     }
-    if ((skip_mask & kSkipMergePut) && option_config == kMergePut) {
-      return true;
-    }
+    if ((skip_mask & kSkipMergePut) && (option_config == kMergePut
+#ifdef INDIRECT_VALUE_SUPPORT
+       || option_config == kMergePutInd
+#endif
+    )) { return true; }
+
     if ((skip_mask & kSkipNoSeekToLast) &&
         (option_config == kHashLinkList || option_config == kHashSkipList)) {
       return true;
@@ -137,6 +148,10 @@ bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
     }
     if ((skip_mask & kSkipHashIndex) &&
         (option_config == kBlockBasedTableWithPrefixHashIndex ||
+#ifdef INDIRECT_VALUE_SUPPORT
+         option_config == kBlockBasedTableWithPrefixHashIndexInd ||
+         option_config == kBlockBasedTableWithWholeKeyHashIndexInd ||
+#endif
          option_config == kBlockBasedTableWithWholeKeyHashIndex)) {
       return true;
     }
@@ -146,7 +161,11 @@ bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
     if ((skip_mask & kSkipFIFOCompaction) && option_config == kFIFOCompaction) {
       return true;
     }
-    if ((skip_mask & kSkipMmapReads) && option_config == kWalDirAndMmapReads) {
+    if ((skip_mask & kSkipMmapReads) && (option_config == kWalDirAndMmapReads
+#ifdef INDIRECT_VALUE_SUPPORT
+         || option_config == kWalDirAndMmapReadsInd
+#endif
+    )) {
       return true;
     }
     if ((skip_mask & kSkipDirectIO) && option_config == kDirectIO) {
@@ -176,6 +195,49 @@ bool DBTestBase::ChangeOptions(int skip_mask) {
   }
 }
 
+#if 1  // scaf new version
+// Switch between different option styles.  Return false if no more to try
+bool DBTestBase::CycleThroughOptions(std::vector<int>& optioncycle, std::vector<int>& optionaction,bool destroy2) {int i;
+  for(i=0; i<optioncycle.size()-1;++i)if(option_config_==optioncycle[i])break;  // find current match
+  ++i;  // advance to next option
+  if(i==optioncycle.size())return false;  // if we run off the end, indicate no more options
+  option_config_ = optioncycle[i];  // set new option value
+  Destroy(last_options_);  // destroy old
+  auto options = CurrentOptions();   // create new options including new setting
+  if(destroy2)Destroy(options);   // ?? for WAL tests
+  switch(optionaction[i]) {  // perform value-dependent action
+  case 0: options.create_if_missing = true; break;
+  case 1: assert(options.max_subcompactions > 1); break;
+  case 2: break;
+  }
+  TryReopen(options);  // reopen with new options
+  return true;  // indicate there is another option to try
+}
+
+#ifdef INDIRECT_VALUE_SUPPORT
+static std::vector<int> comp_cycle{DBTestBase::kDefault, DBTestBase::kUniversalCompaction, DBTestBase::kUniversalCompactionMultiLevel, DBTestBase::kLevelSubcompactions,
+                          DBTestBase::kDefaultInd, DBTestBase::kUniversalCompactionInd, DBTestBase::kUniversalCompactionMultiLevelInd, DBTestBase::kUniversalSubcompactions};
+static std::vector<int> comp_actions{0,0,0,1,0,0,0,1};  // 0=create_if_missing 1=check max_subcompactions
+
+static std::vector<int> filter_cycle{DBTestBase::kDefault, DBTestBase::kFilter, DBTestBase::kFullFilterWithNewTableReaderForCompactions, DBTestBase::kPartitionedFilterWithNewTableReaderForCompactions,
+                          DBTestBase::kDefaultInd, DBTestBase::kFilterInd, DBTestBase::kFullFilterWithNewTableReaderForCompactionsInd, DBTestBase::kPartitionedFilterWithNewTableReaderForCompactionsInd};
+static std::vector<int> filter_actions{0,0,0,0,0,0,0,0};  // 0=create_if_missing 1=check max_subcompactions
+#else
+static std::vector<int> comp_cycle{DBTestBase::kDefault, DBTestBase::kUniversalCompaction, DBTestBase::kUniversalCompactionMultiLevel, DBTestBase::kLevelSubcompactions, DBTestBase::kUniversalSubcompactions};
+static std::vector<int> comp_actions{0,0,0,1,1};  // 0=create_if_missing 1=check max_subcompactions
+
+static std::vector<int> filter_cycle{DBTestBase::kDefault, DBTestBase::kFilter, DBTestBase::kFullFilterWithNewTableReaderForCompactions, DBTestBase::kPartitionedFilterWithNewTableReaderForCompactions};
+                          DBTestBase::kDefaultInd, DBTestBase::kUniversalCompactionInd, DBTestBase::kUniversalCompactionMultiLevelInd, DBTestBase::kLevelSubcompactionsInd, DBTestBase::kUniversalSubcompactions};
+static std::vector<int> filter_actions{0,0,0,0};  // 0=create_if_missing 1=check max_subcompactions
+#endif
+
+static std::vector<int> wal_cycle{DBTestBase::kDefault, DBTestBase::kDBLogDir, DBTestBase::kWalDirAndMmapReads, DBTestBase::kRecycleLogFiles};
+static std::vector<int> wal_actions{0,0,0,2};
+
+bool DBTestBase::ChangeCompactOptions() {return CycleThroughOptions(comp_cycle,comp_actions,false);}
+bool DBTestBase::ChangeWalOptions() {return CycleThroughOptions(wal_cycle,wal_actions,true);}
+bool DBTestBase::ChangeFilterOptions() {return CycleThroughOptions(filter_cycle,filter_actions,true);}
+#else
 // Switch between different compaction styles.
 bool DBTestBase::ChangeCompactOptions() {
   if (option_config_ == kDefault) {
@@ -260,6 +322,7 @@ bool DBTestBase::ChangeFilterOptions() {
   TryReopen(options);
   return true;
 }
+#endif
 
 // Return the current option configuration.
 Options DBTestBase::CurrentOptions(
@@ -349,6 +412,9 @@ Options DBTestBase::GetOptions(
           NewHashCuckooRepFactory(options.write_buffer_size));
       options.allow_concurrent_memtable_write = false;
       break;
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kDirectIOInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
       case kDirectIO: {
         options.use_direct_reads = true;
         options.use_direct_io_for_flush_and_compaction = true;
@@ -370,17 +436,29 @@ Options DBTestBase::GetOptions(
         break;
       }
 #endif  // ROCKSDB_LITE
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kMergePutInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kMergePut:
       options.merge_operator = MergeOperators::CreatePutOperator();
       break;
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kFilterInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kFilter:
       table_options.filter_policy.reset(NewBloomFilterPolicy(10, true));
       break;
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kFullFilterWithNewTableReaderForCompactionsInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kFullFilterWithNewTableReaderForCompactions:
       table_options.filter_policy.reset(NewBloomFilterPolicy(10, false));
       options.new_table_reader_for_compaction_inputs = true;
       options.compaction_readahead_size = 10 * 1024 * 1024;
       break;
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kPartitionedFilterWithNewTableReaderForCompactionsInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kPartitionedFilterWithNewTableReaderForCompactions:
       table_options.filter_policy.reset(NewBloomFilterPolicy(10, false));
       table_options.partition_filters = true;
@@ -389,15 +467,27 @@ Options DBTestBase::GetOptions(
       options.new_table_reader_for_compaction_inputs = true;
       options.compaction_readahead_size = 10 * 1024 * 1024;
       break;
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kUncompressedInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kUncompressed:
       options.compression = kNoCompression;
       break;
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kNumLevel_3Ind: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kNumLevel_3:
       options.num_levels = 3;
       break;
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kDBLogDirInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kDBLogDir:
       options.db_log_dir = alternative_db_log_dir_;
       break;
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kWalDirAndMmapReadsInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kWalDirAndMmapReads:
       options.wal_dir = alternative_wal_dir_;
       // mmap reads should be orthogonal to WalDir setting, so we piggyback to
@@ -413,18 +503,30 @@ Options DBTestBase::GetOptions(
       options.report_bg_io_stats = true;
       // TODO(3.13) -- test more options
       break;
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kUniversalCompactionInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kUniversalCompaction:
       options.compaction_style = kCompactionStyleUniversal;
       options.num_levels = 1;
       break;
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kUniversalCompactionMultiLevelInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kUniversalCompactionMultiLevel:
       options.compaction_style = kCompactionStyleUniversal;
       options.num_levels = 8;
       break;
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kCompressedBlockCacheInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kCompressedBlockCache:
       options.allow_mmap_writes = can_allow_mmap;
       table_options.block_cache_compressed = NewLRUCache(8 * 1024 * 1024);
       break;
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kInfiniteMaxOpenFilesInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kInfiniteMaxOpenFiles:
       options.max_open_files = -1;
       break;
@@ -436,6 +538,10 @@ Options DBTestBase::GetOptions(
       options.compaction_style = kCompactionStyleFIFO;
       break;
     }
+
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kBlockBasedTableWithPrefixHashIndexInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kBlockBasedTableWithPrefixHashIndex: {
       table_options.index_type = BlockBasedTableOptions::kHashSearch;
       options.prefix_extractor.reset(NewFixedPrefixTransform(1));
@@ -446,11 +552,17 @@ Options DBTestBase::GetOptions(
       options.prefix_extractor.reset(NewNoopTransform());
       break;
     }
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kBlockBasedTableWithPartitionedIndexInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kBlockBasedTableWithPartitionedIndex: {
       table_options.index_type = BlockBasedTableOptions::kTwoLevelIndexSearch;
       options.prefix_extractor.reset(NewNoopTransform());
       break;
     }
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kBlockBasedTableWithPartitionedIndexFormat3Ind: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kBlockBasedTableWithPartitionedIndexFormat3: {
       table_options.format_version = 3;
       // Format 3 changes the binary index format. Since partitioned index is a
@@ -462,15 +574,24 @@ Options DBTestBase::GetOptions(
       table_options.partition_filters = true;
       break;
     }
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kBlockBasedTableWithIndexRestartIntervalInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kBlockBasedTableWithIndexRestartInterval: {
       table_options.index_block_restart_interval = 8;
       break;
     }
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kOptimizeFiltersForHitsInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kOptimizeFiltersForHits: {
       options.optimize_filters_for_hits = true;
       set_block_based_table_factory = true;
       break;
     }
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kRowCacheInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     case kRowCache: {
       options.row_cache = NewLRUCache(1024 * 1024);
       break;
@@ -504,7 +625,10 @@ Options DBTestBase::GetOptions(
       options.manual_wal_flush = true;
       break;
     }
-
+ 
+#ifdef INDIRECT_VALUE_SUPPORT
+    case kDefaultInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+#endif
     default:
       break;
   }
@@ -688,7 +812,11 @@ Status DBTestBase::PutInvInd(int cf, int k, size_t valuelen, const Slice& v, boo
 }
 
 Status DBTestBase::Put(const Slice& k, const Slice& v, WriteOptions wo) {
-  if (kMergePut == option_config_) {
+  if (kMergePut == option_config_
+#ifdef INDIRECT_VALUE_SUPPORT
+      || kMergePutInd == option_config_
+#endif
+  ) {
     return db_->Merge(wo, k, v);
   } else {
     return db_->Put(wo, k, v);
@@ -697,7 +825,11 @@ Status DBTestBase::Put(const Slice& k, const Slice& v, WriteOptions wo) {
 
 Status DBTestBase::Put(int cf, const Slice& k, const Slice& v,
                        WriteOptions wo) {
-  if (kMergePut == option_config_) {
+  if (kMergePut == option_config_
+#ifdef INDIRECT_VALUE_SUPPORT
+      || kMergePutInd == option_config_
+#endif
+  ) {
     return db_->Merge(wo, handles_[cf], k, v);
   } else {
     return db_->Put(wo, handles_[cf], k, v);

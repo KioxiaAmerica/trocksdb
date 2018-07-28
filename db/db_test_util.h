@@ -694,12 +694,53 @@ class DBTestBase : public testing::Test {
     kConcurrentSkipList = 29,
     kPipelinedWrite = 30,
     kConcurrentWALWrites = 31,
-    kDirectIO,
-    kLevelSubcompactions,
-    kBlockBasedTableWithIndexRestartInterval,
-    kBlockBasedTableWithPartitionedIndex,
-    kBlockBasedTableWithPartitionedIndexFormat3,
-    kPartitionedFilterWithNewTableReaderForCompactions,
+    kDirectIO = 32,
+    kLevelSubcompactions = 33,
+    kBlockBasedTableWithIndexRestartInterval = 34,
+    kBlockBasedTableWithPartitionedIndex = 35,
+    kBlockBasedTableWithPartitionedIndexFormat3 = 36,
+    kPartitionedFilterWithNewTableReaderForCompactions = 37,
+    // The following tests use indirect values.  We don't test combinations that are incompatible with, or have nothing to do with, indirect values
+#ifdef INDIRECT_VALUE_SUPPORT
+    kDefaultInd = 38,
+    kBlockBasedTableWithPrefixHashIndexInd = 39,
+    kBlockBasedTableWithWholeKeyHashIndexInd = 40,
+//    kPlainTableFirstBytePrefix = 3,
+//    kPlainTableCappedPrefix = 4,
+//    kPlainTableCappedPrefixNonMmap = 5,
+//    kPlainTableAllBytesPrefix = 6,
+//    kVectorRep = 7,
+//    kHashLinkList = 8,
+//    kHashCuckoo = 9,
+    kMergePutInd = 41,
+    kFilterInd = 42,
+    kFullFilterWithNewTableReaderForCompactionsInd = 43,
+    kUncompressedInd = 44,
+    kNumLevel_3Ind = 45,
+    kDBLogDirInd = 46,
+    kWalDirAndMmapReadsInd = 47,
+//    kManifestFileSize = 17,
+//    kPerfOptions = 18,
+//    kHashSkipList = 19,
+    kUniversalCompactionInd = 48,
+    kUniversalCompactionMultiLevelInd = 49,
+    kCompressedBlockCacheInd = 50,
+    kInfiniteMaxOpenFilesInd = 51,
+//    kxxHashChecksum = 24,
+//    kFIFOCompaction = 25,
+    kOptimizeFiltersForHitsInd = 52,
+    kRowCacheInd = 53,
+//    kRecycleLogFiles = 28,
+//    kConcurrentSkipList = 29,
+//    kPipelinedWrite = 30,
+//    kConcurrentWALWrites = 31,
+    kDirectIOInd = 54,
+//    kLevelSubcompactions = 33,
+    kBlockBasedTableWithIndexRestartIntervalInd = 55,
+    kBlockBasedTableWithPartitionedIndexInd = 56,
+    kBlockBasedTableWithPartitionedIndexFormat3Ind = 57,
+    kPartitionedFilterWithNewTableReaderForCompactionsInd = 58,
+#endif
 
     // This must be the last line
     kEnd,
@@ -794,6 +835,9 @@ class DBTestBase : public testing::Test {
   // Switch to a fresh database with the next option configuration to
   // test.  Return false if there are no more configurations to test.
   bool ChangeOptions(int skip_mask = kNoSkip);
+
+ // cycle through option sets
+  bool CycleThroughOptions(std::vector<int>& optioncycle, std::vector<int>& optionaction,bool destroy2);
 
   // Switch between different compaction styles.
   bool ChangeCompactOptions();

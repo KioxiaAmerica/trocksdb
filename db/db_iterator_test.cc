@@ -729,6 +729,9 @@ TEST_P(DBIteratorTest, IterMultiWithDelete) {
       // TODO: merge operator does not support backward iteration yet
       if (kPlainTableAllBytesPrefix != option_config_ &&
           kBlockBasedTableWithWholeKeyHashIndex != option_config_ &&
+#ifdef INDIRECT_VALUE_SUPPORT
+          kBlockBasedTableWithWholeKeyHashIndexInd != option_config_ &&
+#endif
           kHashLinkList != option_config_ &&
           kHashSkipList != option_config_) {  // doesn't support SeekToLast
         iter->Prev();
@@ -796,6 +799,9 @@ TEST_P(DBIteratorTest, IterWithSnapshot) {
       // TODO: merge operator does not support backward iteration yet
       if (kPlainTableAllBytesPrefix != option_config_ &&
           kBlockBasedTableWithWholeKeyHashIndex != option_config_ &&
+#ifdef INDIRECT_VALUE_SUPPORT
+          kBlockBasedTableWithWholeKeyHashIndexInd != option_config_ &&
+#endif
           kHashLinkList != option_config_ && kHashSkipList != option_config_) {
         iter->Prev();
         ASSERT_EQ(IterStatus(iter), "key4->val4");
@@ -815,6 +821,9 @@ TEST_P(DBIteratorTest, IterWithSnapshot) {
       // TODO(gzh): merge operator does not support backward iteration yet
       if (kPlainTableAllBytesPrefix != option_config_ &&
           kBlockBasedTableWithWholeKeyHashIndex != option_config_ &&
+#ifdef INDIRECT_VALUE_SUPPORT
+          kBlockBasedTableWithWholeKeyHashIndexInd != option_config_ &&
+#endif
           kHashLinkList != option_config_ && kHashSkipList != option_config_) {
         iter->SeekForPrev("key1");
         ASSERT_EQ(IterStatus(iter), "key1->val1");

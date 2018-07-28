@@ -2647,7 +2647,7 @@ class DBTestRandomized : public DBTest,
         option_configs.push_back(option_config);
       }
     }
-    option_configs.push_back(kBlockBasedTableWithIndexRestartInterval);
+    option_configs.push_back(kBlockBasedTableWithIndexRestartInterval);  // twice? why?
     return option_configs;
   }
 };
@@ -2676,6 +2676,10 @@ TEST_P(DBTestRandomized, Randomized) {
         option_config_ == kHashCuckoo ||
         option_config_ == kPlainTableFirstBytePrefix ||
         option_config_ == kBlockBasedTableWithWholeKeyHashIndex ||
+#ifdef INDIRECT_VALUE_SUPPORT
+        option_config_ == kBlockBasedTableWithWholeKeyHashIndexInd ||
+        option_config_ == kBlockBasedTableWithPrefixHashIndexInd ||
+#endif
         option_config_ == kBlockBasedTableWithPrefixHashIndex) {
       minimum = 1;
     }
@@ -2715,6 +2719,10 @@ TEST_P(DBTestRandomized, Randomized) {
       // iterator will be invalid right when seeking a non-existent key, right
       // than return a key that is close to it.
       if (option_config_ != kBlockBasedTableWithWholeKeyHashIndex &&
+#ifdef INDIRECT_VALUE_SUPPORT
+          option_config_ != kBlockBasedTableWithWholeKeyHashIndexInd &&
+          option_config_ != kBlockBasedTableWithPrefixHashIndexInd &&
+#endif
           option_config_ != kBlockBasedTableWithPrefixHashIndex) {
         ASSERT_TRUE(CompareIterators(step, &model, db_, nullptr, nullptr));
         ASSERT_TRUE(CompareIterators(step, &model, db_, model_snap, db_snap));

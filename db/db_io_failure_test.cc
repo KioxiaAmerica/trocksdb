@@ -36,6 +36,9 @@ TEST_F(DBIOFailureTest, DropWrites) {
     env_->no_slowdown_ = true;
     for (int i = 0; i < 5; i++) {
       if (option_config_ != kUniversalCompactionMultiLevel &&
+#ifdef INDIRECT_VALUE_SUPPORT
+          option_config_ != kUniversalCompactionMultiLevelInd &&
+#endif
           option_config_ != kUniversalSubcompactions) {
         for (int level = 0; level < dbfull()->NumberLevels(); level++) {
           if (level > 0 && level == dbfull()->NumberLevels() - 1) {
