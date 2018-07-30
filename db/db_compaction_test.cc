@@ -1980,7 +1980,7 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionThirdPath) {
   for (int i = 0; i < key_idx; i++) {
     auto v = Get(KeyInvIndNewFile(i,i%100,values_are_indirect));
     ASSERT_NE(v, "NOT_FOUND");
-    ASSERT_TRUE(v.size() == 1 || v.size() == largevaluesize);
+    ASSERT_TRUE(v.size() == 1 || v.size() == size_t(largevaluesize));
   }
 
   Reopen(options);
@@ -1988,7 +1988,7 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionThirdPath) {
   for (int i = 0; i < key_idx; i++) {
     auto v = Get(KeyInvIndNewFile(i,i%100,values_are_indirect));
     ASSERT_NE(v, "NOT_FOUND");
-    ASSERT_TRUE(v.size() == 1 || v.size() == largevaluesize);
+    ASSERT_TRUE(v.size() == 1 || v.size() == size_t(largevaluesize));
   }
 
   Destroy(options);
@@ -2178,19 +2178,19 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionCFPathUse) {
     for (int i = 0; i < key_idx; i++) {
       auto v = Get(0, KeyInvIndNewFile(i,i%KNumKeysByGenerateNewFile,values_are_indirect));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == 1 || v.size() == 990 || v.size() == allowedvlen3);
+      ASSERT_TRUE(v.size() == 1 || v.size() == 990 || v.size() == size_t(allowedvlen3));
     }
 
     for (int i = 0; i < key_idx1; i++) {
       auto v = Get(1, KeyInvIndNewFile(i,i%KNumKeysByGenerateNewFile,values_are_indirect));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == 1 || v.size() == 990 || v.size() == allowedvlen3);
+      ASSERT_TRUE(v.size() == 1 || v.size() == 990 || v.size() == size_t(allowedvlen3));
     }
 
     for (int i = 0; i < key_idx2; i++) {
       auto v = Get(2, KeyInvIndNewFile(i,i%KNumKeysByGenerateNewFile,values_are_indirect));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == 1 || v.size() == 990 || v.size() == allowedvlen3);
+      ASSERT_TRUE(v.size() == 1 || v.size() == 990 || v.size() == size_t(allowedvlen3));
     }
   };
 
