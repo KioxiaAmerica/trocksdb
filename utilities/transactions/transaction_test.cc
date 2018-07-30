@@ -1396,7 +1396,6 @@ TEST_P(TransactionTest, DISABLED_TwoPhaseMultiThreadTest) {
   }
 }
 
-#ifndef INDIRECT_VALUE_SUPPORT
 TEST_P(TransactionTest, TwoPhaseLongPrepareTest) {
   WriteOptions write_options;
   write_options.sync = true;
@@ -1461,7 +1460,6 @@ TEST_P(TransactionTest, TwoPhaseLongPrepareTest) {
 
   delete txn;
 }
-#endif //INDIRECT_VALUE_SUPPORT
 
 TEST_P(TransactionTest, TwoPhaseSequenceTest) {
   WriteOptions write_options;
@@ -5574,7 +5572,12 @@ TEST_P(TransactionTest, DuplicateKeys) {
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  rocksdb::useindirect=0;
+  int ret = RUN_ALL_TESTS();
+#ifdef INDIRECT_VALUE_SUPPORT
+  if(ret==0){rocksdb::useindirect=1; ret = RUN_ALL_TESTS();}
+#endif
+  return ret;
 }
 
 #else

@@ -726,9 +726,7 @@ TEST_P(BackupableDBTestWithParam, OfflineIntegrationTest) {
         ASSERT_OK(backup_engine_->PurgeOldBackups(5 - i));
       }
       // ---- make sure the data is there ---
-#ifndef INDIRECT_VALUE_SUPPORT
       AssertBackupConsistency(0, 0, fill_up_to, max_key);
-#endif //INDIRECT_VALUE_SUPPORT
       CloseBackupEngine();
     }
   }
@@ -774,11 +772,9 @@ TEST_P(BackupableDBTestWithParam, OnlineIntegrationTest) {
       // we deleted backup 2
       Status s = backup_engine_->RestoreDBFromBackup(2, dbname_, dbname_);
       ASSERT_TRUE(!s.ok());
-#ifndef INDIRECT_VALUE_SUPPORT
     } else {
       int fill_up_to = std::min(keys_iteration * i, max_key);
       AssertBackupConsistency(i, 0, fill_up_to, max_key);
-#endif //INDIRECT_VALUE_SUPPORT
     }
   }
 
@@ -790,12 +786,10 @@ TEST_P(BackupableDBTestWithParam, OnlineIntegrationTest) {
   backup_engine_->GetBackupInfo(&backup_info);
   ASSERT_EQ(2UL, backup_info.size());
 
-#ifndef INDIRECT_VALUE_SUPPORT
   // check backup 3
   AssertBackupConsistency(3, 0, 3 * keys_iteration, max_key);
   // check backup 5
   AssertBackupConsistency(5, 0, max_key);
-#endif //INDIRECT_VALUE_SUPPORT
 
   CloseBackupEngine();
 }
@@ -878,7 +872,6 @@ TEST_F(BackupableDBTest, CorruptionsTest) {
     ASSERT_OK(backup_engine_->CreateNewBackup(db_.get(), !!(rnd.Next() % 2)));
   }
 
-#ifndef INDIRECT_VALUE_SUPPORT
   // ---------- case 1. - fail a write -----------
   // try creating backup 6, but fail a write
   FillDB(db_.get(), keys_iteration * 5, keys_iteration * 6);
@@ -965,7 +958,6 @@ TEST_F(BackupableDBTest, CorruptionsTest) {
   ASSERT_OK(backup_engine_->CreateNewBackup(db_.get(), !!(rnd.Next() % 2)));
   CloseDBAndBackupEngine();
   AssertBackupConsistency(2, 0, keys_iteration * 2, keys_iteration * 5);
-#endif //INDIRECT_VALUE_SUPPORT
 }
 
 TEST_F(BackupableDBTest, InterruptCreationTest) {
@@ -1108,12 +1100,10 @@ TEST_F(BackupableDBTest, NoShareTableFiles) {
   }
   CloseDBAndBackupEngine();
 
-#ifndef INDIRECT_VALUE_SUPPORT
   for (int i = 0; i < 5; ++i) {
     AssertBackupConsistency(i + 1, 0, keys_iteration * (i + 1),
                             keys_iteration * 6);
   }
-#endif //INDIRECT_VALUE_SUPPORT
 }
 
 // Verify that you can backup and restore with share_files_with_checksum on
@@ -1125,13 +1115,11 @@ TEST_F(BackupableDBTest, ShareTableFilesWithChecksums) {
     ASSERT_OK(backup_engine_->CreateNewBackup(db_.get(), !!(i % 2)));
   }
   CloseDBAndBackupEngine();
-#ifndef INDIRECT_VALUE_SUPPORT
 
   for (int i = 0; i < 5; ++i) {
     AssertBackupConsistency(i + 1, 0, keys_iteration * (i + 1),
                             keys_iteration * 6);
   }
-#endif //INDIRECT_VALUE_SUPPORT
 }
 
 // Verify that you can backup and restore using share_files_with_checksum set to
@@ -1146,12 +1134,10 @@ TEST_F(BackupableDBTest, ShareTableFilesWithChecksumsTransition) {
   }
   CloseDBAndBackupEngine();
 
-#ifndef INDIRECT_VALUE_SUPPORT
   for (int i = 0; i < 5; ++i) {
     AssertBackupConsistency(i + 1, 0, keys_iteration * (i + 1),
                             keys_iteration * 6);
   }
-#endif //INDIRECT_VALUE_SUPPORT
 
   // set share_files_with_checksum to true and do some more backups
   OpenDBAndBackupEngineShareWithChecksum(true, false, true, true);
@@ -1161,12 +1147,10 @@ TEST_F(BackupableDBTest, ShareTableFilesWithChecksumsTransition) {
   }
   CloseDBAndBackupEngine();
 
-#ifndef INDIRECT_VALUE_SUPPORT
   for (int i = 0; i < 5; ++i) {
     AssertBackupConsistency(i + 1, 0, keys_iteration * (i + 5 + 1),
                             keys_iteration * 11);
   }
-#endif //INDIRECT_VALUE_SUPPORT
 }
 
 TEST_F(BackupableDBTest, DeleteTmpFiles) {
@@ -1280,9 +1264,7 @@ TEST_F(BackupableDBTest, RateLimiting) {
             (bytes_written * kMicrosPerSec) / limit.second;
         ASSERT_GT(restore_time, 0.8 * rate_limited_restore_time);
 
-#ifndef INDIRECT_VALUE_SUPPORT
         AssertBackupConsistency(0, 0, 100000, 100010);
-#endif //INDIRECT_VALUE_SUPPORT
       }
     }
   }

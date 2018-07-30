@@ -1225,7 +1225,6 @@ TEST_F(DBTest, GetApproximateMemTableStats) {
   ASSERT_GT(size, 6000);
 }
 
-#ifndef INDIRECT_VALUE_SUPPORT
 TEST_F(DBTest, ApproximateSizes) {
   do {
     Options options = CurrentOptions();
@@ -1234,7 +1233,7 @@ TEST_F(DBTest, ApproximateSizes) {
     options.create_if_missing = true;
     DestroyAndReopen(options);
     CreateAndReopenWithCF({"pikachu"}, options);
-    bool values_are_indirect = false;  // Set if we are using VLogging
+    bool values_are_indirect = false;  // Set if we are using VLogging  We skip the vlogging tests but we do this anyway, for form
 #ifdef INDIRECT_VALUE_SUPPORT
     values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
@@ -1250,7 +1249,7 @@ TEST_F(DBTest, ApproximateSizes) {
     static const int S2 = 105000;  // Allow some expansion from metadata
     Random rnd(301);
     for (int i = 0; i < N; i++) {
-      ASSERT_OK(Put(1, KeyInvInd(i,S1,values_are_indirect), ValueInvInd(RandomString(&rnd, S1))));
+      ASSERT_OK(Put(1, KeyInvInd(i,S1,values_are_indirect), ValueInvInd(RandomString(&rnd, S1),values_are_indirect)));
     }
 
     // 0 because GetApproximateSizes() does not account for memtable space
@@ -1283,7 +1282,7 @@ TEST_F(DBTest, ApproximateSizes) {
     }
     // ApproximateOffsetOf() is not yet implemented in plain table format.
   } while (ChangeOptions(kSkipUniversalCompaction | kSkipFIFOCompaction |
-                         kSkipPlainTable | kSkipHashIndex));
+                         kSkipPlainTable | kSkipHashIndex|kSkipIndirect));
 }
 
 TEST_F(DBTest, ApproximateSizes_MixOfSmallAndLarge) {
@@ -1291,7 +1290,7 @@ TEST_F(DBTest, ApproximateSizes_MixOfSmallAndLarge) {
     Options options = CurrentOptions();
     options.compression = kNoCompression;
     CreateAndReopenWithCF({"pikachu"}, options);
-    bool values_are_indirect = false;  // Set if we are using VLogging
+    bool values_are_indirect = false;  // Set if we are using VLogging.  We skip the vlogging tests but we do this anyway, for form
 #ifdef INDIRECT_VALUE_SUPPORT
     values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
@@ -1327,9 +1326,8 @@ TEST_F(DBTest, ApproximateSizes_MixOfSmallAndLarge) {
       dbfull()->TEST_CompactRange(0, nullptr, nullptr, handles_[1]);
     }
     // ApproximateOffsetOf() is not yet implemented in plain table format.
-  } while (ChangeOptions(kSkipPlainTable));
+  } while (ChangeOptions(kSkipPlainTable|kSkipIndirect));
 }
-#endif
 #endif  // ROCKSDB_LITE
 
 #ifndef ROCKSDB_LITE

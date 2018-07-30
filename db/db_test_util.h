@@ -702,6 +702,7 @@ class DBTestBase : public testing::Test {
     kPartitionedFilterWithNewTableReaderForCompactions = 37,
     // The following tests use indirect values.  We don't test combinations that are incompatible with, or have nothing to do with, indirect values
 #ifdef INDIRECT_VALUE_SUPPORT
+    // MUST KEEP ALL THE INDIRECT CONFIGS TOGETHER!  Checked in SkipIndirect
     kDefaultInd = 38,
     kBlockBasedTableWithPrefixHashIndexInd = 39,
     kBlockBasedTableWithWholeKeyHashIndexInd = 40,
@@ -739,7 +740,7 @@ class DBTestBase : public testing::Test {
     kBlockBasedTableWithIndexRestartIntervalInd = 55,
     kBlockBasedTableWithPartitionedIndexInd = 56,
     kBlockBasedTableWithPartitionedIndexFormat3Ind = 57,
-    kPartitionedFilterWithNewTableReaderForCompactionsInd = 58,
+    kPartitionedFilterWithNewTableReaderForCompactionsInd = 58,   // If you add another, must change references to this in SkipIndirect
 #endif
 
     // This must be the last line
@@ -778,6 +779,7 @@ class DBTestBase : public testing::Test {
     kSkipFIFOCompaction = 128,
     kSkipMmapReads = 256,
     kSkipDirectIO = 512,
+    kSkipIndirect =1024,  // skip indirect values
   };
 
   explicit DBTestBase(const std::string path);
@@ -837,17 +839,17 @@ class DBTestBase : public testing::Test {
   bool ChangeOptions(int skip_mask = kNoSkip);
 
  // cycle through option sets
-  bool CycleThroughOptions(std::vector<int>& optioncycle, std::vector<int>& optionaction,bool destroy2);
+  bool CycleThroughOptions(std::vector<int>& optioncycle, std::vector<int>& optionaction,bool destroy2,int skip_mask);
 
   // Switch between different compaction styles.
-  bool ChangeCompactOptions();
+  bool ChangeCompactOptions(int skip_mask = 0);
 
   // Switch between different WAL-realted options.
-  bool ChangeWalOptions();
+  bool ChangeWalOptions(int skip_mask = 0);
 
   // Switch between different filter policy
   // Jump from kDefault to kFilter to kFullFilter
-  bool ChangeFilterOptions();
+  bool ChangeFilterOptions(int skip_mask = 0);
 
   // Return the current option configuration.
   Options CurrentOptions(const anon::OptionsOverride& options_override =

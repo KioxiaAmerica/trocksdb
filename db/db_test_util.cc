@@ -171,6 +171,11 @@ bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
     if ((skip_mask & kSkipDirectIO) && option_config == kDirectIO) {
       return true;
     }
+#ifdef INDIRECT_VALUE_SUPPORT
+    if ((skip_mask & kSkipIndirect) && option_config >= kDefaultInd && option_config <= kPartitionedFilterWithNewTableReaderForCompactionsInd) {
+      return true;
+    }
+#endif
     return false;
 }
 
@@ -197,11 +202,13 @@ bool DBTestBase::ChangeOptions(int skip_mask) {
 
 #if 1  // scaf new version
 // Switch between different option styles.  Return false if no more to try
-bool DBTestBase::CycleThroughOptions(std::vector<int>& optioncycle, std::vector<int>& optionaction,bool destroy2) {int i;
-  for(i=0; i<optioncycle.size()-1;++i)if(option_config_==optioncycle[i])break;  // find current match
-  ++i;  // advance to next option
-  if(i==optioncycle.size())return false;  // if we run off the end, indicate no more options
-  option_config_ = optioncycle[i];  // set new option value
+bool DBTestBase::CycleThroughOptions(std::vector<int>& optioncycle, std::vector<int>& optionaction,bool destroy2,int skip_mask) {int i;
+  do{
+    for(i=0; i<optioncycle.size()-1;++i)if(option_config_==optioncycle[i])break;  // find current match
+    ++i;  // advance to next option
+    if(i==optioncycle.size())return false;  // if we run off the end, indicate no more options
+    option_config_ = optioncycle[i];  // set new option value
+  }while(ShouldSkipOptions(option_config_, skip_mask));  // keep looking till we find one we won't skip
   Destroy(last_options_);  // destroy old
   auto options = CurrentOptions();   // create new options including new setting
   if(destroy2)Destroy(options);   // ?? for WAL tests
@@ -234,9 +241,9 @@ static std::vector<int> filter_actions{0,0,0,0};  // 0=create_if_missing 1=check
 static std::vector<int> wal_cycle{DBTestBase::kDefault, DBTestBase::kDBLogDir, DBTestBase::kWalDirAndMmapReads, DBTestBase::kRecycleLogFiles};
 static std::vector<int> wal_actions{0,0,0,2};
 
-bool DBTestBase::ChangeCompactOptions() {return CycleThroughOptions(comp_cycle,comp_actions,false);}
-bool DBTestBase::ChangeWalOptions() {return CycleThroughOptions(wal_cycle,wal_actions,true);}
-bool DBTestBase::ChangeFilterOptions() {return CycleThroughOptions(filter_cycle,filter_actions,true);}
+bool DBTestBase::ChangeCompactOptions(int skip_mask) {return CycleThroughOptions(comp_cycle,comp_actions,false,skip_mask);}
+bool DBTestBase::ChangeWalOptions(int skip_mask) {return CycleThroughOptions(wal_cycle,wal_actions,true,skip_mask);}
+bool DBTestBase::ChangeFilterOptions(int skip_mask) {return CycleThroughOptions(filter_cycle,filter_actions,true,skip_mask);}
 #else
 // Switch between different compaction styles.
 bool DBTestBase::ChangeCompactOptions() {

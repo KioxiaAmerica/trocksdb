@@ -36,6 +36,8 @@
 
 namespace rocksdb {
 
+static int useindirect = 0;  // set if we are using indirect values
+
 // Return true if the ith bit is set in combination represented by comb
 bool IsInCombination(size_t i, size_t comb) { return comb & (size_t(1) << i); }
 
@@ -52,6 +54,9 @@ class TransactionTestBase : public ::testing::Test {
   TransactionTestBase(bool use_stackable_db, bool two_write_queue,
                       TxnDBWritePolicy write_policy)
       : db(nullptr), env(nullptr), use_stackable_db_(use_stackable_db) {
+#ifdef INDIRECT_VALUE_SUPPORT
+    if(useindirect)options.vlogring_activation_level = std::vector<int32_t>{0};
+#endif
     options.create_if_missing = true;
     options.max_write_buffer_number = 2;
     options.write_buffer_size = 4 * 1024;

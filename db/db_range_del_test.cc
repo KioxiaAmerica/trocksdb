@@ -120,6 +120,7 @@ TEST_F(DBRangeDelTest, CompactionOutputFilesExactlyFilled) {
 #ifdef INDIRECT_VALUE_SUPPORT
   // We try to honor the file-size limit of 9K, and there are 24K of kvs.  That takes 3 files
   if(values_are_indirect)expfiles = 3;
+#endif
   ASSERT_EQ(expfiles, NumTableFilesAtLevel(1));
   db_->ReleaseSnapshot(snapshot);
 }
@@ -937,6 +938,7 @@ TEST_F(DBRangeDelTest, CompactionTreatsSplitInputLevelDeletionAtomically) {
   bool values_are_indirect = false;  // Set if we are using VLogging
 #ifdef INDIRECT_VALUE_SUPPORT
   values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
   if(values_are_indirect){
     options.target_file_size_base = (uint64_t)(kValueBytes*1.7);  // allow 2 keys per file for both indirect and direct values
     options.allow_trivial_move = true;

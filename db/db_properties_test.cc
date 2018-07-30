@@ -963,7 +963,6 @@ TEST_F(DBPropertiesTest, EstimatePendingCompBytes) {
 }
 
 TEST_F(DBPropertiesTest, EstimateCompressionRatio) {
-#ifndef INDIRECT_VALUE_SUPPORT  // can't measure SST compression when there are indirect values
   if (!Snappy_Supported()) {
     return;
   }
@@ -971,6 +970,9 @@ TEST_F(DBPropertiesTest, EstimateCompressionRatio) {
   const int kNumEntriesPerFile = 1000;
 
   Options options = CurrentOptions();
+#ifdef INDIRECT_VALUE_SUPPORT  // can't measure SST compression when there are indirect values
+  if(options.vlogring_activation_level.size())return;
+#endif
   options.compression_per_level = {kNoCompression, kSnappyCompression};
   options.disable_auto_compactions = true;
   options.num_levels = 2;
@@ -1001,7 +1003,6 @@ TEST_F(DBPropertiesTest, EstimateCompressionRatio) {
   // Data at L1 should be highly compressed thanks to Snappy and redundant data
   // in values (ratio is 12.846 as of 4/19/2016).
   ASSERT_GT(CompressionRatioAtLevel(1), 10.0);
-#endif
 }
 
 #endif  // ROCKSDB_LITE

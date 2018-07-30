@@ -33,6 +33,18 @@ namespace rocksdb {
 
 static const int kValueSize = 1000;
 
+// Test in both normal and indirect configurations
+#ifdef INDIRECT_VALUE_SUPPORT
+#define INDOPTIONS do{
+#define INDOPTIONSEND(opts) }while(opts.vlogring_activation_level.push_back(0),opts.vlogring_activation_level.size()<2);
+#else
+#define INDOPTIONS {
+#define INDOPTIONSEND(opts) }
+#endif
+
+// The tests in this file are not self-contained (they chain to each other).  So we must run all the direct-value tests first, then indirect
+static int useindirect = 0;  // set to make tests open with indrect values
+
 class CorruptionTest : public testing::Test {
  public:
   test::ErrorEnv env_;
@@ -42,6 +54,9 @@ class CorruptionTest : public testing::Test {
   DB* db_;
 
   CorruptionTest() {
+#ifdef INDIRECT_VALUE_SUPPORT
+    if(useindirect)options_.vlogring_activation_level = std::vector<int32_t>{0};
+#endif
     // If LRU cache shard bit is smaller than 2 (or -1 which will automatically
     // set it to 0), test SequenceNumberRecovery will fail, likely because of a
     // bug in recovery code. Keep it 4 for now to make the test passes.
@@ -340,11 +355,12 @@ TEST_F(CorruptionTest, TableFile) {
   ASSERT_NOK(dbi->VerifyChecksum());
 }
 
-#ifndef INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT
 // This testcase fails on the next-last line   Check(5000, 5000);  It fails inside Check, when the iterator is destroyed.
 // Somehow THAT corruption is not detected anywhere and crashes the destructor.  I have not been able to find corruption settings that
 // make the testcase succeed.  -200000 180000 seems to destroy that last 200-odd keys, but do not affect the header, so 9800 good keys
 // are found by the scan.  Values that modify the last 12000 bytes of the file result in the crash
+#endif
 
 TEST_F(CorruptionTest, TableFileIndexData) {
   Options options;
@@ -368,7 +384,6 @@ TEST_F(CorruptionTest, TableFileIndexData) {
   Check(0, 5000);
   ASSERT_NOK(dbi->VerifyChecksum());
 }
-#endif
 
 TEST_F(CorruptionTest, MissingDescriptor) {
   Build(1000);
@@ -535,7 +550,13 @@ TEST_F(CorruptionTest, FileSystemStateCorrupted) {
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+
+  rocksdb::useindirect=0;
+  int ret = RUN_ALL_TESTS();
+#ifdef INDIRECT_VALUE_SUPPORT
+  if(ret==0){rocksdb::useindirect=1; ret = RUN_ALL_TESTS();}
+#endif
+  return ret;
 }
 
 #else
