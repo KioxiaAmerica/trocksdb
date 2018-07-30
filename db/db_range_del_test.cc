@@ -88,7 +88,7 @@ TEST_F(DBRangeDelTest, CompactionOutputFilesExactlyFilled) {
   bool values_are_indirect = false;  // Set if we are using VLogging
 #ifdef INDIRECT_VALUE_SUPPORT
   values_are_indirect = options.vlogring_activation_level.size()!=0;
-#endif //INDIRECT_VALUE_SUPPORT
+#endif
 
   // snapshot protects range tombstone from dropping due to becoming obsolete.
   const Snapshot* snapshot = db_->GetSnapshot();
@@ -123,15 +123,10 @@ TEST_F(DBRangeDelTest, CompactionOutputFilesExactlyFilled) {
 #endif
   ASSERT_EQ(expfiles, NumTableFilesAtLevel(1));
   db_->ReleaseSnapshot(snapshot);
-#endif //INDIRECT_VALUE_SUPPORT
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT  // scaf must be replaced by option
- // this test has key-lengths wired to 8 bytes, so we cannot replace Put
-TEST_F(DBRangeDelTest, DISABLED_MaxCompactionBytesCutsOutputFiles) {
-#else
+ // this test has key-lengths wired to 8 bytes, so we cannot replace Put; thus it won't run with indirect values
 TEST_F(DBRangeDelTest, MaxCompactionBytesCutsOutputFiles) {
-#endif //INDIRECT_VALUE_SUPPORT
   // Ensures range deletion spanning multiple compaction output files that are
   // cut by max_compaction_bytes will have non-overlapping key-ranges.
   // https://github.com/facebook/rocksdb/issues/1778
