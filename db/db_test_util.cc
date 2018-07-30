@@ -202,7 +202,8 @@ bool DBTestBase::ChangeOptions(int skip_mask) {
 
 #if 1  // scaf new version
 // Switch between different option styles.  Return false if no more to try
-bool DBTestBase::CycleThroughOptions(std::vector<int>& optioncycle, std::vector<int>& optionaction,bool destroy2,int skip_mask) {int i;
+
+bool DBTestBase::CycleThroughOptions(std::vector<int>& optioncycle, std::vector<int>& optionaction,bool destroy2,int skip_mask) {size_t i;
   do{
     for(i=0; i<optioncycle.size()-1;++i)if(option_config_==optioncycle[i])break;  // find current match
     ++i;  // advance to next option

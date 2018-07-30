@@ -88,7 +88,7 @@ TEST_F(DBRangeDelTest, CompactionOutputFilesExactlyFilled) {
   bool values_are_indirect = false;  // Set if we are using VLogging
 #ifdef INDIRECT_VALUE_SUPPORT
   values_are_indirect = options.vlogring_activation_level.size()!=0;
-#endif
+#endif //INDIRECT_VALUE_SUPPORT
 
   // snapshot protects range tombstone from dropping due to becoming obsolete.
   const Snapshot* snapshot = db_->GetSnapshot();
@@ -123,12 +123,15 @@ TEST_F(DBRangeDelTest, CompactionOutputFilesExactlyFilled) {
 #endif
   ASSERT_EQ(expfiles, NumTableFilesAtLevel(1));
   db_->ReleaseSnapshot(snapshot);
+#endif //INDIRECT_VALUE_SUPPORT
 }
 
-TEST_F(DBRangeDelTest, MaxCompactionBytesCutsOutputFiles) {
 #ifdef INDIRECT_VALUE_SUPPORT  // scaf must be replaced by option
  // this test has key-lengths wired to 8 bytes, so we cannot replace Put
+TEST_F(DBRangeDelTest, DISABLED_MaxCompactionBytesCutsOutputFiles) {
 #else
+TEST_F(DBRangeDelTest, MaxCompactionBytesCutsOutputFiles) {
+#endif //INDIRECT_VALUE_SUPPORT
   // Ensures range deletion spanning multiple compaction output files that are
   // cut by max_compaction_bytes will have non-overlapping key-ranges.
   // https://github.com/facebook/rocksdb/issues/1778
@@ -179,7 +182,6 @@ TEST_F(DBRangeDelTest, MaxCompactionBytesCutsOutputFiles) {
                 0);
   }
   db_->ReleaseSnapshot(snapshot);
-#endif
 }
 
 TEST_F(DBRangeDelTest, SentinelsOmittedFromOutputFile) {
@@ -351,12 +353,12 @@ TEST_F(DBRangeDelTest, ValidLevelSubcompactionBoundaries) {
   options.target_file_size_multiplier = 1;
 #ifdef INDIRECT_VALUE_SUPPORT
   options.allow_trivial_move = true;
-#endif
+#endif //INDIRECT_VALUE_SUPPORT
   Reopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
 #ifdef INDIRECT_VALUE_SUPPORT
   values_are_indirect = options.vlogring_activation_level.size()!=0;
-#endif
+#endif //INDIRECT_VALUE_SUPPORT
 
   Random rnd(301);
   for (int i = 0; i < 2; ++i) {
@@ -417,12 +419,12 @@ TEST_F(DBRangeDelTest, ValidUniversalSubcompactionBoundaries) {
   options.target_file_size_multiplier = 1;
 #ifdef INDIRECT_VALUE_SUPPORT
   options.allow_trivial_move = true;
-#endif
+#endif //INDIRECT_VALUE_SUPPORT
   Reopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
 #ifdef INDIRECT_VALUE_SUPPORT
   values_are_indirect = options.vlogring_activation_level.size()!=0;
-#endif
+#endif //INDIRECT_VALUE_SUPPORT
 
   Random rnd(301);
   for (int i = 0; i < kNumLevels - 1; ++i) {
