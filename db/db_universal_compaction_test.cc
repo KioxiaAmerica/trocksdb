@@ -1299,8 +1299,10 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionFourPaths) {
   env_->DeleteDir(options.db_paths[1].path);
   Reopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
+  int bigvaluesize = 990;
 #ifdef INDIRECT_VALUE_SUPPORT
   values_are_indirect = options.vlogring_activation_level.size()!=0;
+  if(values_are_indirect)bigvaluesize = 16;
 #endif
 
   Random rnd(301);
@@ -1308,6 +1310,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionFourPaths) {
 
   // First three 110KB files are not going to second path.
   // After that, (100K, 200K)
+
   for (int num = 0; num < 3; num++) {
     GenerateNewFileInvInd(&rnd, &key_idx,values_are_indirect);
   }
@@ -1364,11 +1367,6 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionFourPaths) {
   ASSERT_EQ(1, GetSstFileCount(options.db_paths[2].path));
   ASSERT_EQ(0, GetSstFileCount(dbname_));
 
-#ifdef INDIRECT_VALUE_SUPPORT
-  const int bigvaluesize = 16;
-#else
-  const int bigvaluesize = 990;
-#endif
   for (int i = 0; i < key_idx; i++) {
     auto v = Get(KeyInvIndNewFile(i,i%100,values_are_indirect));
     ASSERT_NE(v, "NOT_FOUND");
@@ -1402,11 +1400,6 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
   options.num_levels = 1;
 
   const int allowedvlen1 = 1;   const int allowedvlen2 = 990;  // possible lengths for values
-#ifdef INDIRECT_VALUE_SUPPORT
-  const int allowedvlen3 = 16;  // value allowed for indirect refs
-#else
-  const int allowedvlen3 = 1;
-#endif
 
   std::vector<Options> option_vector;
   option_vector.emplace_back(options);
@@ -1429,8 +1422,10 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
 
   ReopenWithColumnFamilies({"default", "one", "two"}, option_vector);
   bool values_are_indirect = false;  // Set if we are using VLogging
+  int allowedvlen3 = 1;
 #ifdef INDIRECT_VALUE_SUPPORT
   values_are_indirect = options.vlogring_activation_level.size()!=0;
+  if(values_are_indirect)allowedvlen3 = 16;
 #endif
 
   Random rnd(301);
@@ -1664,8 +1659,10 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionSecondPathRatio) {
   env_->DeleteDir(options.db_paths[1].path);
   Reopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
+  int bigvaluesize = 990;
 #ifdef INDIRECT_VALUE_SUPPORT
   values_are_indirect = options.vlogring_activation_level.size()!=0;
+  if(values_are_indirect)bigvaluesize = 16;
 #endif
 
   Random rnd(301);
@@ -1725,12 +1722,6 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionSecondPathRatio) {
   GenerateNewFileInvInd(&rnd, &key_idx,values_are_indirect);
   ASSERT_EQ(2, GetSstFileCount(options.db_paths[1].path));
   ASSERT_EQ(0, GetSstFileCount(dbname_));
-
-#ifdef INDIRECT_VALUE_SUPPORT
-  const int bigvaluesize = 16;
-#else
-  const int bigvaluesize = 990;
-#endif
 
   for (int i = 0; i < key_idx; i++) {
     auto v = Get(KeyInvIndNewFile(i,i%100,values_are_indirect));

@@ -404,6 +404,9 @@ TEST_F(DBBloomFilterTest, BloomFilterRate) {
   while (ChangeFilterOptions()) {
     Options options = CurrentOptions();
     options.statistics = rocksdb::CreateDBStatistics();
+#ifdef INDIRECT_VALUE_SUPPORT
+    if(options.vlogring_activation_level.size())options.allow_trivial_move = true;
+#endif
     CreateAndReopenWithCF({"pikachu"}, options);
 
     const int maxKey = 10000;

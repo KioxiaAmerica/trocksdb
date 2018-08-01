@@ -227,15 +227,15 @@ static std::vector<int> comp_cycle{DBTestBase::kDefault, DBTestBase::kUniversalC
                           DBTestBase::kDefaultInd, DBTestBase::kUniversalCompactionInd, DBTestBase::kUniversalCompactionMultiLevelInd, DBTestBase::kUniversalSubcompactions};
 static std::vector<int> comp_actions{0,0,0,1,0,0,0,1};  // 0=create_if_missing 1=check max_subcompactions
 
+// unlike the others, ChangeFilterOptions is called BEFORE the options, and its first action is to move from kDefault to kFilter.  We don't do kDefaultInd. 
 static std::vector<int> filter_cycle{DBTestBase::kDefault, DBTestBase::kFilter, DBTestBase::kFullFilterWithNewTableReaderForCompactions, DBTestBase::kPartitionedFilterWithNewTableReaderForCompactions,
-                          DBTestBase::kDefaultInd, DBTestBase::kFilterInd, DBTestBase::kFullFilterWithNewTableReaderForCompactionsInd, DBTestBase::kPartitionedFilterWithNewTableReaderForCompactionsInd};
-static std::vector<int> filter_actions{0,0,0,0,0,0,0,0};  // 0=create_if_missing 1=check max_subcompactions
+                          DBTestBase::kFilterInd, DBTestBase::kFullFilterWithNewTableReaderForCompactionsInd, DBTestBase::kPartitionedFilterWithNewTableReaderForCompactionsInd};
+static std::vector<int> filter_actions{0,0,0,0,0,0,0};  // 0=create_if_missing 1=check max_subcompactions
 #else
 static std::vector<int> comp_cycle{DBTestBase::kDefault, DBTestBase::kUniversalCompaction, DBTestBase::kUniversalCompactionMultiLevel, DBTestBase::kLevelSubcompactions, DBTestBase::kUniversalSubcompactions};
 static std::vector<int> comp_actions{0,0,0,1,1};  // 0=create_if_missing 1=check max_subcompactions
 
 static std::vector<int> filter_cycle{DBTestBase::kDefault, DBTestBase::kFilter, DBTestBase::kFullFilterWithNewTableReaderForCompactions, DBTestBase::kPartitionedFilterWithNewTableReaderForCompactions};
-                          DBTestBase::kDefaultInd, DBTestBase::kUniversalCompactionInd, DBTestBase::kUniversalCompactionMultiLevelInd, DBTestBase::kLevelSubcompactionsInd, DBTestBase::kUniversalSubcompactions};
 static std::vector<int> filter_actions{0,0,0,0};  // 0=create_if_missing 1=check max_subcompactions
 #endif
 
@@ -244,7 +244,7 @@ static std::vector<int> wal_actions{0,0,0,2};
 
 bool DBTestBase::ChangeCompactOptions(int skip_mask) {return CycleThroughOptions(comp_cycle,comp_actions,false,skip_mask);}
 bool DBTestBase::ChangeWalOptions(int skip_mask) {return CycleThroughOptions(wal_cycle,wal_actions,true,skip_mask);}
-bool DBTestBase::ChangeFilterOptions(int skip_mask) {return CycleThroughOptions(filter_cycle,filter_actions,true,skip_mask);}
+bool DBTestBase::ChangeFilterOptions(int skip_mask) {return CycleThroughOptions(filter_cycle,filter_actions,false,skip_mask);}
 #else
 // Switch between different compaction styles.
 bool DBTestBase::ChangeCompactOptions() {
