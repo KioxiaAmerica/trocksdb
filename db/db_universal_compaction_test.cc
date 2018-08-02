@@ -1372,7 +1372,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionFourPaths) {
   for (int i = 0; i < key_idx; i++) {
     auto v = Get(KeyInvIndNewFile(i,i%100,values_are_indirect));
     ASSERT_NE(v, "NOT_FOUND");
-    ASSERT_TRUE(v.size() == 1 || v.size() == bigvaluesize);
+    ASSERT_TRUE(v.size() == 1 || v.size() == (size_t)bigvaluesize);
   }
 
   Reopen(options);
@@ -1380,7 +1380,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionFourPaths) {
   for (int i = 0; i < key_idx; i++) {
     auto v = Get(KeyInvIndNewFile(i,i%100,values_are_indirect));
     ASSERT_NE(v, "NOT_FOUND");
-    ASSERT_TRUE(v.size() == 1 || v.size() == bigvaluesize);
+    ASSERT_TRUE(v.size() == 1 || v.size() == (size_t)bigvaluesize);
   }
 
   Destroy(options);
@@ -1451,19 +1451,19 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
     for (int i = 0; i < key_idx; i++) {
       auto v = Get(0, KeyInvIndNewFile(i,i%100,values_are_indirect));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == allowedvlen1 || v.size() == allowedvlen2 || v.size() == allowedvlen3);
+      ASSERT_TRUE(v.size() == allowedvlen1 || v.size() == (size_t)allowedvlen2 || v.size() == (size_t)allowedvlen3);
     }
 
     for (int i = 0; i < key_idx1; i++) {
       auto v = Get(1, KeyInvIndNewFile(i,i%100,values_are_indirect));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == allowedvlen1 || v.size() == allowedvlen2 || v.size() == allowedvlen3);
+      ASSERT_TRUE(v.size() == allowedvlen1 || v.size() == (size_t)allowedvlen2 || v.size() == (size_t)allowedvlen3);
     }
 
     for (int i = 0; i < key_idx2; i++) {
       auto v = Get(2, KeyInvIndNewFile(i,i%100,values_are_indirect));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == allowedvlen1 || v.size() == allowedvlen2 || v.size() == allowedvlen3);
+      ASSERT_TRUE(v.size() == allowedvlen1 || v.size() == (size_t)allowedvlen2 || v.size() == (size_t)allowedvlen3);
     }
   };
 
@@ -1728,7 +1728,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionSecondPathRatio) {
   for (int i = 0; i < key_idx; i++) {
     auto v = Get(KeyInvIndNewFile(i,i%100,values_are_indirect));
     ASSERT_NE(v, "NOT_FOUND");
-    ASSERT_TRUE(v.size() == 1 || v.size() == bigvaluesize);
+    ASSERT_TRUE(v.size() == 1 || v.size() == (size_t)bigvaluesize);
   }
 
   Reopen(options);
@@ -1736,7 +1736,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionSecondPathRatio) {
   for (int i = 0; i < key_idx; i++) {
     auto v = Get(KeyInvIndNewFile(i,i%100,values_are_indirect));
     ASSERT_NE(v, "NOT_FOUND");
-    ASSERT_TRUE(v.size() == 1 || v.size() == bigvaluesize);
+    ASSERT_TRUE(v.size() == 1 || v.size() == (size_t)bigvaluesize);
   }
 
   Destroy(options);
