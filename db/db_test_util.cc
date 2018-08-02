@@ -231,12 +231,18 @@ static std::vector<int> comp_actions{0,0,0,1,0,0,0,1};  // 0=create_if_missing 1
 static std::vector<int> filter_cycle{DBTestBase::kDefault, DBTestBase::kFilter, DBTestBase::kFullFilterWithNewTableReaderForCompactions, DBTestBase::kPartitionedFilterWithNewTableReaderForCompactions,
                           DBTestBase::kFilterInd, DBTestBase::kFullFilterWithNewTableReaderForCompactionsInd, DBTestBase::kPartitionedFilterWithNewTableReaderForCompactionsInd};
 static std::vector<int> filter_actions{0,0,0,0,0,0,0};  // 0=create_if_missing 1=check max_subcompactions
+
+static std::vector<int> ind_cycle{DBTestBase::kDefault, DBTestBase::kDefaultInd};
+static std::vector<int> ind_actions{2,2};  // 0=create_if_missing 1=check max_subcompactions 2=nothing
 #else
 static std::vector<int> comp_cycle{DBTestBase::kDefault, DBTestBase::kUniversalCompaction, DBTestBase::kUniversalCompactionMultiLevel, DBTestBase::kLevelSubcompactions, DBTestBase::kUniversalSubcompactions};
 static std::vector<int> comp_actions{0,0,0,1,1};  // 0=create_if_missing 1=check max_subcompactions
 
 static std::vector<int> filter_cycle{DBTestBase::kDefault, DBTestBase::kFilter, DBTestBase::kFullFilterWithNewTableReaderForCompactions, DBTestBase::kPartitionedFilterWithNewTableReaderForCompactions};
 static std::vector<int> filter_actions{0,0,0,0};  // 0=create_if_missing 1=check max_subcompactions
+
+static std::vector<int> ind_cycle{DBTestBase::kDefault};
+static std::vector<int> ind_actions{2};  // 0=create_if_missing 1=check max_subcompactions 2=nothing
 #endif
 
 static std::vector<int> wal_cycle{DBTestBase::kDefault, DBTestBase::kDBLogDir, DBTestBase::kWalDirAndMmapReads, DBTestBase::kRecycleLogFiles};
@@ -245,6 +251,7 @@ static std::vector<int> wal_actions{0,0,0,2};
 bool DBTestBase::ChangeCompactOptions(int skip_mask) {return CycleThroughOptions(comp_cycle,comp_actions,false,skip_mask);}
 bool DBTestBase::ChangeWalOptions(int skip_mask) {return CycleThroughOptions(wal_cycle,wal_actions,true,skip_mask);}
 bool DBTestBase::ChangeFilterOptions(int skip_mask) {return CycleThroughOptions(filter_cycle,filter_actions,false,skip_mask);}
+bool DBTestBase::ChangeIndirectOptions(int skip_mask) {return CycleThroughOptions(ind_cycle,ind_actions,false,skip_mask);}
 #else
 // Switch between different compaction styles.
 bool DBTestBase::ChangeCompactOptions() {

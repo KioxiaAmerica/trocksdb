@@ -14,12 +14,13 @@
 #include "util/sync_point.h"
 
 namespace rocksdb {
-
+#if 0 // scaf
 static std::string CompressibleString(Random* rnd, int len) {
   std::string r;
   test::CompressibleString(rnd, 0.8, len, &r);
   return r;
 }
+#endif // scaf
 
 class DBTestUniversalCompactionBase
     : public DBTestBase,
@@ -122,6 +123,7 @@ class DelayFilterFactory : public CompactionFilterFactory {
   DBTestBase* db_test;
 };
 }  // namespace
+#if 0 // scaf
 // Make sure we don't trigger a problem if the trigger condtion is given
 // to be 0, which is invalid.
 TEST_P(DBTestUniversalCompaction, UniversalCompactionSingleSortedRun) {
@@ -1739,7 +1741,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionSecondPathRatio) {
 
   Destroy(options);
 }
-
+#endif // scaf
 TEST_P(DBTestUniversalCompaction, ConcurrentBottomPriLowPriCompactions) {
   if (num_levels_ == 1) {
     // for single-level universal, everything's bottom level so nothing should

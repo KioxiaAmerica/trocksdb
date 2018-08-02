@@ -41,9 +41,8 @@ static const int kValueSize = 1000;
 #define INDOPTIONS {
 #define INDOPTIONSEND(opts) }
 #endif
-
 // The tests in this file are not self-contained (they chain to each other).  So we must run all the direct-value tests first, then indirect
-static int useindirect = 0;  // set to make tests open with indrect values
+static int useindirect = 0;  // set to make tests open with indirect values
 
 class CorruptionTest : public testing::Test {
  public:

@@ -851,6 +851,11 @@ class DBTestBase : public testing::Test {
   // Jump from kDefault to kFilter to kFullFilter
   bool ChangeFilterOptions(int skip_mask = 0);
 
+  // Switch between indirect values on/off
+  // Jump from kDefault to kDefaultInd
+  bool ChangeIndirectOptions(int skip_mask = 0);
+
+
   // Return the current option configuration.
   Options CurrentOptions(const anon::OptionsOverride& options_override =
                              anon::OptionsOverride()) const;

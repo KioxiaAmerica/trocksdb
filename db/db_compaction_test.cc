@@ -28,11 +28,12 @@ class DBCompactionTest : public DBTestBase {
 
 class DBCompactionTestWithParam
     : public DBTestBase,
-      public testing::WithParamInterface<std::tuple<uint32_t, bool>> {
+      public testing::WithParamInterface<std::tuple<uint32_t, bool, uint32_t>> {
  public:
   DBCompactionTestWithParam() : DBTestBase("/db_compaction_test") {
     max_subcompactions_ = std::get<0>(GetParam());
     exclusive_manual_compaction_ = std::get<1>(GetParam());
+    num_vlog_rings_ = std::get<2>(GetParam());
   }
 
   // Required if inheriting from testing::WithParamInterface<>
@@ -41,6 +42,7 @@ class DBCompactionTestWithParam
 
   uint32_t max_subcompactions_;
   bool exclusive_manual_compaction_;
+  uint32_t num_vlog_rings_;
 };
 
 class DBCompactionDirectIOTest : public DBCompactionTest,
@@ -262,6 +264,9 @@ TEST_P(DBCompactionTestWithParam, CompactionDeletionTrigger) {
     uint64_t db_size[2];
     Options options = DeletionTriggerOptions(CurrentOptions());
     options.max_subcompactions = max_subcompactions_;
+#ifdef INDIRECT_VALUE_SUPPORT
+    options.vlogring_activation_level.resize(num_vlog_rings_,0);
+#endif
 
     if (tid == 1) {
       // the following only disable stats update in DB::Open()
@@ -310,6 +315,9 @@ TEST_P(DBCompactionTestWithParam, CompactionsPreserveDeletes) {
     options.max_subcompactions = max_subcompactions_;
     options.preserve_deletes=true;
     options.num_levels = 2;
+#ifdef INDIRECT_VALUE_SUPPORT
+    options.vlogring_activation_level.resize(num_vlog_rings_,0);
+#endif
 
     if (tid == 1) {
       options.skip_stats_update_on_db_open = true;
@@ -515,6 +523,9 @@ TEST_P(DBCompactionTestWithParam, CompactionDeletionTriggerReopen) {
     uint64_t db_size[3];
     Options options = DeletionTriggerOptions(CurrentOptions());
     options.max_subcompactions = max_subcompactions_;
+#ifdef INDIRECT_VALUE_SUPPORT
+    options.vlogring_activation_level.resize(num_vlog_rings_,0);
+#endif
 
     if (tid == 1) {
       // second pass with universal compaction
@@ -634,6 +645,9 @@ TEST_P(DBCompactionTestWithParam, CompactionTrigger) {
   options.num_levels = 3;
   options.level0_file_num_compaction_trigger = 3;
   options.max_subcompactions = max_subcompactions_;
+#ifdef INDIRECT_VALUE_SUPPORT
+    options.vlogring_activation_level.resize(num_vlog_rings_,0);
+#endif
   options.memtable_factory.reset(new SpecialSkipListFactory(kNumKeysPerFile));
   CreateAndReopenWithCF({"pikachu"}, options);
 
@@ -767,6 +781,9 @@ TEST_P(DBCompactionTestWithParam, CompactionsGenerateMultipleFiles) {
   Options options = CurrentOptions();
   options.write_buffer_size = 100000000;        // Large write buffer
   options.max_subcompactions = max_subcompactions_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+#endif
   CreateAndReopenWithCF({"pikachu"}, options);
   bool values_are_indirect = false;  // Set if we are using VLogging
 #ifdef INDIRECT_VALUE_SUPPORT
@@ -1011,6 +1028,7 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveOneFile) {
   options.write_buffer_size = 100000000;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
   options.allow_trivial_move = true;
 #endif
   DestroyAndReopen(options);
@@ -1075,6 +1093,7 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveNonOverlappingFiles) {
   options.write_buffer_size = 10 * 1024 * 1024;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
   options.allow_trivial_move = true;
 #endif
 
@@ -1178,6 +1197,7 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveTargetLevel) {
   options.num_levels = 7;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
   options.allow_trivial_move = true;
 #endif
 
@@ -1262,6 +1282,7 @@ TEST_P(DBCompactionTestWithParam, ManualCompactionPartial) {
   options.max_background_compactions = 3;
   options.target_file_size_base = 1 << 23;  // 8 MB
 #ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
   options.allow_trivial_move = true;
 #endif
 
@@ -1818,6 +1839,7 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveToLastLevelWithFiles) {
   options.write_buffer_size = 100000000;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
   options.allow_trivial_move = true;
 #endif
   DestroyAndReopen(options);
@@ -1885,12 +1907,14 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionThirdPath) {
   options.num_levels = 4;
   options.max_bytes_for_level_base = 400 * 1024;
   options.max_subcompactions = max_subcompactions_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+#endif
   //  options = CurrentOptions(options);
   int largevaluesize = 990;  // RandomFileInvInd produces value length of either 1 or this
   bool values_are_indirect = false;
 #ifdef INDIRECT_VALUE_SUPPORT
     if(options.vlogring_activation_level.size()!=0){largevaluesize = 16; values_are_indirect=true;}  // If VLogging, set so
-#else
 #endif
 
   std::vector<std::string> filenames;
@@ -2009,6 +2033,9 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionPathUse) {
   options.max_bytes_for_level_base = 400 * 1024;
   options.max_subcompactions = max_subcompactions_;
   //  options = CurrentOptions(options);
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+#endif
 
   std::vector<std::string> filenames;
   env_->GetChildren(options.db_paths[1].path, &filenames);
@@ -2126,6 +2153,9 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionCFPathUse) {
   options.num_levels = 4;
   options.max_bytes_for_level_base = 400 * 1024;
   options.max_subcompactions = max_subcompactions_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+#endif
   int allowedvlen3 = 1;  // length used for values
   bool values_are_indirect = false;  // set if we are VLogging
 #ifdef INDIRECT_VALUE_SUPPORT
@@ -2252,6 +2282,9 @@ TEST_P(DBCompactionTestWithParam, ConvertCompactionStyle) {
   options.target_file_size_base = 200 << 10;  // 200KB
   options.target_file_size_multiplier = 1;
   options.max_subcompactions = max_subcompactions_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+#endif
   CreateAndReopenWithCF({"pikachu"}, options);
 
   for (int i = 0; i <= max_key_level_insert; i++) {
@@ -2432,6 +2465,9 @@ TEST_F(DBCompactionTest, ManualAutoRace) {
 TEST_P(DBCompactionTestWithParam, ManualCompaction) {
   Options options = CurrentOptions();
   options.max_subcompactions = max_subcompactions_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+#endif
   options.statistics = rocksdb::CreateDBStatistics();
   CreateAndReopenWithCF({"pikachu"}, options);
 
@@ -2494,6 +2530,9 @@ TEST_P(DBCompactionTestWithParam, ManualLevelCompactionOutputPathId) {
   options.db_paths.emplace_back(dbname_ + "_3", 100 * 10485760);
   options.db_paths.emplace_back(dbname_ + "_4", 120 * 10485760);
   options.max_subcompactions = max_subcompactions_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+#endif
   CreateAndReopenWithCF({"pikachu"}, options);
 
   // iter - 0 with 7 levels
@@ -2599,6 +2638,9 @@ TEST_P(DBCompactionTestWithParam, DISABLED_CompactFilesOnLevelCompaction) {
   options.max_bytes_for_level_multiplier = 2;
   options.compression = kNoCompression;
   options.max_subcompactions = max_subcompactions_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+#endif
   options = CurrentOptions(options);
   CreateAndReopenWithCF({"pikachu"}, options);
 
@@ -2659,6 +2701,9 @@ TEST_P(DBCompactionTestWithParam, PartialCompactionFailure) {
   options.max_bytes_for_level_multiplier = 2;
   options.compression = kNoCompression;
   options.max_subcompactions = max_subcompactions_;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+#endif
 
   env_->SetBackgroundThreads(1, Env::HIGH);
   env_->SetBackgroundThreads(1, Env::LOW);
@@ -2727,9 +2772,10 @@ TEST_P(DBCompactionTestWithParam, PartialCompactionFailure) {
     ASSERT_EQ(ValueInvInd(values[k],values_are_indirect), Get(KeyInvInd(keys[k],kKvSize - kKeySize,values_are_indirect)));
   }
 }
-
-#if 0 // kludge scaf must fix
 TEST_P(DBCompactionTestWithParam, DeleteMovedFileAfterCompaction) {
+  // If indirect values are turned on, this test fails, because trivial moves corrupt the database if any serious activity goes on
+  // (they are used only for small tests).  Return fast
+  if(num_vlog_rings_)return;
   const int value_size = 10*1024;
   // iter 1 -- delete_obsolete_files_period_micros == 0
   for (int iter = 0; iter < 2; ++iter) {
@@ -2747,9 +2793,13 @@ TEST_P(DBCompactionTestWithParam, DeleteMovedFileAfterCompaction) {
     options.listeners.emplace_back(listener);
     options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-    options.allow_trivial_move = true;
+    options.vlogring_activation_level.resize(num_vlog_rings_,0);  // not used here, but doesn't hurt
 #endif
     DestroyAndReopen(options);
+    bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+    values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
 
     Random rnd(301);
     // Create two 1MB sst files
@@ -2811,7 +2861,6 @@ TEST_P(DBCompactionTestWithParam, DeleteMovedFileAfterCompaction) {
     listener->VerifyMatchedCount(1);
   }
 }
-#endif
 
 TEST_P(DBCompactionTestWithParam, CompressLevelCompaction) {
   if (!Zlib_Supported()) {
@@ -2833,6 +2882,7 @@ TEST_P(DBCompactionTestWithParam, CompressLevelCompaction) {
   options.compression_per_level = {kNoCompression, kNoCompression,
                                    kZlibCompression};
 #ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
   options.allow_trivial_move = true;
 #endif
   int matches = 0, didnt_match = 0, trivial_move = 0, non_trivial = 0;
@@ -3021,6 +3071,7 @@ TEST_P(DBCompactionTestWithParam, ForceBottommostLevelCompaction) {
   options.write_buffer_size = 100000000;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
   options.allow_trivial_move = true;
 #endif
   DestroyAndReopen(options);
@@ -3098,6 +3149,7 @@ TEST_P(DBCompactionTestWithParam, IntraL0Compaction) {
   options.max_background_compactions = 2;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
   options.allow_trivial_move = true;
 #endif
   DestroyAndReopen(options);
@@ -3159,6 +3211,7 @@ TEST_P(DBCompactionTestWithParam, IntraL0CompactionDoesNotObsoleteDeletions) {
   options.max_background_compactions = 2;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlog_rings_,0);
   options.allow_trivial_move = true;
 #endif
   DestroyAndReopen(options);
@@ -3867,12 +3920,23 @@ TEST_F(DBCompactionTest, CompactFilesOutputRangeConflict) {
 
   bg_thread.join();
 }
-
-INSTANTIATE_TEST_CASE_P(DBCompactionTestWithParam, DBCompactionTestWithParam,
-                        ::testing::Values(std::make_tuple(1, true),
-                                          std::make_tuple(1, false),
-                                          std::make_tuple(4, true),
-                                          std::make_tuple(4, false)));
+#ifdef INDIRECT_VALUE_SUPPORT
+INSTANTIATE_TEST_CASE_P(DBCompactionTestWithParam, DBCompactionTestWithParam,  // params are max_subcompactions_, exclusive_manual_compaction_, num_vlog_rings_
+                        ::testing::Values(std::make_tuple(1, true,0),
+                                          std::make_tuple(1, false,0),
+                                          std::make_tuple(4, true,0),
+                                          std::make_tuple(4, false,0),
+                                          std::make_tuple(1, true,1),
+                                          std::make_tuple(1, false,1),
+                                          std::make_tuple(4, true,1),
+                                          std::make_tuple(4, false,1) ));
+#else
+INSTANTIATE_TEST_CASE_P(DBCompactionTestWithParam, DBCompactionTestWithParam,  // params are max_subcompactions_, exclusive_manual_compaction_, num_vlog_rings_
+                        ::testing::Values(std::make_tuple(1, true,0),
+                                          std::make_tuple(1, false,0),
+                                          std::make_tuple(4, true,0),
+                                          std::make_tuple(4, false,0) ));
+#endif
 
 TEST_P(DBCompactionDirectIOTest, DirectIO) {
   Options options = CurrentOptions();
