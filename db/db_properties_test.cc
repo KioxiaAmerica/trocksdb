@@ -219,7 +219,7 @@ void VerifyTableProperties(const TableProperties& base_tp,
   ASSERT_EQ(base_tp.num_entries, new_tp.num_entries);
 }
 
-void GetExpectedTableProperties(TableProperties* expected_tp,
+void GetExpectedTableProperties(Options& options, TableProperties* expected_tp,
                                 const int kKeySize, const int kValueSize,
                                 const int kKeysPerTable, const int kTableCount,
                                 const int kBloomBitsPerKey,
@@ -227,30 +227,25 @@ void GetExpectedTableProperties(TableProperties* expected_tp,
                                 const bool index_key_is_user_key) {
   const int kKeyCount = kTableCount * kKeysPerTable;
   const int kAvgSuccessorSize = kKeySize / 5;
+  int kEncodingSavePerKey = kKeySize / 4;
 #ifdef INDIRECT_VALUE_SUPPORT
-  const int kEncodingSavePerKey = std::min(2,kKeySize / 10);  // empirical.  Using random keys it's very unlikely to share bytes
-#else
-  const int kEncodingSavePerKey = kKeySize / 4;
+  if(options.vlogring_activation_level.size())kEncodingSavePerKey = std::min(2,kKeySize / 10);  // empirical.  Using random keys it's very unlikely to share bytes
 #endif //INDIRECT_VALUE_SUPPORT
   expected_tp->raw_key_size = kKeyCount * (kKeySize + 8);
   expected_tp->raw_value_size = kKeyCount * kValueSize;
   expected_tp->num_entries = kKeyCount;
-#ifdef INDIRECT_VALUE_SUPPORT
-  expected_tp->num_data_blocks =
-      kTableCount *
-      (1 + kKeysPerTable / (kBlockSize / (1 + kKeySize + 8 - kEncodingSavePerKey + 1 + kValueSize)));
-#else
   expected_tp->num_data_blocks =
       kTableCount *
       (kKeysPerTable * (kKeySize - kEncodingSavePerKey + kValueSize)) /
       kBlockSize;
-#endif //INDIRECT_VALUE_SUPPORT
-#ifdef INDIRECT_VALUE_SUPPORT
-  expected_tp->data_size =
-      kTableCount * (kKeysPerTable * (1 + kKeySize + 8 + 1 + kValueSize));
-#else
   expected_tp->data_size =
       kTableCount * (kKeysPerTable * (kKeySize + 8 + kValueSize));
+#ifdef INDIRECT_VALUE_SUPPORT
+  if(options.vlogring_activation_level.size())expected_tp->data_size =
+      kTableCount * (kKeysPerTable * (1 + kKeySize + 8 + 1 + kValueSize));
+  if(options.vlogring_activation_level.size())expected_tp->num_data_blocks =
+      kTableCount *
+      (1 + kKeysPerTable / (kBlockSize / (1 + kKeySize + 8 - kEncodingSavePerKey + 1 + kValueSize)));
 #endif //INDIRECT_VALUE_SUPPORT
   expected_tp->index_size =
       expected_tp->num_data_blocks *
@@ -305,17 +300,16 @@ TEST_F(DBPropertiesTest, AggregatedTableProperties) {
   for (int kTableCount = 40; kTableCount <= 100; kTableCount += 30) {
     const int kKeysPerTable = 100;
     const int kKeySize = 80;
-#ifdef INDIRECT_VALUE_SUPPORT
-    const int kValueSize = 16;
-#else
-    const int kValueSize = 200;
-#endif
     const int kBloomBitsPerKey = 20;
 
     Options options = CurrentOptions();
     options.level0_file_num_compaction_trigger = 8;
     options.compression = kNoCompression;
     options.create_if_missing = true;
+    int kValueSize = 200;
+#ifdef INDIRECT_VALUE_SUPPORT
+    if(options.vlogring_activation_level.size())kValueSize = 16;
+#endif
 
     BlockBasedTableOptions table_options;
     table_options.filter_policy.reset(
@@ -340,7 +334,7 @@ TEST_F(DBPropertiesTest, AggregatedTableProperties) {
     bool index_key_is_user_key = output_tp.index_key_is_user_key > 0;
 
     TableProperties expected_tp;
-    GetExpectedTableProperties(&expected_tp, kKeySize, kValueSize,
+    GetExpectedTableProperties(options,&expected_tp, kKeySize, kValueSize,
                                kKeysPerTable, kTableCount, kBloomBitsPerKey,
                                table_options.block_size, index_key_is_user_key);
 
@@ -458,17 +452,16 @@ TEST_F(DBPropertiesTest, ReadLatencyHistogramByLevel) {
 TEST_F(DBPropertiesTest, AggregatedTablePropertiesAtLevel) {
   const int kTableCount = 100;
   const int kKeysPerTable = 10;
-#ifdef INDIRECT_VALUE_SUPPORT
-  const int kKeySize = 80;
-  const int kValueSize = 16;
-#else
-  const int kKeySize = 50;
-  const int kValueSize = 400;
-#endif
   const int kMaxLevel = 7;
   const int kBloomBitsPerKey = 20;
   Random rnd(301);
   Options options = CurrentOptions();
+  int kKeySize = 50;
+  int kValueSize = 400;
+#ifdef INDIRECT_VALUE_SUPPORT
+  if(options.vlogring_activation_level.size())kKeySize = 80;
+  if(options.vlogring_activation_level.size())kValueSize = 16;
+#endif
   options.level0_file_num_compaction_trigger = 8;
   options.compression = kNoCompression;
   options.create_if_missing = true;
@@ -523,15 +516,14 @@ TEST_F(DBPropertiesTest, AggregatedTablePropertiesAtLevel) {
     ASSERT_EQ(sum_tp.num_data_blocks, tp.num_data_blocks);
     ASSERT_EQ(sum_tp.num_entries, tp.num_entries);
     if (table > 3) {
-      GetExpectedTableProperties(
+      GetExpectedTableProperties(options,
           &expected_tp, kKeySize, kValueSize, kKeysPerTable, table,
           kBloomBitsPerKey, table_options.block_size, index_key_is_user_key);
       // Gives larger bias here as index block size, filter block size,
       // and data block size become much harder to estimate in this test.
+      double nblocksbias = 0.25;  // with small values, nblocks is small and has large fractional error
 #ifdef INDIRECT_VALUE_SUPPORT
-      const double nblocksbias = 0.35;  // with small values, nblocks is small and has large fractional error
-#else
-      const double nblocksbias = 0.25;  // with small values, nblocks is small and has large fractional error
+      if(options.vlogring_activation_level.size())nblocksbias = 0.35;  // with small values, nblocks is small and has large fractional error
 #endif
       VerifyTableProperties(tp, expected_tp, 0.5, 0.4, 0.4, nblocksbias);
     }

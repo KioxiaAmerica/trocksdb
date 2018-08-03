@@ -1022,9 +1022,6 @@ TEST_F(DBTest2, WalFilterTestWithColumnFamilies) {
 }
 
 TEST_F(DBTest2, PresetCompressionDict) {
-#ifdef INDIRECT_VALUE_SUPPORT  // scaf must use options
-  // this test does not apply to indirect values
-#else
   const size_t kBlockSizeBytes = 4 << 10;
   const size_t kL0FileBytes = 128 << 10;
   const size_t kApproxPerBlockOverheadBytes = 50;
@@ -1058,6 +1055,9 @@ TEST_F(DBTest2, PresetCompressionDict) {
   if (ZSTD_Supported()) {
     compression_types.push_back(kZSTD);
   }
+#ifdef INDIRECT_VALUE_SUPPORT  // scaf must use options
+  if(options.vlogring_activation_level.size())return;  // this test does not apply to indirect values
+#endif
 
   for (auto compression_type : compression_types) {
     options.compression = compression_type;
@@ -1133,7 +1133,6 @@ TEST_F(DBTest2, PresetCompressionDict) {
       DestroyAndReopen(options);
     }
   }
-#endif
 }
 
 class CompactionCompressionListener : public EventListener {
@@ -1187,10 +1186,9 @@ TEST_F(DBTest2, CompressionOptions) {
   options.listeners.emplace_back(listener);
 
   const int kKeySize = 5;
+  int kValSize = 20;
 #ifdef INDIRECT_VALUE_SUPPORT  // scaf must use option
-  const int kValSize = 20+(16-4);  // references compress so well that we have to expect only 4 out of 16 bytes after compression
-#else
-  const int kValSize = 20;
+  if(options.vlogring_activation_level.size())kValSize = 20+(16-4);  // references compress so well that we have to expect only 4 out of 16 bytes after compression
 #endif
   Random rnd(301);
 
@@ -1550,15 +1548,14 @@ TEST_F(DBTest2, MaxCompactionBytesTest) {
 
   // When compact from Ln -> Ln+1, cut a file if the file overlaps with
   // more than three files in Ln+1.
-#ifdef INDIRECT_VALUE_SUPPORT
-  // The max_compaction must be big enough to hold 3 grandparents plus 1/3 of the file from Ln, to allow the file to be split into
-  // just 3 pieces
-  options.max_compaction_bytes = (uint64_t)((double)options.target_file_size_base * 3.4);
-#else
   // The standard code has a bug in compaction_job.cc that doesn't count a grandparent as overlapping unless the LAST key in the
   // grandparent is before the key going into the output file.  Thus, the last grandparent is not counted in the size, and we get by
   // with smaller max_compaction to create 3 pieces
   options.max_compaction_bytes = options.target_file_size_base * 3;
+#ifdef INDIRECT_VALUE_SUPPORT
+  // The max_compaction must be big enough to hold 3 grandparents plus 1/3 of the file from Ln, to allow the file to be split into
+  // just 3 pieces
+  if(options.vlogring_activation_level.size())options.max_compaction_bytes = (uint64_t)((double)options.target_file_size_base * 3.4);
 #endif
   Reopen(options);
   values_are_indirect = false;  // Set if we are using VLogging

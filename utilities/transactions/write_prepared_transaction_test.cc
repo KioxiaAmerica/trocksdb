@@ -1668,10 +1668,9 @@ TEST_P(WritePreparedTransactionTest, SequenceNumberZeroTest) {
   // visible to any snapshot.
   VerifyKeys({{"foo", "bar"}});
   VerifyKeys({{"foo", "bar"}}, snapshot);
+  int exptype = kTypeValue;
 #ifdef INDIRECT_VALUE_SUPPORT
-  const int exptype = kTypeIndirectValue;
-#else
-  const int exptype = kTypeValue;
+  if(options.vlogring_activation_level.size())exptype = kTypeIndirectValue;
 #endif
   VerifyInternalKeys({{"foo", "bar", 0, exptype}});
   db->ReleaseSnapshot(snapshot);
@@ -1741,12 +1740,11 @@ TEST_P(WritePreparedTransactionTest, CompactionShouldKeepUncommittedKeys) {
       {"key6", "NOT_FOUND"},
       {"key7", "NOT_FOUND"},
   });
+  int valuetype = kTypeValue;
+  int mergetype = kTypeMerge;
 #ifdef INDIRECT_VALUE_SUPPORT
-  const int valuetype = kTypeIndirectValue;
-  const int mergetype = kTypeIndirectMerge;
-#else
-  const int valuetype = kTypeValue;
-  const int mergetype = kTypeMerge;
+  if(options.vlogring_activation_level.size())valuetype = kTypeIndirectValue;
+  if(options.vlogring_activation_level.size())mergetype = kTypeIndirectMerge;
 #endif
   VerifyInternalKeys({
       {"key1", "value1_2", expected_seq, valuetype},
@@ -1830,10 +1828,9 @@ TEST_P(WritePreparedTransactionTest, CompactionShouldKeepSnapshotVisibleKeys) {
   ASSERT_OK(db->CompactRange(CompactRangeOptions(), nullptr, nullptr));
   VerifyKeys({{"key1", "value1_2"}, {"key2", "value2_2"}});
   VerifyKeys({{"key1", "value1_1"}, {"key2", "NOT_FOUND"}}, snapshot2);
+  int valuetype = kTypeValue;
 #ifdef INDIRECT_VALUE_SUPPORT
-  const int valuetype = kTypeIndirectValue;
-#else
-  const int valuetype = kTypeValue;
+  if(options.vlogring_activation_level.size())valuetype = kTypeIndirectValue;
 #endif
   VerifyInternalKeys({
       {"key1", "value1_2", seq1, valuetype},
@@ -1962,10 +1959,9 @@ TEST_P(WritePreparedTransactionTest,
       {"key1", "NOT_FOUND"},
       {"key2", "value2"},
   });
+  int valuetype = kTypeValue;
 #ifdef INDIRECT_VALUE_SUPPORT
-  const int valuetype = kTypeIndirectValue;
-#else
-  const int valuetype = kTypeValue;
+  if(options.vlogring_activation_level.size())valuetype = kTypeIndirectValue;
 #endif
   VerifyInternalKeys({
       // "key1" has not been committed. It keeps its sequence number.

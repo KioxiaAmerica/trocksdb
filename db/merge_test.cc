@@ -76,12 +76,15 @@ class CountMergeOperator : public AssociativeMergeOperator {
 
 namespace {
 std::shared_ptr<DB> OpenDb(const std::string& dbname, const bool ttl = false,
-                           const size_t max_successive_merges = 0) {
+                           const size_t max_successive_merges = 0, const size_t num_vlogrings = 0) {
   DB* db;
   Options options;
   options.create_if_missing = true;
   options.merge_operator = std::make_shared<CountMergeOperator>();
   options.max_successive_merges = max_successive_merges;
+#ifdef INDIRECT_VALUE_SUPPORT
+  options.vlogring_activation_level.resize(num_vlogrings,0);  // set # rings
+#endif
   Status s;
   DestroyDB(dbname, Options());
 // DBWithTTL is not supported in ROCKSDB_LITE
@@ -419,9 +422,14 @@ void runTest(int argc, const std::string& dbname, const bool use_ttl = false) {
     compact = true;
     std::cout << "Turn on Compaction\n";
   }
-
+  size_t num_vlogs = 0;
+#ifdef INDIRECT_VALUE_SUPPORT
+  for(num_vlogs = 0; num_vlogs<2;num_vlogs++){
+#else
   {
-    auto db = OpenDb(dbname, use_ttl);
+#endif
+  {
+    auto db = OpenDb(dbname, use_ttl,0,num_vlogs);
 
     {
       std::cout << "Test read-modify-write counters... \n";
@@ -441,7 +449,7 @@ void runTest(int argc, const std::string& dbname, const bool use_ttl = false) {
   {
     std::cout << "Test merge in memtable... \n";
     size_t max_merge = 5;
-    auto db = OpenDb(dbname, use_ttl, max_merge);
+    auto db = OpenDb(dbname, use_ttl, max_merge,num_vlogs);
     MergeBasedCounters counters(db, 0);
     testCounters(counters, db.get(), compact);
     testSuccessiveMerge(counters, max_merge, max_merge * 2);
@@ -455,13 +463,13 @@ void runTest(int argc, const std::string& dbname, const bool use_ttl = false) {
     // Min merge is hard-coded to 2.
     uint32_t min_merge = 2;
     for (uint32_t count = min_merge - 1; count <= min_merge + 1; count++) {
-      auto db = OpenDb(dbname, use_ttl, max_merge);
+      auto db = OpenDb(dbname, use_ttl, max_merge,num_vlogs);
       MergeBasedCounters counters(db, 0);
       testPartialMerge(&counters, db.get(), max_merge, min_merge, count);
       DestroyDB(dbname, Options());
     }
     {
-      auto db = OpenDb(dbname, use_ttl, max_merge);
+      auto db = OpenDb(dbname, use_ttl, max_merge,num_vlogs);
       MergeBasedCounters counters(db, 0);
       testPartialMerge(&counters, db.get(), max_merge, min_merge,
                        min_merge * 10);
@@ -472,7 +480,7 @@ void runTest(int argc, const std::string& dbname, const bool use_ttl = false) {
   {
     std::cout << "Test merge-operator not set after reopen\n";
     {
-      auto db = OpenDb(dbname);
+      auto db = OpenDb(dbname,false,0,num_vlogs);
       MergeBasedCounters counters(db, 0);
       counters.add("test-key", 1);
       counters.add("test-key", 1);
@@ -492,7 +500,7 @@ void runTest(int argc, const std::string& dbname, const bool use_ttl = false) {
   {
     std::cout << "Test merge-operator not set after reopen (recovery case)\n";
     {
-      auto db = OpenDb(dbname);
+      auto db = OpenDb(dbname,false,0,num_vlogs);
       MergeBasedCounters counters(db, 0);
       counters.add("test-key", 1);
       counters.add("test-key", 1);
@@ -503,6 +511,7 @@ void runTest(int argc, const std::string& dbname, const bool use_ttl = false) {
     ASSERT_TRUE(DB::Open(Options(), dbname, &reopen_db).IsInvalidArgument());
   }
   */
+  }
 }
 }  // namespace
 

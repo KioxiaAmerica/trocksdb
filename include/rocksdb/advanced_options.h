@@ -40,6 +40,10 @@ enum CompactionStyle : char {
 // In Level-based compaction, it Determines which file from a level to be
 // picked to merge to the next level. We suggest people try
 // kMinOverlappingRatio first when you tune your database.
+#ifdef INDIRECT_VALUE_SUPPORT
+// If VLogs are used for a level, compaction into it always selects the files whose descendants have the
+// earliest VLog references, and this field is ignored
+#endif
 enum CompactionPri : char {
   // Slightly prioritize larger files by size compensated by #deletes
   kByCompensatedSize = 0x0,
@@ -54,6 +58,7 @@ enum CompactionPri : char {
   // and its size is the smallest. It in many cases can optimize write
   // amplification.
   kMinOverlappingRatio = 0x3,
+  kReservedInternal = 0x7f,  // this code reserved for internal use
 };
 
 struct CompactionOptionsFIFO {

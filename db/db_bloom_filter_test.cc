@@ -360,10 +360,9 @@ TEST_P(DBBloomFilterTestWithParam, BloomFilter) {
     }
     int reads = env_->random_read_counter_.Read();
     fprintf(stderr, "%d present => %d reads\n", N, reads);
+    int indirectvaluereads = 0;
 #ifdef INDIRECT_VALUE_SUPPORT
-    const int indirectvaluereads = N - (N/100); // we read each value, except for the few that were rewritten after compaction, which are not indirect
-#else
-    const int indirectvaluereads = 0;
+    if(options.vlogring_activation_level.size())indirectvaluereads = N - (N/100); // we read each value, except for the few that were rewritten after compaction, which are not indirect
 #endif
     ASSERT_GE(reads, N);  // if level compaction, the first compaction uses trivial move and has no indirects.  When multi-compactions supported,
                           // the compactions occur and cause indirects
@@ -928,14 +927,13 @@ TEST_F(DBBloomFilterTest, PrefixScan) {
 }
 
 TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
+  Options options = CurrentOptions();
+// kv size is 1+9+1+3 = 14
+  int kvblock = (14*73);
 #ifdef INDIRECT_VALUE_SUPPORT
 // kv size is 1+9+1+9 = 20
-const int kvblock = (20*73);
-#else
-// kv size is 1+9+1+3 = 14
-const int kvblock = (14*73);
+  if(options.vlogring_activation_level.size())kvblock = (20*73);
 #endif
-  Options options = CurrentOptions();
   options.arena_block_size = 4 * kvblock;
   options.write_buffer_size = 64 * kvblock;
   options.target_file_size_base = 64 * kvblock;

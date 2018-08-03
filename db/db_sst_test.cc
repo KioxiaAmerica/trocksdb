@@ -867,7 +867,7 @@ TEST_F(DBSSTTest, GetTotalSstFilesSize) {
       std::string val = "val_file_" + ToString(i);
 #ifdef INDIRECT_VALUE_SUPPORT
       // for indirect values, make sure the data has the same length in all levels, by making the length the length of a reference
-      val.resize(16,'*');
+      if(options.vlogring_activation_level.size())val.resize(16,'*');
 #endif
       ASSERT_OK(Put(Key(j), val));
     }

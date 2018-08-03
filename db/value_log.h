@@ -762,16 +762,16 @@ public:
 
   // Get info about the file-range that this level feeds into.  We use this to pick compactions
   // in the level we are going to compact.  Results are the ring#, starting value, and range for the ring this level empties into
-  // If there are no rings, leave inputs alone.  *file0 has already been set to 0 to indicate that case
-  void GetVLogReshapingParms(int level, int *ring, VLogRingRefFileno *file0, VLogRingRefFileno *nfiles) {
-    *ring = VLogRingNoForLevelOutput(level+1);  // level for the compaction-result files
-    if(*ring>=0) {  // level exists
+  // If there are no rings, leave inputs alone.  file0 has already been set to 0 to indicate that case
+  void GetVLogReshapingParms(int level, int& ring, VLogRingRefFileno& file0, VLogRingRefFileno& nfiles) {
+    ring = VLogRingNoForLevelOutput(level+1);  // level for the compaction-result files
+    if(ring>=0) {  // level exists
       // return first file# and range.  We don't have to worry about locking to get a consistent view - approximate values are OK
-      VLogRingRefFileno f0 = rings_[*ring]->atomics.fd_ring_queued_fileno;
-      VLogRingRefFileno fn = rings_[*ring]->atomics.fd_ring_head_fileno;
+      VLogRingRefFileno f0 = rings_[ring]->atomics.fd_ring_queued_fileno;
+      VLogRingRefFileno fn = rings_[ring]->atomics.fd_ring_head_fileno;
       if(fn>f0){  // ring can be empty.  In that case tail is > head and calculations go bad.
-        *file0 = f0;  // first file that could have a reference
-        *nfiles = fn-f0+1;  // number of files
+        file0 = f0;  // first file that could have a reference
+        nfiles = fn-f0+1;  // number of files
       }
     }
     return;

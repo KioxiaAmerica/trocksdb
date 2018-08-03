@@ -1963,22 +1963,22 @@ printf("files by level:"); for (int level = 0; level < num_levels(); level++)pri
     if (num > temp.size()) {
       num = temp.size();
     }
-    switch (compaction_pri) {
-      case kByCompensatedSize:
 #ifdef INDIRECT_VALUE_SUPPORT
-        {
-        // see if the current CF has VLogs, and get the scope of the result ring if so
-        int ring; VLogRingRefFileno file0; VLogRingRefFileno nfiles; int32_t age_importance;
-        GetVLogReshapingParms(level, &ring, &file0, &nfiles, &age_importance);
-        if(file0) {
-          // if there are rings for this level, include the file numbers that will be freed in the computation of which file to compact
-          // We want to give preference to compactions that will free up files near the tail of the VLog, because the fragmentation added
-          // by those compactions will be cleaned up earliest
-          std::partial_sort(temp.begin(), temp.begin() + num, temp.end(),
-                  [this,ring,file0,nfiles,age_importance](const Fsize& f1, const Fsize& f2) -> bool {
-                    return GetFileVLogCompactionPriority(f1.file,ring,file0,nfiles,age_importance) > GetFileVLogCompactionPriority(f2.file,ring,file0,nfiles,age_importance);
-                  });
-// scaf note it appears that compactions may get dropped from level 0 into level 2, which leaves the files in level 1 old &, because we don't refigure the overlaps, with way-out-of-date avgnos
+    // see if the current CF has VLogs, and get the scope of the result ring if so
+    int ring; VLogRingRefFileno file0; VLogRingRefFileno nfiles; int32_t age_importance;
+    GetVLogReshapingParms(level, ring, file0, nfiles, age_importance);
+    if(file0)compaction_pri = kReservedInternal;  // if there are VLogs, override the compaction and always use oldest VLog entry
+#endif
+    switch (compaction_pri) {
+#ifdef INDIRECT_VALUE_SUPPORT
+     case kReservedInternal:  // means 'VLog in use'
+        // if there are rings for this level, include the file numbers that will be freed in the computation of which file to compact
+        // We want to give preference to compactions that will free up files near the tail of the VLog, because the fragmentation added
+        // by those compactions will be cleaned up earliest
+        std::partial_sort(temp.begin(), temp.begin() + num, temp.end(),
+                [this,ring,file0,nfiles,age_importance](const Fsize& f1, const Fsize& f2) -> bool {
+                  return GetFileVLogCompactionPriority(f1.file,ring,file0,nfiles,age_importance) > GetFileVLogCompactionPriority(f2.file,ring,file0,nfiles,age_importance);
+                });
 #if 0 // scaf for debug
 printf("level %d ring %d file0=%zd nfiles=%zd.  ",level,ring,file0,nfiles);
 size_t topn = num; if(topn>3)topn=3; printf("Top %zd files:",topn);
@@ -1988,10 +1988,9 @@ for(size_t i=0;i<topn;++i){
 }
 printf("\n");
 #endif
-          break;
-        }
-        }  // fall through to non-VLog ordering if there are no VLogs
+        break;
 #endif
+      case kByCompensatedSize:
         std::partial_sort(temp.begin(), temp.begin() + num, temp.end(),
                           CompareCompensatedSizeDescending);
         break;
