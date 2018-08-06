@@ -1098,10 +1098,10 @@ DEFINE_int32(vlogring_activation_level, 1, "Activation Level : values coming int
 
 DEFINE_uint64(min_indirect_val_size , 0, "Minimum Indirect Value Size : only values this size or larger are written to the Value Log");
 
-DEFINE_int32(fraction_remapped_during_compaction, 50,"remapping fraction: During compaction, the oldest values will be copied from the tail of the VLog to the head.  This parameter tells how many:"
+DEFINE_int32(fraction_remapped_during_compaction, 20,"remapping fraction: During compaction, the oldest values will be copied from the tail of the VLog to the head.  This parameter tells how many:"
              "25=just the oldest 1/4 of the values, 75=the oldest 3/4");
 
-DEFINE_int32(fraction_remapped_during_active_recycling, 25,"same idea, but the fraction to remap during active recycling."
+DEFINE_int32(fraction_remapped_during_active_recycling, 15,"same idea, but the fraction to remap during active recycling."
              "Usually smaller, to minimize the amount of fragmentation added"
              "outside of the files being freed");
 

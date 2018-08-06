@@ -400,7 +400,7 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
     if (result.fraction_remapped_during_compaction[i] < 0 || result.fraction_remapped_during_compaction[i] > 100) {
       ROCKS_LOG_WARN(db_options.info_log.get(),
                    "fraction_remapped_during_compaction[%" ROCKSDB_PRIszt "] must be between 0 and 100",i);
-      result.fraction_remapped_during_compaction[i] = 50;
+      result.fraction_remapped_during_compaction[i] = 25;
     }
   }
 
@@ -409,7 +409,7 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
     if (result.fraction_remapped_during_active_recycling[i] < 0 || result.fraction_remapped_during_active_recycling[i] > 100) {
       ROCKS_LOG_WARN(db_options.info_log.get(),
                    "fraction_remapped_during_active_recycling[%" ROCKSDB_PRIszt "] must be between 0 and 100",i);
-      result.fraction_remapped_during_active_recycling[i] = 25;
+      result.fraction_remapped_during_active_recycling[i] = 15;
     }
   }
 
@@ -517,9 +517,9 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
     if (i >= result.min_indirect_val_size.size())
       result.min_indirect_val_size.emplace_back(0);
     if (i >= result.fraction_remapped_during_compaction.size())
-      result.fraction_remapped_during_compaction.emplace_back(50);
+      result.fraction_remapped_during_compaction.emplace_back(25);
     if (i >= result.fraction_remapped_during_active_recycling.size())
-      result.fraction_remapped_during_active_recycling.emplace_back(25);
+      result.fraction_remapped_during_active_recycling.emplace_back(15);
     if (i >= result.fragmentation_active_recycling_trigger.size())
       result.fragmentation_active_recycling_trigger.emplace_back(25);
     if (i >= result.fragmentation_active_recycling_klaxon.size())

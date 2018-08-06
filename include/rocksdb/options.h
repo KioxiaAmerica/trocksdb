@@ -324,11 +324,11 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   
   //remapping fraction: During compaction, the oldest values will be copied from the tail of the VLog to the head.  This parameter tells how many:
   // 25=just the oldest 1/4 of the values, 75=the oldest 3/4
-  std::vector<int32_t> fraction_remapped_during_compaction = std::vector<int32_t>({50});
+  std::vector<int32_t> fraction_remapped_during_compaction = std::vector<int32_t>({20});
   
   //same idea, but the fraction to remap during active recycling.  Usually smaller, to minimize the amount of fragmentation added
   // outside of the files being freed
-  std::vector<int32_t> fraction_remapped_during_active_recycling = std::vector<int32_t>({25});
+  std::vector<int32_t> fraction_remapped_during_active_recycling = std::vector<int32_t>({15});
   
   //Fragmentation Trigger : start Active Recycling if the fragmentation in the VLog exceeds this fraction of the VLog size (and the size trigger is met)
   std::vector<int32_t> fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
