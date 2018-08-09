@@ -812,13 +812,13 @@ Status BackupEngineImpl::CreateNewBackupWithMetadata(
           Log(options_.info_log, "add file for backup %s", fname.c_str());
           uint64_t size_bytes = 0;
           Status st;
-          if (type == kTableFile) {
+          if (type == kTableFile) {  // scaf add VLog here
             st = db_env_->GetFileSize(src_dirname + fname, &size_bytes);
           }
           if (st.ok()) {
             st = AddBackupFileWorkItem(
                 live_dst_paths, backup_items_to_finish, new_backup_id,
-                options_.share_table_files && type == kTableFile, src_dirname,
+                options_.share_table_files && type == kTableFile, src_dirname,  // scaf add VLog here
                 fname, rate_limiter, size_bytes, size_limit_bytes,
                 options_.share_files_with_checksum && type == kTableFile,
                 progress_callback);

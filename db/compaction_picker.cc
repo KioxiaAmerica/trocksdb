@@ -1332,6 +1332,13 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
       return nullptr;
     }
     assert(start_level_ >= 0 && output_level_ >= 0);
+#if defined(INDIRECT_VALUE_SUPPORT) && !defined(NDEBUG)
+    // notify the test code of the compaction-picking info
+    size_t pickerinfo[6]={(size_t)start_level_inputs_.level,(size_t)~0,(size_t)~0,0,0,0}; // inlevel, picked min ref0, min ref0 in lower levels, vlog file min, vlog file max, output level
+    for(auto startfile : start_level_inputs_.files){  // find the smallest ref0 in the input files (our expected ref0)
+      if(startfile->indirect_ref_0.size() && startfile->indirect_ref_0[0]!=0)pickerinfo[1]=std::min(pickerinfo[1],startfile->indirect_ref_0[0]);  // scaf wired to ring 0
+    }
+#endif
 
     // If it is a L0 -> base level compaction, we need to set up other L0
     // files if needed.
@@ -1344,6 +1351,22 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
     if (!SetupOtherInputsIfNeeded()) {
       return nullptr;
     }
+#if defined(INDIRECT_VALUE_SUPPORT) && !defined(NDEBUG)
+    // find the smallest ref0 among the descendants of the start level
+    for(auto cfiles : compaction_inputs_) {
+      if(cfiles.level>start_level_) {
+        for(auto cfile : cfiles.files){  // find the smallest ref0 in the input files (our expected ref0)
+          if(cfile->indirect_ref_0.size() && cfile->indirect_ref_0[0]!=0)pickerinfo[2]=std::min(pickerinfo[2],cfile->indirect_ref_0[0]);  // scaf wired to ring 0
+        }
+      }
+    }
+    // 3 4 get the current file limits from the VLog
+    if(cfd->vlog()!=nullptr && cfd->vlog()->rings().size()!=0){pickerinfo[3]= cfd->vlog()->rings()[0]->ringtail(); pickerinfo[4]=cfd->vlog()->rings()[0]->ringhead();}
+    // 5 output level
+    pickerinfo[5]=output_level_;
+    TEST_SYNC_POINT_CALLBACK("LevelCompactionBuilder::PickCompaction",
+                           &pickerinfo);
+#endif
 
 #ifdef INDIRECT_VALUE_SUPPORT
   }

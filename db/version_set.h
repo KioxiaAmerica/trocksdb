@@ -120,6 +120,7 @@ class VersionStorageInfo {
   void GetVLogReshapingParms(int level, int& ring, VLogRingRefFileno& file0, VLogRingRefFileno& nfiles, int32_t& age_importance) {
     // if there are no VLog or rings, return 0
     file0 = 0;  // init 'no info' return
+    ring=0; nfiles=0; age_importance=0;  // suppress warnings
     if(cfd_&&cfd_->vlog()){
       cfd_->vlog()->GetVLogReshapingParms(level, ring, file0, nfiles);  // If there is a VLog, ask it.  cfd_ can be null only running test scripts that don't open a CF
       if(file0)age_importance = std::min(100,std::max(0,cfd_->GetCurrentMutableCFOptions()->compaction_picker_age_importance[ring]));  // get age_importance from the cf, limit to reasonable range

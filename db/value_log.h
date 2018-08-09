@@ -539,6 +539,9 @@ VLogRing(
   ~VLogRing() { printf("Destroying VLogRing %p\n",this); }
 #endif
 
+  VLogRingRefFileno ringtail() {return atomics.fd_ring_tail_fileno;}
+  VLogRingRefFileno ringhead() {return atomics.fd_ring_head_fileno;}
+
   // return true iff the number of files in the VLog is bigger (by more than a trifle) than the deletion deadband.  This means that if we mark files for
   // deletion, they can be deleted right away.
   bool NewFilesAreDeletable(int64_t arsizetrigger) {

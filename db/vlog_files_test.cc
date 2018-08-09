@@ -13,8 +13,9 @@
 #include "rocksdb/experimental.h"
 #include "rocksdb/utilities/convenience.h"
 #include "util/sync_point.h"
-#include<chrono>
-#include<thread>
+#include <chrono>
+#include <thread>
+#include <cmath>
 #ifdef INDIRECT_VALUE_SUPPORT
 #include "db/value_log.h"
 #endif
@@ -263,15 +264,31 @@ const SstFileMetaData* PickFileRandomly(
 #if 0  // turn on for long r/w test.  This is the TRocks random-load test
 static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
 TEST_F(DBVLogTest, IndirectTest) {
+  const int32_t value_ref_size = 16;  // length of indirect reference
+// obsolete   int32_t value_size = 18;  // 10 KB
+// obsolete   int32_t key_size = 10 * 1024 - value_size;
+  int32_t value_size = 1024;  // 10 KB
+  int32_t key_size = 18;
+  int32_t value_size_var = 20;
+  int32_t batch_size = 200000; // scaf 200;
+
   Options options = CurrentOptions();
-  options.write_buffer_size = 10 * 1024 * 1024;
-  options.num_levels = 4;
+
+  options.num_levels = 3;
+  options.max_bytes_for_level_multiplier = 10;
+  uint64_t kvsl1 = (uint64_t)std::exp(std::log(batch_size)-(options.num_levels-1)*std::log(options.max_bytes_for_level_multiplier));   // # kvs in L1
+  uint64_t bytesperkvinsst=key_size+value_ref_size+20;
+  uint64_t bytesperkvinmemtable=key_size+value_size+20;
+  options.max_bytes_for_level_base = bytesperkvinsst*kvsl1;  // size of all SSTs for those kvs
+  uint64_t L1filecount=10;  // desired # files in full L1
+  uint64_t sstkvcount = kvsl1/L1filecount;  // # kvs in a single file
+  double  nfilesperl0flush=3.5;   // when we get this many files, flush the memtable
+  options.target_file_size_base=bytesperkvinsst*sstkvcount;
+  options.write_buffer_size = (uint64_t)(nfilesperl0flush*bytesperkvinmemtable*sstkvcount);
   options.level0_file_num_compaction_trigger = 3;
   options.level0_slowdown_writes_trigger = 5;
   options.level0_stop_writes_trigger = 11;
   options.max_background_compactions = 3;
-  options.max_bytes_for_level_base = 1 * (1LL<<20);
-  options.max_bytes_for_level_multiplier = 10;
 
   options.vlogring_activation_level = std::vector<int32_t>({0});
   options.min_indirect_val_size = std::vector<size_t>({0});
@@ -284,16 +301,25 @@ TEST_F(DBVLogTest, IndirectTest) {
   options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
   options.compaction_picker_age_importance = std::vector<int32_t>({100});
   options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
-  options.vlogfile_max_size = std::vector<uint64_t>({4LL << 20});  // 4MB
+  options.vlogfile_max_size = std::vector<uint64_t>({sstkvcount*(value_size+10)});  // amount of value in 1 sst, allowing for CRC & header
 
   options.use_direct_reads = true;
   options.use_direct_io_for_flush_and_compaction = true;
 
+  printf("Starting: max_bytes_for_level_base=%zd target_file_size_base=%zd write_buffer_size=%zd vlogfile_max_size=%zd\n",options.max_bytes_for_level_base, options.target_file_size_base,options.write_buffer_size,options.vlogfile_max_size[0]);
   DestroyAndReopen(options);
-  int32_t value_size = 18;  // 10 KB
-  int32_t key_size = 10 * 1024 - value_size;
-  int32_t value_size_var = 20;
-  int32_t batch_size = 200; // scaf 200000;
+
+  SyncPoint::GetInstance()->SetCallBack(
+      "CompactionJob::InstallCompactionResults", [&](void* arg) {
+        uint64_t *compact_stats = static_cast<uint64_t *>(arg);
+        printf("Compaction: %zd bytes in, %zd written to %zd files, %zd remapped\n",compact_stats[1],compact_stats[0],compact_stats[3],compact_stats[2]);
+      });
+  SyncPoint::GetInstance()->SetCallBack(
+      "LevelCompactionBuilder::PickCompaction", [&](void* arg) {
+        uint64_t *pickerinfo = static_cast<uint64_t *>(arg);
+        printf("PickCompaction: Level %zd->%zd, exp ref0=%zd, act ref0=%zd, ring files=[%zd,%zd]\n\n",pickerinfo[0],pickerinfo[5],pickerinfo[1],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
+      });
+  SyncPoint::GetInstance()->EnableProcessing();
 
   // Add 2 non-overlapping files
   Random rnd(301);
@@ -314,7 +340,7 @@ TEST_F(DBVLogTest, IndirectTest) {
   ASSERT_OK(Flush());
 
   // 2 files in L0
-  ASSERT_EQ("2", FilesPerLevel(0));
+// obsolete   ASSERT_EQ("2", FilesPerLevel(0));
   CompactRangeOptions compact_options;
   compact_options.change_level = true;
   compact_options.target_level = 2;

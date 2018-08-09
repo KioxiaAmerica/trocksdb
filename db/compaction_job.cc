@@ -160,14 +160,14 @@ struct CompactionJob::SubcompactionState {
 #ifdef INDIRECT_VALUE_SUPPORT
   // file numbers written
   std::vector<VLogRingRestartInfo> vlog_additions;
-  // number of bytes written to VLog after compression
-  uint64_t vlog_bytes_written_comp;
-  // number of bytes written to VLog before compression
-  uint64_t vlog_bytes_written_raw;
-  // number of bytes moved from one VLog to another
-  uint64_t vlog_bytes_remapped;
-  // number of VLog files created
-  uint64_t vlog_files_created;
+// obsolete   // number of bytes written to VLog after compression
+// obsolete   uint64_t vlog_bytes_written_comp;
+// obsolete   // number of bytes written to VLog before compression
+// obsolete   uint64_t vlog_bytes_written_raw;
+// obsolete   // number of bytes moved from one VLog to another
+// obsolete   uint64_t vlog_bytes_remapped;
+// obsolete   // number of VLog files created
+// obsolete   uint64_t vlog_files_created;
 #endif
 
   std::string compression_dict;
@@ -187,12 +187,12 @@ struct CompactionJob::SubcompactionState {
         grandparent_index(0),
         overlapped_bytes(0),
         seen_key(false),
-#ifdef INDIRECT_VALUE_SUPPORT
-       vlog_bytes_written_comp(0),
-       vlog_bytes_written_raw(0),
-       vlog_bytes_remapped(0),
-       vlog_files_created(0),
-#endif
+// obsolete #ifdef INDIRECT_VALUE_SUPPORT
+// obsolete        vlog_bytes_written_comp(0),
+// obsolete        vlog_bytes_written_raw(0),
+// obsolete        vlog_bytes_remapped(0),
+// obsolete        vlog_files_created(0),
+// obsolete #endif
         compression_dict() {
     assert(compaction != nullptr);
   }
@@ -217,10 +217,11 @@ struct CompactionJob::SubcompactionState {
     overlapped_bytes = std::move(o.overlapped_bytes);
     seen_key = std::move(o.seen_key);
 #ifdef INDIRECT_VALUE_SUPPORT
-     vlog_bytes_written_comp = std::move(o.vlog_bytes_written_comp);
-     vlog_bytes_written_raw = std::move(o.vlog_bytes_written_raw);
-     vlog_bytes_remapped = std::move(o.vlog_bytes_remapped);
-     vlog_files_created = std::move(o.vlog_files_created);
+    vlog_additions = std::move(o.vlog_additions);
+// obsolete      vlog_bytes_written_comp = std::move(o.vlog_bytes_written_comp);
+// obsolete      vlog_bytes_written_raw = std::move(o.vlog_bytes_written_raw);
+// obsolete      vlog_bytes_remapped = std::move(o.vlog_bytes_remapped);
+// obsolete      vlog_files_created = std::move(o.vlog_files_created);
 #endif
     compression_dict = std::move(o.compression_dict);
     return *this;
@@ -1461,14 +1462,26 @@ Status CompactionJob::InstallCompactionResults(
   // Add compaction inputs
   compaction->AddInputDeletions(compact_->compaction->edit());
 
+#ifndef NDEBUG  // to support test hooks
+  uint64_t comptotal_stats[4]={0,0,0,0};
+  // number of bytes written to VLog before compression
+  // number of bytes moved from one VLog to another
+  // number of VLog files created
+#endif
   for (const auto& sub_compact : compact_->sub_compact_states) {
 #ifdef INDIRECT_VALUE_SUPPORT
     // Collect the files written by subcompactions into a single set
     Coalesce(compaction->edit()->VLogAdditions(),sub_compact.vlog_additions,true /* allow_delete */);
     // other stats are collected by Add()
+#ifndef NDEBUG  // to support test hooks
+    comptotal_stats[0]+=sub_compact.compaction_job_stats.vlog_bytes_written_comp;
+    comptotal_stats[1]+=sub_compact.compaction_job_stats.vlog_bytes_written_raw;
+    comptotal_stats[2]+=sub_compact.compaction_job_stats.vlog_bytes_remapped;
+    comptotal_stats[3]+=sub_compact.compaction_job_stats.vlog_files_created;
+#endif
 
     // For files that are not at the last level, we must assign a ring position that we can use for picking compactions, giving
-    // priority to compactions that will free up files in the tail.  The ring position is the average file number of the last-level files
+    // priority to compactions that will free up files in the tail.  The ring position is the minimum file number of the last-level files
     // that overlap the key-range of the new file.  We assign the number based on the last-level files, not the parent files, because ultimately the last-level
     // files are the ones that need to be freed.  The 'last level' is the last level within the ring that the new outputs are to be compacted into;
     // thus if we are compacting into the last level of ring n, the file number will be with respect to the last level of ring n+1.
@@ -1584,6 +1597,10 @@ Status CompactionJob::InstallCompactionResults(
       compaction->edit()->AddFile(outlevel, sub_compact.outputs[i].meta);
     }
   }
+#if defined(INDIRECT_VALUE_SUPPORT) && !defined(NDEBUG)
+  TEST_SYNC_POINT_CALLBACK("CompactionJob::InstallCompactionResults",
+                           &comptotal_stats);
+#endif
   return versions_->LogAndApply(compaction->column_family_data(),
                                 mutable_cf_options, compaction->edit(),
                                 db_mutex_, db_directory_);
