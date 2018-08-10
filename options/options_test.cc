@@ -81,6 +81,7 @@ TEST_F(OptionsTest, GetOptionsFromMapTest) {
       {"disable_auto_compactions", "true"},
 #ifdef INDIRECT_VALUE_SUPPORT
       {"allow_trivial_move", "false"},
+      {"vlog_direct_IO", "false"},
 #endif
       {"compaction_style", "kCompactionStyleLevel"},
       {"compaction_pri", "kOldestSmallestSeqFirst"},

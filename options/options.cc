@@ -221,6 +221,8 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
 #ifdef INDIRECT_VALUE_SUPPORT
     ROCKS_LOG_HEADER(log, "                     Options.allow_trivial_move: %d",
                      allow_trivial_move);
+    ROCKS_LOG_HEADER(log, "                     Options.vlog_direct_IO: %d",
+                     vlog_direct_IO);
     ROCKS_LOG_HEADER(log, "              Options.compaction_score_limit_L0: %f",
                      compaction_score_limit_L0);
     for (size_t i = 0; i < vlogring_activation_level.size();

@@ -324,6 +324,9 @@ VLogRing::VLogRing(
 #if DEBLEVEL&1
 printf("VLogRing cfd_=%p\n",cfd_);
 #endif
+  // Copy the direct-IO status from the CF options to the ENV options for this ring
+  envopts_.use_direct_reads = cfd_->GetLatestCFOptions().vlog_direct_IO;
+  envopts_.use_direct_writes = false;  // scaf there seems to be a problem  cfd_->GetLatestCFOptions().vlog_direct_IO;
   // The CF has the ring stats, including the current earliest and latest files.  Extract them.
   // The CF is guaranteed to have stats for the ring, but the file info may be empty
   VLogRingRefFileno earliest_ref, latest_ref;  // first and last valid file numbers
@@ -703,7 +706,7 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
 
       if(iostatus.ok()) {
         // For direct I/O only, extend the length of the write to the required alignment.  RocksDB seems to think 4K is the needed alignment; we will go with what it tells us
-        if(writable_file->use_direct_io()){
+        if(envopts_.use_direct_writes){
           // See how much we must add to pad to sector length
           padlen = (writable_file->GetRequiredBufferAlignment()-1)&-(int64_t)(filebufferx-filebufferalignoffset);
           // For paranoid security purposes, clear the end of the sector.  It might contain passwords or something that a user with mere
@@ -946,20 +949,20 @@ ProbDelay();
     VLogRingRefFileLen readfileoffset;  // the offset of the read from beginning-of-file
     size_t alignoffset;  // the offset in response of the actual read buffer
     // Make the user's buffer long enough to hold the string, and set the offset to the data within the allocated block
-    if(selectedfile->use_direct_io()){
-     int64_t alignbdy = selectedfile->GetRequiredBufferAlignment();   // align buffers & lengths to this size
-     readfileoffset=request.Offset()&-alignbdy;   // the offset within the file of the sector containing the requested data
-     readlen=((request.Offset()-readfileoffset+request.Len()-1)|(alignbdy-1))+1;  // starting offset in sector; add len of read; back up to last byte; round up to last byte of sector; add 1 to get true length
-     response.resize(readlen+alignbdy-1);  // make the buffer big enough to ensure there is an aligned section within it
-     alignoffset=(alignbdy-1)&-(int64_t)response.data();   // calculate number of bytes to skip to get to aligned part
-     offset=alignoffset+request.Offset()-readfileoffset;  // position of payload is alignment distance plus offset from start of sector
+    if(envopts_.use_direct_reads){
+      int64_t alignbdy = selectedfile->GetRequiredBufferAlignment();   // align buffers & lengths to this size
+      readfileoffset=request.Offset()&-alignbdy;   // the offset within the file of the sector containing the requested data
+      readlen=((request.Offset()-readfileoffset+request.Len()-1)|(alignbdy-1))+1;  // starting offset in sector; add len of read; back up to last byte; round up to last byte of sector; add 1 to get true length
+      response.resize(readlen+alignbdy-1);  // make the buffer big enough to ensure there is an aligned section within it
+      alignoffset=(alignbdy-1)&-(int64_t)response.data();   // calculate number of bytes to skip to get to aligned part
+      offset=alignoffset+request.Offset()-readfileoffset;  // position of payload is alignment distance plus offset from start of sector
     }else{
-     // not direct I/O.  Read only the amount needed, from its given offset
-     readfileoffset=request.Offset();  // start at the data location
-     readlen = request.Len();  // just the amount needed
-     response.resize(readlen);  // make the buffer big enough to hold the read
-     alignoffset=0;  // read into the beginning of the response buffer
-     offset=0; // tell the caller the result is at the beginning of the read buffer
+      // not direct I/O.  Read only the amount needed, from its given offset
+      readfileoffset=request.Offset();  // start at the data location
+      readlen = request.Len();  // just the amount needed
+      response.resize(readlen);  // make the buffer big enough to hold the read
+      alignoffset=0;  // read into the beginning of the response buffer
+      offset=0; // tell the caller the result is at the beginning of the read buffer
     }
     iostatus = selectedfile->Read(readfileoffset, readlen, &resultslice, (char *)response.data()+alignoffset);  // Read the reference
     if(!iostatus.ok()) {
@@ -1379,7 +1382,8 @@ Status VLog::VLogGet(
   // Vector to the appropriate ring to do the read
   std::string ringresult;  // place where ring value will be read
   size_t dataoffset;   // offset in ringresult where the data starts (0 except for direct I/O)
-  if(!(s = rings_[ref.Ringno()]->VLogRingGet(ref,ringresult,dataoffset)).ok())return s;  // read the data; if error reading, return the error.  Was logged in the ring
+  if(!(s = rings_[ref.Ringno()]->VLogRingGet(ref,ringresult,dataoffset)).ok())
+    return s;  // read the data; if error reading, return the error.  Was logged in the ring
 
   // check the CRC
   // CRC the type/data and compare the CRC to the value in the record

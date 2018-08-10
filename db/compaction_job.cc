@@ -89,6 +89,10 @@ const char* GetCompactionReasonString(CompactionReason compaction_reason) {
       return "ManualCompaction";
     case CompactionReason::kFilesMarkedForCompaction:
       return "FilesMarkedForCompaction";
+#ifdef INDIRECT_VALUE_SUPPORT
+    case CompactionReason::kActiveRecycling:
+      return "ActiveRecycling";
+#endif
     case CompactionReason::kBottommostFiles:
       return "BottommostFiles";
     case CompactionReason::kTtl:
@@ -97,6 +101,7 @@ const char* GetCompactionReasonString(CompactionReason compaction_reason) {
       return "Flush";
     case CompactionReason::kExternalSstIngestion:
       return "ExternalSstIngestion";
+
     case CompactionReason::kNumOfReasons:
       // fall through
     default:
@@ -1565,7 +1570,7 @@ Status CompactionJob::InstallCompactionResults(
                     user_cmp->Compare(*const_cast<SubcompactionState&>(sub_compact).outputs[curroutx].meta.smallest.rep(), *ofiles[curroverlapx[checklevel]]->largest.rep()) > 0)++curroverlapx[checklevel];
                 // process files, stopping when one goes past the max key for curroutx.  Ignore files that have no reference in the ring we are looking at
                 while(curroverlapx[checklevel]<ofiles.size()) {
-                  if(!!ofiles[curroverlapx[checklevel]]->being_compacted && (uint32_t)outringno<ofiles[curroverlapx[checklevel]]->indirect_ref_0.size()) {  // if this SST has an entry for the ring of interest
+                  if(!ofiles[curroverlapx[checklevel]]->being_compacted && (uint32_t)outringno<ofiles[curroverlapx[checklevel]]->indirect_ref_0.size()) {  // if this SST has an entry for the ring of interest
                     VLogRingRefFileno ref0 = ofiles[curroverlapx[checklevel]]->indirect_ref_0[outringno];  // value of the ref
                     if(ref0) {    // if the ref is to a legit file...
                       ++nolaps, totalolaps += ref0, minolap = std::min(minolap, ref0);  // accumulate the file reference into the total
@@ -1577,7 +1582,7 @@ Status CompactionJob::InstallCompactionResults(
               }
               // store the average result.  curroverlapx still points to the file that passed the max key.  It may overlap
               // the next output file so we will start looking there
-              if(nolaps)const_cast<SubcompactionState&>(sub_compact).outputs[curroutx].meta.avgparentfileno = minolap;
+              if(nolaps)const_cast<SubcompactionState&>(sub_compact).outputs[curroutx].meta.avgparentfileno = ParsedFnameRing(outringno,minolap).filering();
 // min is better than average:              ParsedFnameRing(outringno,(VLogRingRefFileno) totalolaps/nolaps).filering();  // calculate average ref0, if there are any.  Otherwise leave default
             }
           }

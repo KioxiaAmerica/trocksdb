@@ -171,6 +171,8 @@ ColumnFamilyOptions BuildColumnFamilyOptions(
 #ifdef INDIRECT_VALUE_SUPPORT
   cf_opts.allow_trivial_move =
       mutable_cf_options.allow_trivial_move;
+  cf_opts.vlog_direct_IO =
+      mutable_cf_options.vlog_direct_IO;
   cf_opts.compaction_score_limit_L0 =
       mutable_cf_options.compaction_score_limit_L0;
 
@@ -1728,6 +1730,10 @@ std::unordered_map<std::string, OptionTypeInfo>
      {offset_of(&ColumnFamilyOptions::allow_trivial_move),
       OptionType::kBoolean, OptionVerificationType::kNormal, true,
       offsetof(struct MutableCFOptions, allow_trivial_move)}},
+    {"vlog_direct_IO",
+     {offset_of(&ColumnFamilyOptions::vlog_direct_IO),
+      OptionType::kBoolean, OptionVerificationType::kNormal, true,
+      offsetof(struct MutableCFOptions, vlog_direct_IO)}},
     {"compaction_score_limit_L0",
      {offset_of(&ColumnFamilyOptions::compaction_score_limit_L0),
       OptionType::kDouble, OptionVerificationType::kNormal, true,
@@ -2043,7 +2049,8 @@ std::unordered_map<std::string, OptionTypeInfo>
         {"allow_trivial_move",
          {offset_of(&CompactionOptionsUniversal::allow_trivial_move),
           OptionType::kBoolean, OptionVerificationType::kNormal, true,
-          offsetof(class CompactionOptionsUniversal, allow_trivial_move)}}};
+          offsetof(class CompactionOptionsUniversal, allow_trivial_move)}}
+      };
 
 std::unordered_map<std::string, CompactionStopStyle>
     OptionsHelper::compaction_stop_style_string_map = {

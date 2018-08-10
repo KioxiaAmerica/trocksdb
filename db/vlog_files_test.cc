@@ -270,7 +270,7 @@ TEST_F(DBVLogTest, IndirectTest) {
   int32_t value_size = 1024;  // 10 KB
   int32_t key_size = 18;
   int32_t value_size_var = 20;
-  int32_t batch_size = 200000; // scaf 200;
+  int32_t batch_size = 200000; // scaf 200;   
 
   Options options = CurrentOptions();
 
@@ -303,8 +303,7 @@ TEST_F(DBVLogTest, IndirectTest) {
   options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
   options.vlogfile_max_size = std::vector<uint64_t>({sstkvcount*(value_size+10)});  // amount of value in 1 sst, allowing for CRC & header
 
-  options.use_direct_reads = true;
-  options.use_direct_io_for_flush_and_compaction = true;
+  options.vlog_direct_IO = true;
 
   printf("Starting: max_bytes_for_level_base=%zd target_file_size_base=%zd write_buffer_size=%zd vlogfile_max_size=%zd\n",options.max_bytes_for_level_base, options.target_file_size_base,options.write_buffer_size,options.vlogfile_max_size[0]);
   DestroyAndReopen(options);
@@ -317,7 +316,9 @@ TEST_F(DBVLogTest, IndirectTest) {
   SyncPoint::GetInstance()->SetCallBack(
       "LevelCompactionBuilder::PickCompaction", [&](void* arg) {
         uint64_t *pickerinfo = static_cast<uint64_t *>(arg);
-        printf("PickCompaction: Level %zd->%zd, exp ref0=%zd, act ref0=%zd, ring files=[%zd,%zd]\n\n",pickerinfo[0],pickerinfo[5],pickerinfo[1],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
+        if(pickerinfo[0]>0){  // to reduce typeout, type only if coming out of L1 or higher
+          printf("PickCompaction: Level %zd->%zd, exp ref0=%zd, act ref0=%zd, ring files=[%zd,%zd]\n\n",pickerinfo[0],pickerinfo[5],pickerinfo[1],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
+        }
       });
   SyncPoint::GetInstance()->EnableProcessing();
 
@@ -338,6 +339,8 @@ TEST_F(DBVLogTest, IndirectTest) {
     ASSERT_OK(Put(LongKey(i,key_size), values[i]));
   }
   ASSERT_OK(Flush());
+  ASSERT_EQ(Get(LongKey(0,key_size)), values[0]);
+  ASSERT_EQ(Get(LongKey(299,key_size)), values[299]);
 
   // 2 files in L0
 // obsolete   ASSERT_EQ("2", FilesPerLevel(0));
@@ -374,21 +377,19 @@ TEST_F(DBVLogTest, IndirectTest) {
         Status s = (Put(LongKey(j,key_size), values[j]));
         if(!s.ok())
           printf("Put failed\n");
-        if(i|k) {   // if we have filled up all the slots...
-          for(int32_t m=0;m<2;++m){
-            int32_t randkey = (rnd.Next()) % batch_size;  // make 2 random gets per put
-            std::string getresult = Get(LongKey(randkey,key_size));
-            if(getresult.compare(values[randkey])!=0) {
-              printf("mismatch: Get result=%s len=%zd\n",getresult.c_str(),getresult.size());
-              printf("mismatch: Expected=%s len=%zd\n",values[randkey].c_str(),values[randkey].size());
-              std::string getresult2 = Get(LongKey(randkey,key_size));
-              if(getresult.compare(getresult2)==0)printf("unchanged on reGet\n");
-              else if(getresult.compare(values[randkey])==0)printf("correct on reGet\n");
-              else printf("after ReGet: Get result=%s len=%zd\n",getresult2.c_str(),getresult2.size());
-            }
+        int maxget = (i|k)?batch_size:j;   // don't read a slot we haven't written yet
+        for(int32_t m=0;m<2;++m){  // read a couple times for every Put
+          int32_t randkey = (rnd.Next()) % maxget;  // make 2 random gets per put
+          std::string getresult = Get(LongKey(randkey,key_size));
+          if(getresult.compare(values[randkey])!=0) {
+            printf("mismatch: Get result=%s len=%zd\n",getresult.c_str(),getresult.size());
+            printf("mismatch: Expected=%s len=%zd\n",values[randkey].c_str(),values[randkey].size());
+            std::string getresult2 = Get(LongKey(randkey,key_size));
+            if(getresult.compare(getresult2)==0)printf("unchanged on reGet\n");
+            else if(getresult.compare(values[randkey])==0)printf("correct on reGet\n");
+            else printf("after ReGet: Get result=%s len=%zd\n",getresult2.c_str(),getresult2.size());
           }
         }
-      
       }
       printf("batch ");
       std::this_thread::sleep_for(std::chrono::seconds(2));  // give the compactor time to run

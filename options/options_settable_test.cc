@@ -474,6 +474,7 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
 
 #ifdef INDIRECT_VALUE_SUPPORT
       "allow_trivial_move=false;"
+      "vlog_direct_IO=false;"
       "compaction_score_limit_L0=1000.0;"
 #endif
       ;

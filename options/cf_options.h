@@ -154,6 +154,7 @@ struct MutableCFOptions {
 #ifdef INDIRECT_VALUE_SUPPORT   // declare mutable options
 // Tuning parameters are mutable
         allow_trivial_move(options.allow_trivial_move),
+        vlog_direct_IO(options.vlog_direct_IO),
         compaction_score_limit_L0(options.compaction_score_limit_L0),
 // options related to ring structure and compression are immutable.  Ring structure may change over a restart, as long as a ring is not deleted while it is holding values
         vlogring_activation_level(options.vlogring_activation_level),
@@ -203,6 +204,7 @@ struct MutableCFOptions {
 #ifdef INDIRECT_VALUE_SUPPORT   // initialize mutable options
 // Tuning parameters are mutable
         allow_trivial_move(false),
+        vlog_direct_IO(false),
         compaction_score_limit_L0(0),
         vlogring_activation_level(std::vector<int32_t>({})),
         min_indirect_val_size(std::vector<uint64_t>({0})),
@@ -271,6 +273,7 @@ struct MutableCFOptions {
   CompactionOptionsUniversal compaction_options_universal;
 #ifdef INDIRECT_VALUE_SUPPORT
   bool allow_trivial_move;  // allow trivial move, bypassing compaction.  Used to allow some tests to run
+  bool vlog_direct_IO;  // use direct I/O for vlog operations
   double compaction_score_limit_L0;  // maximum compaction score assigned to L0
   // VLog Options (mutable)
 // options related to ring structure and compression are immutable.  Ring structure may change over a restart, as long as a ring is not deleted while it is holding values

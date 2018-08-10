@@ -298,6 +298,9 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   // set to allow trivial move.  This does not update the VLogs and is used only to allow tests to run
   bool allow_trivial_move = false;
 
+  // use direct I/O for VLog operations
+  bool vlog_direct_IO = false;
+
   // compaction limit for L0.  The calculated compaction priority is (level size/desired level size).  When the host Put()s faster than the system can
   // compact, L0 starts to fill.  Its compaction priority gors.  L0->L1 compactions start to have priority.  L1 grows too, but L0 grows faster.  Eventually
   // the database is upside-down, with L1 larger than the lower levels.  This problem is especially bad when there are indirect values, because the scheme

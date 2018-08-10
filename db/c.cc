@@ -3469,6 +3469,9 @@ void rocksdb_options_set_min_level_to_compress(rocksdb_options_t* opt, int level
 void rocksdb_options_set_allow_trivial_move(rocksdb_options_t* opt, int allow) {
   opt->rep.allow_trivial_move = allow;
 }
+void rocksdb_options_set_vlog_direct_IO(rocksdb_options_t* opt, int allow) {
+  opt->rep.vlog_direct_IO = allow;
+}
 void rocksdb_options_set_compaction_score_limit_L0(rocksdb_options_t* opt, double score) {
   opt->rep.compaction_score_limit_L0 = score;
 }

@@ -429,8 +429,9 @@ Options DBTestBase::GetOptions(
       break;
 #ifdef INDIRECT_VALUE_SUPPORT
     case kDirectIOInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+        options.vlog_direct_IO = true;
 #endif
-      case kDirectIO: {
+    case kDirectIO: {
         options.use_direct_reads = true;
         options.use_direct_io_for_flush_and_compaction = true;
         options.compaction_readahead_size = 2 * 1024 * 1024;

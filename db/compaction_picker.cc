@@ -1336,7 +1336,8 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
     // notify the test code of the compaction-picking info
     size_t pickerinfo[6]={(size_t)start_level_inputs_.level,(size_t)~0,(size_t)~0,0,0,0}; // inlevel, picked min ref0, min ref0 in lower levels, vlog file min, vlog file max, output level
     for(auto startfile : start_level_inputs_.files){  // find the smallest ref0 in the input files (our expected ref0)
-      if(startfile->indirect_ref_0.size() && startfile->indirect_ref_0[0]!=0)pickerinfo[1]=std::min(pickerinfo[1],startfile->indirect_ref_0[0]);  // scaf wired to ring 0
+      ParsedFnameRing avgparent(startfile->avgparentfileno);
+      if(avgparent.fileno()!=0)pickerinfo[1]=std::min(pickerinfo[1],avgparent.fileno());  // scaf wired to ring 0
     }
 #endif
 
