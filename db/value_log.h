@@ -119,7 +119,6 @@ extern CompressionType CompressForVLog(const std::string& raw,  // input to be c
 // Constants
 
 static const int64_t directioalign=4096;  // align direct I/O buffers to multiples of this, for disk and memory address.  Should be 512 for linux, 512 for windows; but RocksDB thinks 4096 always
-    // we use directioalignbdy before we open VLog files for writing, for allocating the file buffers.  At that time we can't call GetRequiredBufferAlignment, so this has to be conservative
 static const std::string kRocksDbVLogFileExt = "vlg";   // extension for vlog files is vlgxxx when xxx is CF name
 static const VLogRingRefFileno high_value = ((VLogRingRefFileno)-1)>>1;  // biggest positive value
 static const float expansion_fraction = (float)0.25;  // fraction of valid files to leave for expansion when sizing the VLog

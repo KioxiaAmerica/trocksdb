@@ -706,11 +706,13 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
 
       if(iostatus.ok()) {
         // For direct I/O only, extend the length of the write to the required alignment.  RocksDB seems to think 4K is the needed alignment; we will go with what it tells us
-        if(envopts_.use_direct_writes){
+        // We go ahead and do this for all writes, because if the user switches to direct reads, padding the read buffer might carry past end of file if the file
+        // was not padded to a block boundary when written.  In case that's a problem, extend all writes.
+        if(1||envopts_.use_direct_writes){
           // See how much we must add to pad to sector length
           padlen = (writable_file->GetRequiredBufferAlignment()-1)&-(int64_t)(filebufferx-filebufferalignoffset);
           // For paranoid security purposes, clear the end of the sector.  It might contain passwords or something that a user with mere
-          // file access shouldn't see.  This is required only for direct I/O
+          // file access shouldn't see.
           memset((char *)filebuffer.data()+filebufferx,0,padlen);
         }        // no extension needed if not direct I/O
         iostatus = writable_file->Append(Slice((char *)filebuffer.data()+filebufferalignoffset,filebufferx+padlen-filebufferalignoffset));  // write out the data
