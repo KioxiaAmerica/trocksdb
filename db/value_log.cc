@@ -326,7 +326,7 @@ printf("VLogRing cfd_=%p\n",cfd_);
 #endif
   // Copy the direct-IO status from the CF options to the ENV options for this ring
   envopts_.use_direct_reads = cfd_->GetLatestCFOptions().vlog_direct_IO;
-  envopts_.use_direct_writes = false;  // scaf there seems to be a problem  cfd_->GetLatestCFOptions().vlog_direct_IO;
+  envopts_.use_direct_writes = cfd_->GetLatestCFOptions().vlog_direct_IO;
   // The CF has the ring stats, including the current earliest and latest files.  Extract them.
   // The CF is guaranteed to have stats for the ring, but the file info may be empty
   VLogRingRefFileno earliest_ref, latest_ref;  // first and last valid file numbers
@@ -706,7 +706,7 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
 #endif
 
       if(iostatus.ok()) {
-        // For direct I/O only, extend the length of the write to the required alignment.  RocksDB seems to think 4K is the needed alignment; we will go with what it tells us
+        // For direct I/O, extend the length of the write to the required alignment.  RocksDB seems to think 4K is the needed alignment; we will go with what it tells us
         // We go ahead and do this for all writes, because if the user switches to direct reads, padding the read buffer might carry past end of file if the file
         // was not padded to a block boundary when written.  In case that's a problem, extend all writes.
         if(1||envopts_.use_direct_writes){

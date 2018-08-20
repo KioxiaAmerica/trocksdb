@@ -270,7 +270,7 @@ TEST_F(DBVLogTest, IndirectTest) {
   int32_t value_size = 800;  // 10 KB
   int32_t key_size = 18;
   int32_t value_size_var = 20;
-  int32_t batch_size = 200000; // scaf 200;   
+  int32_t batch_size = 20000; // scaf 200;   0
 
   Options options = CurrentOptions();
 
@@ -346,7 +346,7 @@ TEST_F(DBVLogTest, IndirectTest) {
 // obsolete   ASSERT_EQ("2", FilesPerLevel(0));
   CompactRangeOptions compact_options;
   compact_options.change_level = true;
-  compact_options.target_level = 2;
+  compact_options.target_level = 1;
   ASSERT_OK(db_->CompactRange(compact_options, nullptr, nullptr));
   // 2 files in L2
 //  ASSERT_EQ("0,0,2", FilesPerLevel(0));
