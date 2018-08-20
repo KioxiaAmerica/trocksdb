@@ -317,7 +317,7 @@ VLogRing::VLogRing(
     ringno_(ringno),
     cfd_(cfd),
     immdbopts_(immdbopts),
-    envopts_(file_options),  // must copy into heap storage here
+    envopts_(file_options),
     deletion_deadband(1000),   // init to big value
     initialstatus(Status{})
 {
@@ -369,7 +369,7 @@ printf("Opening file %s\n",filenames[i].c_str());
 printf("Deleting file %s\n",filenames[i].c_str());
 #endif
         // The file is not referenced.  We must have crashed while deleting it, or before it was referenced.  Delete it now
-        if(!immdbopts_->env->DeleteFile(filenames[i]).ok()){
+        if(!immdbopts_->env->DeleteFile(filenames[i]).ok()){ // scaf should be envopts_
           ROCKS_LOG_WARN(immdbopts_->info_log,
                         "Unreferenced VLog file %s deleted",filenames[i].c_str());
         }
@@ -646,6 +646,7 @@ printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.si
   size_t runningrcdx=0;  // index of next rcdend entry to be used
   int64_t filebufferalignoffset = (directioalign-1)&-(int64_t)filebuffer.data();  // offset to sector-aligned portion of filebuffer
 
+  std::vector<VLogRingRefFileOffset> fileendoffsetspadded; fileendoffsetspadded.reserve(filecumreccnts.size());
   for(uint32_t i=0;i<filecumreccnts.size();++i) {   // Loop to create each file
     Status iostatus;  // where we save status from the file I/O
     int remappingerror = 0;  // set if we get an error remapping a value
@@ -771,14 +772,17 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
 
     // if there was an I/O error, return the error, localized to the file by a negative offset in the return area.
     // (the offset can never be zero)
-    VLogRingRefFileOffset reportedlen = filebufferx+padlen-filebufferalignoffset;
+    VLogRingRefFileOffset reportedlen = filebufferx-filebufferalignoffset;
     if(!iostatus.ok()) {
       resultstatus.push_back(iostatus);  // save the error details
       reportedlen = -reportedlen;  // flag the offending file
     }
 
-    // return the actual length written.  It will give the size added to the database
-    fileendoffsets.push_back(reportedlen);
+    // There are two file 'lengths'.  The length of the valid data only is used internally for assigning offsets to references.  The length shown by the file metadata
+    // is used to indicate the size of the file for space-reporting purposes.  The metadata length is longer than the actual data length if we have padded
+    // the filelength in anticipation of direct reads.
+    fileendoffsets.push_back(reportedlen);   // the actual data length, negative if error
+    fileendoffsetspadded.push_back(filebufferx+padlen-filebufferalignoffset);  // the padded data length, never negative
   }
 
   // Files are written and reopened.  Transfer them to the fd_ring under lock.
@@ -800,7 +804,7 @@ ProbDelay();
 
     // Loop to add each file to the ring
     for(uint32_t i=0;i<pathnames.size();++i) {
-      (*fdring)[new_ring_slot]=std::move(VLogRingFile(filepointers[i],fileendoffsets[i]));
+      (*fdring)[new_ring_slot]=std::move(VLogRingFile(filepointers[i],fileendoffsetspadded[i]));
       if(++new_ring_slot==(*fdring).size()){
         //  The write wraps around the end of the ring buffer...
         new_ring_slot = 0;   // advance to next slot, and handle wraparound (avoiding divide)

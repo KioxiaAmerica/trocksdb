@@ -267,7 +267,7 @@ TEST_F(DBVLogTest, IndirectTest) {
   const int32_t value_ref_size = 16;  // length of indirect reference
 // obsolete   int32_t value_size = 18;  // 10 KB
 // obsolete   int32_t key_size = 10 * 1024 - value_size;
-  int32_t value_size = 1024;  // 10 KB
+  int32_t value_size = 800;  // 10 KB
   int32_t key_size = 18;
   int32_t value_size_var = 20;
   int32_t batch_size = 200000; // scaf 200;   
@@ -303,21 +303,21 @@ TEST_F(DBVLogTest, IndirectTest) {
   options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
   options.vlogfile_max_size = std::vector<uint64_t>({sstkvcount*(value_size+10)});  // amount of value in 1 sst, allowing for CRC & header
 
-  options.vlog_direct_IO = false;
+  options.vlog_direct_IO = true;
 
   printf("Starting: max_bytes_for_level_base=%zd target_file_size_base=%zd write_buffer_size=%zd vlogfile_max_size=%zd\n",options.max_bytes_for_level_base, options.target_file_size_base,options.write_buffer_size,options.vlogfile_max_size[0]);
   DestroyAndReopen(options);
 
   SyncPoint::GetInstance()->SetCallBack(
       "CompactionJob::InstallCompactionResults", [&](void* arg) {
-        uint64_t *compact_stats = static_cast<uint64_t *>(arg);
-        printf("Compaction: %zd bytes in, %zd written to %zd files, %zd remapped\n",compact_stats[1],compact_stats[0],compact_stats[3],compact_stats[2]);
+// scaf        uint64_t *compact_stats = static_cast<uint64_t *>(arg);
+// scaf         printf("Compaction: %zd bytes in, %zd written to %zd files, %zd remapped\n",compact_stats[1],compact_stats[0],compact_stats[3],compact_stats[2]);
       });
   SyncPoint::GetInstance()->SetCallBack(
       "LevelCompactionBuilder::PickCompaction", [&](void* arg) {
         uint64_t *pickerinfo = static_cast<uint64_t *>(arg);
         if(pickerinfo[0]>0){  // to reduce typeout, type only if coming out of L1 or higher
-          printf("PickCompaction: Level %zd->%zd, exp ref0=%zd, act ref0=%zd, ring files=[%zd,%zd]\n\n",pickerinfo[0],pickerinfo[5],pickerinfo[1],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
+// scaf           printf("PickCompaction: Level %zd->%zd, exp ref0=%zd, act ref0=%zd, ring files=[%zd,%zd]\n\n",pickerinfo[0],pickerinfo[5],pickerinfo[1],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
         }
       });
   SyncPoint::GetInstance()->EnableProcessing();
@@ -365,7 +365,7 @@ TEST_F(DBVLogTest, IndirectTest) {
   }
 
 
-  for(int32_t k=0;k<10;++k) {
+  for(int32_t k=0;k<2;++k) {   // scaf 10
     // Many files 4 [300 => 4300)
     for (int32_t i = 0; i <= 5; i++) {
       for (int32_t j = 300; j < batch_size+300; j++) {
@@ -377,10 +377,12 @@ TEST_F(DBVLogTest, IndirectTest) {
         Status s = (Put(LongKey(j,key_size), values[j]));
         if(!s.ok())
           printf("Put failed\n");
+        ASSERT_OK(s);
         int maxget = (i|k)?batch_size:j;   // don't read a slot we haven't written yet
         for(int32_t m=0;m<2;++m){  // read a couple times for every Put
           int32_t randkey = (rnd.Next()) % maxget;  // make 2 random gets per put
           std::string getresult = Get(LongKey(randkey,key_size));
+          ASSERT_EQ(getresult,values[randkey]);
           if(getresult.compare(values[randkey])!=0) {
             printf("mismatch: Get result=%s len=%zd\n",getresult.c_str(),getresult.size());
             printf("mismatch: Expected=%s len=%zd\n",values[randkey].c_str(),values[randkey].size());
