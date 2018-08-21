@@ -261,6 +261,27 @@ const SstFileMetaData* PickFileRandomly(
 */
 }  // anonymous namespace
 
+
+static void ListVLogFileSizes(DBVLogTest *db, std::vector<uint64_t>& vlogfilesizes){
+  vlogfilesizes.clear();
+  // Get the list of file in the DB, cull that down to VLog files
+  std::vector<std::string> filenames;
+  ASSERT_OK(db->env_->GetChildren(db->db_->GetOptions().db_paths.back().path, &filenames));
+  for (size_t i = 0; i < filenames.size(); i++) {
+    uint64_t number;
+    FileType type;
+    if (ParseFileName(filenames[i], &number, &type)) {
+      if (type == kVLogFile) {
+        // vlog file.  Extract the CF id from the file extension
+        size_t dotpos=filenames[i].find_last_of('.');  // find start of extension
+        std::string cfname(filenames[i].substr(dotpos+1+kRocksDbVLogFileExt.size()));
+        uint64_t file_size; db->env_->GetFileSize(db->db_->GetOptions().db_paths.back().path+"/"+filenames[i], &file_size);
+        vlogfilesizes.emplace_back(file_size);
+      }
+    }
+  }
+}
+
 #if 0  // turn on for long r/w test.  This is the TRocks random-load test
 static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
 TEST_F(DBVLogTest, IndirectTest) {
@@ -410,27 +431,6 @@ TEST_F(DBVLogTest, IndirectTest) {
 
 }
 #endif
-
-
-static void ListVLogFileSizes(DBVLogTest *db, std::vector<uint64_t>& vlogfilesizes){
-  vlogfilesizes.clear();
-  // Get the list of file in the DB, cull that down to VLog files
-  std::vector<std::string> filenames;
-  ASSERT_OK(db->env_->GetChildren(db->db_->GetOptions().db_paths.back().path, &filenames));
-  for (size_t i = 0; i < filenames.size(); i++) {
-    uint64_t number;
-    FileType type;
-    if (ParseFileName(filenames[i], &number, &type)) {
-      if (type == kVLogFile) {
-        // vlog file.  Extract the CF id from the file extension
-        size_t dotpos=filenames[i].find_last_of('.');  // find start of extension
-        std::string cfname(filenames[i].substr(dotpos+1+kRocksDbVLogFileExt.size()));
-        uint64_t file_size; db->env_->GetFileSize(db->db_->GetOptions().db_paths.back().path+"/"+filenames[i], &file_size);
-        vlogfilesizes.emplace_back(file_size);
-      }
-    }
-  }
-}
 
 
 TEST_F(DBVLogTest, VlogFileSizeTest) {
@@ -678,7 +678,7 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
   //const int32_t key_size = 100;
   const int32_t value_size = 16384;  // k+v=16KB
   const int32_t nkeys = 100;  // number of files
-  options.target_file_size_base = 100LL << 20;  // high limit for compaction result, so we don't subcompact
+  options.target_file_size_base = 10LL<< 20;  // large value
 
   options.vlogring_activation_level = std::vector<int32_t>({0});
   options.min_indirect_val_size = std::vector<size_t>({0});
@@ -691,7 +691,7 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
   options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
   options.compaction_picker_age_importance = std::vector<int32_t>({100});
   options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
-  options.vlogfile_max_size = std::vector<uint64_t>({4LL << 20});  // 4MB
+  options.vlogfile_max_size = std::vector<uint64_t>({value_size+500});  // one value per vlog file; but doesn't apply to manual compaction
 
   Random rnd(301);
   // Key of 100 bytes, kv of 16KB
@@ -729,12 +729,14 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
     std::vector<uint64_t> vlogfilesizes;  // sizes of all the VLog files
     ListVLogFileSizes(this,vlogfilesizes);
     ASSERT_EQ(100, vlogfilesizes.size());
-    // Verify total file size is pretty close to right
+    // Verify total file size is pretty close to right.  Filesize gets rounded up to multiple of 4096
+    const int64_t bufferalignment = 4096;
+    int64_t onefilesize = ((value_size+5) + (bufferalignment-1)) & -bufferalignment;
     int64_t totalsize=0;  // place to build file stats
     for(size_t i=0;i<vlogfilesizes.size();++i){
      totalsize += vlogfilesizes[i];
     }
-    ASSERT_GT(1000, std::abs(totalsize-(value_size+5)*nkeys));
+    ASSERT_GT(1000, std::abs(totalsize-onefilesize*nkeys));
     // compact n-5% to n+5%
     CompactRangeOptions remap_options;
     remap_options.change_level = true;
@@ -751,7 +753,10 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
     for(size_t i=0;i<vlogfilesizes.size();++i){
      newtotalsize += vlogfilesizes[i];
     }
-    ASSERT_GT(value_size+500, (int64_t)std::abs(newtotalsize-totalsize*1.05));  // not a tight match, but if it works throughout the range it's OK
+    // expected increase is 4% of the UNrounded value, rounded up
+    int64_t expincr = (int64_t) ((value_size+5) * nkeys * 0.04);
+    expincr = (expincr + (bufferalignment-1)) & -bufferalignment;
+    ASSERT_GT(1000, (int64_t)std::abs(newtotalsize-(totalsize+expincr)));  // not a tight match, but if it works throughout the range it's OK
   }
   printf("\n");
 }
@@ -825,12 +830,14 @@ void DBVLogTest::SetUpForActiveRecycleTest() {
   std::vector<uint64_t> vlogfilesizes;  // sizes of all the VLog files
   ListVLogFileSizes(this,vlogfilesizes);
   ASSERT_EQ(100, vlogfilesizes.size());
-  // Verify total file size is pretty close to right
+  // Verify total file size is pretty close to right.  Filesize gets rounded up to multiple of 4096
+  const int64_t bufferalignment = 4096;
+  int64_t onefilesize = ((value_size+5) + (bufferalignment-1)) & -bufferalignment;
   int64_t totalsize=0;  // place to build file stats
   for(size_t i=0;i<vlogfilesizes.size();++i){
    totalsize += vlogfilesizes[i];
   }
-  ASSERT_GT(1000, std::abs(totalsize-(value_size+5)*nkeys));
+  ASSERT_GT(1000, std::abs(totalsize-onefilesize*nkeys));
   // compact between 5% and 20%.  This should remap all, leaving 15% fragmentation.
   CompactRangeOptions remap_options;
   remap_options.change_level = true;
