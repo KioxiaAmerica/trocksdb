@@ -1362,7 +1362,7 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
       }
     }
     // 3 4 get the current file limits from the VLog
-    if(cfd->vlog()!=nullptr && cfd->vlog()->rings().size()!=0){pickerinfo[3]= cfd->vlog()->rings()[0]->ringtail(); pickerinfo[4]=cfd->vlog()->rings()[0]->ringhead();}
+    if(cfd!=nullptr && cfd->vlog()!=nullptr && cfd->vlog()->rings().size()!=0){pickerinfo[3]= cfd->vlog()->rings()[0]->ringtail(); pickerinfo[4]=cfd->vlog()->rings()[0]->ringhead();}
     // 5 output level
     pickerinfo[5]=output_level_;
     TEST_SYNC_POINT_CALLBACK("LevelCompactionBuilder::PickCompaction",

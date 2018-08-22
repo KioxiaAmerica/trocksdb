@@ -156,6 +156,7 @@ TEST_F(ExternalSSTFileBasicTest, Basic) {
 TEST_F(ExternalSSTFileBasicTest, NoCopy) {
   Options options = CurrentOptions();
   INDOPTIONSBGN
+  DestroyAndReopen(options);
   const ImmutableCFOptions ioptions(options);
 
   SstFileWriter sst_file_writer(EnvOptions(), options);
@@ -217,6 +218,7 @@ TEST_F(ExternalSSTFileBasicTest, NoCopy) {
   for (int k = 0; k < 300; k++) {
     ASSERT_EQ(Get(Key(k)), Key(k) + "_val");
   }
+
   INDOPTIONSEND(options)
 }
 
