@@ -1687,8 +1687,8 @@ void VersionStorageInfo::ComputeCompactionScore(
           // With indirect values, the opposite problem arises: the target file size is much smaller than the memtable; in fact the
           // max_bytes_for_level_base is likely smaller than a single memtable.  In this case, comparing the size of a memtable against
           // max_bytes_for_level_base will lead to artificially large compaction score.  So we suppress the test if the average memtable is
-          // at least 8x bigger than all the files at the first level: in that case the file-number ratio will be sufficient
-          if(mutable_cf_options.write_buffer_size < 8*mutable_cf_options.max_bytes_for_level_base)  // DO NOT MOVE - affects block below
+          // at least as big as all the files at the first level: in that case the file-number ratio will be sufficient
+          if(mutable_cf_options.write_buffer_size < mutable_cf_options.max_bytes_for_level_base)  // DO NOT MOVE - affects block below
 #endif
            {  // NOTE DO NOT MOVE - this block is affected by the preceding #ifdef
            double projectedl0score = static_cast<double>(total_size) /

@@ -1308,6 +1308,11 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
   // See if we need to perform an Active Recycling pass becase the fragmentation is getting too high
   compaction_inputs_.clear();  // start with an empty set of files
   ColumnFamilyData *cfd =  vstorage_->GetCfd();   // get pointer to CF.  Can be null only during tests that don't open a CF
+#if !defined(NDEBUG)
+    // notify the test code of the compaction-picking info
+    size_t pickerinfo[8]={0,(size_t)~0,(size_t)~0,0,0,0,0}; // inlevel, picked min ref0, min ref0 in lower levels, vlog file min, vlog file max, output level
+    pickerinfo[6]=(size_t)cfd;  // 6 cf
+#endif
   if(cfd!=nullptr)cfd->CheckForActiveRecycle(compaction_inputs_, ringno_, lastfileno_, mutable_cf_options_);  // see if we select a set of files to recycle
   if(!compaction_inputs_.empty()) {
     // Active Recycling needed.  Indicate that as the reason for compaction.  This reason code controls processing during the compaction
@@ -1322,6 +1327,11 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
       if(start_level_>compaction_inputs_[i].level)start_level_ = compaction_inputs_[i].level;  // find minimum level touched
       if(output_level_<compaction_inputs_[i].level)output_level_ = compaction_inputs_[i].level;  // find maximum level touched
     }
+#if !defined(NDEBUG)
+    // notify the test code of the compaction-picking info
+    pickerinfo[7]=1;  // 7 set to 1 if AR
+    pickerinfo[2] = compaction_inputs_.size();  // 2 # AR inputs
+#endif
   } else {
     // Not Active Recycling.  Do a normal compaction,  pick files, etc.
 #endif
@@ -1333,8 +1343,6 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
     }
     assert(start_level_ >= 0 && output_level_ >= 0);
 #if defined(INDIRECT_VALUE_SUPPORT) && !defined(NDEBUG)
-    // notify the test code of the compaction-picking info
-    size_t pickerinfo[6]={(size_t)start_level_inputs_.level,(size_t)~0,(size_t)~0,0,0,0}; // inlevel, picked min ref0, min ref0 in lower levels, vlog file min, vlog file max, output level
     for(auto startfile : start_level_inputs_.files){  // find the smallest ref0 in the input files (our expected ref0)
       ParsedFnameRing avgparent(startfile->avgparentfileno);
       if(avgparent.fileno()!=0)pickerinfo[1]=std::min(pickerinfo[1],avgparent.fileno());  // scaf wired to ring 0
@@ -1361,10 +1369,6 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
         }
       }
     }
-    // 3 4 get the current file limits from the VLog
-    if(cfd!=nullptr && cfd->vlog()!=nullptr && cfd->vlog()->rings().size()!=0){pickerinfo[3]= cfd->vlog()->rings()[0]->ringtail(); pickerinfo[4]=cfd->vlog()->rings()[0]->ringhead();}
-    // 5 output level
-    pickerinfo[5]=output_level_;
     TEST_SYNC_POINT_CALLBACK("LevelCompactionBuilder::PickCompaction",
                            &pickerinfo);
 #endif
@@ -1372,6 +1376,16 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
 #ifdef INDIRECT_VALUE_SUPPORT
   }
   // Files have been picked for compaction
+#endif
+#if defined(INDIRECT_VALUE_SUPPORT) && !defined(NDEBUG)
+    // 0 start level
+    pickerinfo[0]=start_level_;
+    // 5 output level
+    pickerinfo[5]=output_level_;
+    // 3 4 get the current file limits from the VLog
+    if(cfd!=nullptr && cfd->vlog()!=nullptr && cfd->vlog()->rings().size()!=0){pickerinfo[3]= cfd->vlog()->rings()[0]->ringtail(); pickerinfo[4]=cfd->vlog()->rings()[0]->ringhead();}
+    TEST_SYNC_POINT_CALLBACK("LevelCompactionBuilder::PickCompaction",
+                           &pickerinfo);
 #endif
 #if 0 // scaf debug
 printf("Compaction picked:");

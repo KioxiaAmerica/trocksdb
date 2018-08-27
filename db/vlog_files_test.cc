@@ -291,13 +291,13 @@ TEST_F(DBVLogTest, IndirectTest) {
   int32_t value_size = 800;  // 10 KB
   int32_t key_size = 18;
   int32_t value_size_var = 20;
-  int32_t batch_size = 20000; // scaf 200;   0
+  int32_t batch_size = 200000; // scaf 200;   
 
   Options options = CurrentOptions();
 
-  options.num_levels = 3;
+  options.num_levels = 4;  // 3 levels on disk: 1,2,3
   options.max_bytes_for_level_multiplier = 10;
-  uint64_t kvsl1 = (uint64_t)std::exp(std::log(batch_size)-(options.num_levels-1)*std::log(options.max_bytes_for_level_multiplier));   // # kvs in L1
+  uint64_t kvsl1 = (uint64_t)std::exp(std::log(batch_size)-(options.num_levels-1-1)*std::log(options.max_bytes_for_level_multiplier));   // # kvs in L1
   uint64_t bytesperkvinsst=key_size+value_ref_size+20;
   uint64_t bytesperkvinmemtable=key_size+value_size+20;
   options.max_bytes_for_level_base = bytesperkvinsst*kvsl1;  // size of all SSTs for those kvs
@@ -317,6 +317,7 @@ TEST_F(DBVLogTest, IndirectTest) {
   options.fraction_remapped_during_active_recycling = std::vector<int32_t>({25});
   options.fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
   options.fragmentation_active_recycling_klaxon = std::vector<int32_t>({50});
+  options.active_recycling_size_trigger = std::vector<int64_t>({(int64_t)(0.8*batch_size*value_size)});   // start AR when the DB is almost full
   options.active_recycling_sst_minct = std::vector<int32_t>({5});
   options.active_recycling_sst_maxct = std::vector<int32_t>({15});
   options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
@@ -331,14 +332,23 @@ TEST_F(DBVLogTest, IndirectTest) {
 
   SyncPoint::GetInstance()->SetCallBack(
       "CompactionJob::InstallCompactionResults", [&](void* arg) {
-// scaf        uint64_t *compact_stats = static_cast<uint64_t *>(arg);
-// scaf         printf("Compaction: %zd bytes in, %zd written to %zd files, %zd remapped\n",compact_stats[1],compact_stats[0],compact_stats[3],compact_stats[2]);
+        uint64_t *compact_stats = static_cast<uint64_t *>(arg);
+        if(0&&(compact_stats[0]|compact_stats[1]|compact_stats[2])!=0){
+          printf("Compaction: %zd bytes in, %zd written to %zd files, %zd remapped\n",compact_stats[1],compact_stats[0],compact_stats[3],compact_stats[2]);
+        }
       });
   SyncPoint::GetInstance()->SetCallBack(
       "LevelCompactionBuilder::PickCompaction", [&](void* arg) {
         uint64_t *pickerinfo = static_cast<uint64_t *>(arg);
-        if(pickerinfo[0]>0){  // to reduce typeout, type only if coming out of L1 or higher
-// scaf           printf("PickCompaction: Level %zd->%zd, exp ref0=%zd, act ref0=%zd, ring files=[%zd,%zd]\n\n",pickerinfo[0],pickerinfo[5],pickerinfo[1],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
+        ColumnFamilyData *cfd=(ColumnFamilyData*)pickerinfo[6];
+        if(cfd!=nullptr && pickerinfo[0]>0){  // to reduce typeout, type only if coming out of L1 or higher
+          if(pickerinfo[7]){ // Active recycle
+            printf("PickCompaction: AR L%zd->%zd , #input SSTs=%zd, ring files=[%zd,%zd] SSTs={",pickerinfo[0],pickerinfo[5],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
+          } else {  // normal compaction
+            printf("PickCompaction: Level %zd->%zd, exp ref0=%zd, act ref0=%zd, ring files=[%zd,%zd] SSTs={",pickerinfo[0],pickerinfo[5],pickerinfo[1],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
+          }
+          for(int t=0;t<options.num_levels;){printf("%d",cfd->current()->storage_info()->NumLevelFiles(t)); if(++t==options.num_levels)break; printf(", ");}
+          printf("}\n");
         }
       });
   SyncPoint::GetInstance()->EnableProcessing();
@@ -386,7 +396,7 @@ TEST_F(DBVLogTest, IndirectTest) {
   }
 
 
-  for(int32_t k=0;k<2;++k) {   // scaf 10
+  for(int32_t k=0;k<10;++k) {
     // Many files 4 [300 => 4300)
     for (int32_t i = 0; i <= 5; i++) {
       for (int32_t j = 300; j < batch_size+300; j++) {
@@ -394,12 +404,13 @@ TEST_F(DBVLogTest, IndirectTest) {
 //        ASSERT_OK(Flush());
 //        dbfull()->TEST_WaitForFlushMemTable();
 //      }
-        if((rnd.Next()&0x7f)==0)values[j] = RandomString(&rnd, value_size + rnd.Next()%value_size_var);  // replace one value in 100
-        Status s = (Put(LongKey(j,key_size), values[j]));
+        int maxget = (i|k)?batch_size:j;   // don't read a slot we haven't written yet
+        int putpos = (i|k)?rnd.Next()%batch_size:j;  // put into a randow slot, but only after the first pass has filled all slots
+        if((rnd.Next()&0x7f)==0)values[putpos] = RandomString(&rnd, value_size + rnd.Next()%value_size_var);  // replace one value in 100
+        Status s = (Put(LongKey(putpos,key_size), values[putpos]));
         if(!s.ok())
           printf("Put failed\n");
         ASSERT_OK(s);
-        int maxget = (i|k)?batch_size:j;   // don't read a slot we haven't written yet
         for(int32_t m=0;m<2;++m){  // read a couple times for every Put
           int32_t randkey = (rnd.Next()) % maxget;  // make 2 random gets per put
           std::string getresult = Get(LongKey(randkey,key_size));

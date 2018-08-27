@@ -1534,7 +1534,7 @@ Status CompactionJob::InstallCompactionResults(
             // default as described above: ref from file if any, otherwise near end of output ring 
             const_cast<SubcompactionState&>(sub_compact).outputs[curroutx].meta.avgparentfileno =
               (uint32_t)outringno < sub_compact.outputs[curroutx].meta.indirect_ref_0.size() && sub_compact.outputs[curroutx].meta.indirect_ref_0[outringno]
-                ? 0 : case2bno;
+                ? sub_compact.outputs[curroutx].meta.indirect_ref_0[outringno] : case2bno;
           }
           // For levels close to the bottom of the ring, calculate overlaps
           if(compaction->output_level()>0 && compaction->output_level()<outlevel && compaction->output_level()>outlevel-3) {   // if the new output files are not already in the last populated level, and we need the hint...
@@ -1557,7 +1557,6 @@ Status CompactionJob::InstallCompactionResults(
             const Comparator* user_cmp = compaction->column_family_data()->user_comparator();  // the comparator for this CF
 
             // Traverse the files, accumulating the ring-ref_0s for the output files
-// scaf should go back to average value, but omitting files that overlap on the ends(?) since they are subject to change.  Or maybe count just 1 end?
             std::vector<uint32_t> curroverlapx(overlapping_files.size(),0);  // running pointer into files - one for each level we are keeping
             for(uint32_t curroutx = 0; curroutx<sub_compact.outputs.size();++curroutx) {
               // we are looking for overlaps with curroutx.  Count the numbers of files and the index of each

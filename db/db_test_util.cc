@@ -200,7 +200,6 @@ bool DBTestBase::ChangeOptions(int skip_mask) {
   }
 }
 
-#if 1  // scaf new version
 // Switch between different option styles.  Return false if no more to try
 
 bool DBTestBase::CycleThroughOptions(std::vector<int>& optioncycle, std::vector<int>& optionaction,bool destroy2,int skip_mask) {size_t i;
@@ -252,7 +251,7 @@ bool DBTestBase::ChangeCompactOptions(int skip_mask) {return CycleThroughOptions
 bool DBTestBase::ChangeWalOptions(int skip_mask) {return CycleThroughOptions(wal_cycle,wal_actions,true,skip_mask);}
 bool DBTestBase::ChangeFilterOptions(int skip_mask) {return CycleThroughOptions(filter_cycle,filter_actions,false,skip_mask);}
 bool DBTestBase::ChangeIndirectOptions(int skip_mask) {return CycleThroughOptions(ind_cycle,ind_actions,false,skip_mask);}
-#else
+#if 0 // scaf following obsolete - delete after a decent interval
 // Switch between different compaction styles.
 bool DBTestBase::ChangeCompactOptions() {
   if (option_config_ == kDefault) {

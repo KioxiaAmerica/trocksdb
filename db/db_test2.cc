@@ -1055,7 +1055,7 @@ TEST_F(DBTest2, PresetCompressionDict) {
   if (ZSTD_Supported()) {
     compression_types.push_back(kZSTD);
   }
-#ifdef INDIRECT_VALUE_SUPPORT  // scaf must use options
+#ifdef INDIRECT_VALUE_SUPPORT
   if(options.vlogring_activation_level.size())return;  // this test does not apply to indirect values
 #endif
 
@@ -1187,7 +1187,7 @@ TEST_F(DBTest2, CompressionOptions) {
 
   const int kKeySize = 5;
   int kValSize = 20;
-#ifdef INDIRECT_VALUE_SUPPORT  // scaf must use option
+#ifdef INDIRECT_VALUE_SUPPORT
   if(options.vlogring_activation_level.size())kValSize = 20+(16-4);  // references compress so well that we have to expect only 4 out of 16 bytes after compression
 #endif
   Random rnd(301);
