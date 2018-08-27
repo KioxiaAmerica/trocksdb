@@ -1755,6 +1755,10 @@ TEST_P(DBTestUniversalCompaction, ConcurrentBottomPriLowPriCompactions) {
   // Trigger compaction if size amplification exceeds 110%
   options.compaction_options_universal.max_size_amplification_percent = 110;
   DestroyAndReopen(options);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+#ifdef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
 
   rocksdb::SyncPoint::GetInstance()->LoadDependency(
       {// wait for the full compaction to be picked before adding files intended
@@ -1771,7 +1775,7 @@ TEST_P(DBTestUniversalCompaction, ConcurrentBottomPriLowPriCompactions) {
   for (int i = 0; i < 2; ++i) {
     for (int num = 0; num < kNumFilesTrigger; num++) {
       int key_idx = 0;
-      GenerateNewFileInvInd(&rnd, &key_idx, true /* no_wait */);
+      GenerateNewFileInvInd(&rnd, &key_idx, values_are_indirect, true /* no_wait */);
       // use no_wait above because that one waits for flush and compaction. We
       // don't want to wait for compaction because the full compaction is
       // intentionally blocked while more files are flushed.
