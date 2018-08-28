@@ -282,9 +282,9 @@ static void ListVLogFileSizes(DBVLogTest *db, std::vector<uint64_t>& vlogfilesiz
   }
 }
 
-#if 0  // turn on for long r/w test.  This is the TRocks random-load test
+#if 0  // turn on for long r/w test.  This is the TRocks random-load test, and verifies that compaction picking picks oldest references
 static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
-TEST_F(DBVLogTest, IndirectTest) {
+TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   const int32_t value_ref_size = 16;  // length of indirect reference
 // obsolete   int32_t value_size = 18;  // 10 KB
 // obsolete   int32_t key_size = 10 * 1024 - value_size;
@@ -330,6 +330,11 @@ TEST_F(DBVLogTest, IndirectTest) {
   printf("Starting: max_bytes_for_level_base=%zd target_file_size_base=%zd write_buffer_size=%zd vlogfile_max_size=%zd\n",options.max_bytes_for_level_base, options.target_file_size_base,options.write_buffer_size,options.vlogfile_max_size[0]);
   DestroyAndReopen(options);
 
+  int64_t numcompactions = 0;  // total number of non-AR compactions (coming from L1 or higher)
+  int64_t numARs = 0;  // number of ARs
+  int64_t numfinalcompactions = 0;  // compactions into last level
+  double totalref0position = 0.0;  //  total of ref0 position as a % of ring size
+
   SyncPoint::GetInstance()->SetCallBack(
       "CompactionJob::InstallCompactionResults", [&](void* arg) {
         uint64_t *compact_stats = static_cast<uint64_t *>(arg);
@@ -343,9 +348,20 @@ TEST_F(DBVLogTest, IndirectTest) {
         ColumnFamilyData *cfd=(ColumnFamilyData*)pickerinfo[6];
         if(cfd!=nullptr && pickerinfo[0]>0){  // to reduce typeout, type only if coming out of L1 or higher
           if(pickerinfo[7]){ // Active recycle
+            ++numARs;  // inc count of ARs
             printf("PickCompaction: AR L%zd->%zd , #input SSTs=%zd, ring files=[%zd,%zd] SSTs={",pickerinfo[0],pickerinfo[5],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
           } else {  // normal compaction
+            ++numcompactions;
             printf("PickCompaction: Level %zd->%zd, exp ref0=%zd, act ref0=%zd, ring files=[%zd,%zd] SSTs={",pickerinfo[0],pickerinfo[5],pickerinfo[1],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
+            if(pickerinfo[5]==(options.num_levels-1)){
+              // compaction into final level
+              if(pickerinfo[2]!=~0LL){  // don't count comps with no ref0.  They should not occur during the final data-collection pass
+                ++numfinalcompactions;  // inc # final compactions
+                totalref0position += (double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3]);  // add in fractional position of ref0 file
+if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3]) > 1.0  || (double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3]) < 0.0)
+ printf("invalid ref0\n"); // scaf
+              }
+            }
           }
           for(int t=0;t<options.num_levels;){printf("%d",cfd->current()->storage_info()->NumLevelFiles(t)); if(++t==options.num_levels)break; printf(", ");}
           printf("}\n");
@@ -396,9 +412,14 @@ TEST_F(DBVLogTest, IndirectTest) {
   }
 
 
-  for(int32_t k=0;k<10;++k) {
+  for(int32_t k=0;k<2;++k) {
+    // Reinit stats variables so they get the last-pass data
+    numcompactions = 0;  // total number of non-AR compactions (coming from L1 or higher)
+    numARs = 0;  // number of ARs
+    numfinalcompactions = 0;  // compactions into last level
+    totalref0position = 0.0;  //  total of ref0 position as a % of ring size
     // Many files 4 [300 => 4300)
-    for (int32_t i = 0; i <= 5; i++) {
+    for (int32_t i = 0; i <= 3; i++) {  // scaf 5
       for (int32_t j = 300; j < batch_size+300; j++) {
 //      if (j == 2300) {
 //        ASSERT_OK(Flush());
@@ -439,10 +460,11 @@ TEST_F(DBVLogTest, IndirectTest) {
     TryReopen(options);
     printf("reopened.\n");
   }
-
+  printf("numcompactions=%zd, numARs=%zd, avg ref0 pos=%7.5f\n",numcompactions,numARs,totalref0position/numfinalcompactions);
+  ASSERT_LT(totalref0position/numfinalcompactions,0.12);  // the number is empirical.  Make sure we are picking compactions from the oldest values first
+  ASSERT_LT((double)numARs/(double)numcompactions,0.20);  // the number is empirical.  Make sure ARs aren't much more than 10% of compactions
 }
 #endif
-
 
 TEST_F(DBVLogTest, VlogFileSizeTest) {
   Options options = CurrentOptions();
