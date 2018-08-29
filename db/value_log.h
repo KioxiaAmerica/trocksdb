@@ -695,7 +695,7 @@ public:
   const ImmutableDBOptions& immdbopts,   // The current options
   const EnvOptions& file_options  // options to use for all VLog files
   );
-  size_t nrings() { return rings_.size(); }
+  size_t nrings() { return std::min(rings_.size(),starting_level_for_ring_.size()); }  // we can't use a ring until it is allocated and connected to a level
   std::vector<std::unique_ptr<VLogRing>>& rings() { return rings_; }
   int starting_level_for_ring(int ringno) { return starting_level_for_ring_[ringno]; }
   bool cfd_exists() { return cfd_ != nullptr; }   // id the cfd still valid?
