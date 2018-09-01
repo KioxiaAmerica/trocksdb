@@ -1102,6 +1102,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
       ++arfileno;   // increment the file number now that we have output the file
 #endif
       CompactionIterationStats range_del_out_stats;
+
       status = FinishCompactionOutputFile(input_status, sub_compact,
                                           range_del_agg.get(),
                                           &range_del_out_stats, next_key);
