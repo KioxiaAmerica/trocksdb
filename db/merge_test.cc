@@ -82,6 +82,7 @@ std::shared_ptr<DB> OpenDb(const std::string& dbname, const bool ttl = false,
   options.create_if_missing = true;
   options.merge_operator = std::make_shared<CountMergeOperator>();
   options.max_successive_merges = max_successive_merges;
+  (void)num_vlogrings;
 #ifdef INDIRECT_VALUE_SUPPORT
   options.vlogring_activation_level.resize(num_vlogrings,0);  // set # rings
 #endif

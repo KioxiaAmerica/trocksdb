@@ -935,11 +935,11 @@ TEST_F(DBRangeDelTest, CompactionTreatsSplitInputLevelDeletionAtomically) {
   bool values_are_indirect = false;  // Set if we are using VLogging
 #ifdef INDIRECT_VALUE_SUPPORT
   values_are_indirect = options.vlogring_activation_level.size()!=0;
-#endif
   if(values_are_indirect){
     options.target_file_size_base = (uint64_t)(kValueBytes*1.7);  // allow 2 keys per file for both indirect and direct values
     options.allow_trivial_move = true;
   }
+#endif
   // i == 0: CompactFiles
   // i == 1: CompactRange
   // i == 2: automatic compaction

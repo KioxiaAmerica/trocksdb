@@ -56,6 +56,8 @@ class TransactionTestBase : public ::testing::Test {
       : db(nullptr), env(nullptr), use_stackable_db_(use_stackable_db) {
 #ifdef INDIRECT_VALUE_SUPPORT
     if(useindirect)options.vlogring_activation_level = std::vector<int32_t>{0};
+#else
+    (void)useindirect;
 #endif
     options.create_if_missing = true;
     options.max_write_buffer_number = 2;
