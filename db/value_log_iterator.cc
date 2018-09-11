@@ -454,8 +454,8 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
       switch(vclass) {
       case vPassthroughIndirect:
         // Indirect passthrough.  We need to retrieve the reference file# and apply it
-        prevringfno = diskfileref[passthroughrefx_++];   // copy indirect ref, advance to next indirect ref
-        // fall through to...
+	// copy indirect ref, advance to next indirect ref
+        prevringfno = diskfileref[passthroughrefx_++]; // fallthrough
       case vPassthroughDirect:
        // passthrough, either kind.  Fill in the slice from the buffered data, and advance pointers to next record
         value_.install((char *)passthroughdata.data() + nextpassthroughref,passthroughrecl[passx_++]);  // nextpassthroughref is current data offset
@@ -463,8 +463,8 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
         break;
       case vIndirectFirstMap:
         // first mapping: change the value type to indicate indirect
-        ikey_.type = (ikey_.type==kTypeValue) ? kTypeIndirectValue : kTypeIndirectMerge;  // must be one or the other
-        // fall through to...
+	// must be one or the other
+        ikey_.type = (ikey_.type==kTypeValue) ? kTypeIndirectValue : kTypeIndirectMerge; // fallthrough
       case vIndirectRemapped:
         // Data taken from disk, either to be written the first time or to be rewritten for remapping
         // nextdiskref contains the next record to return
