@@ -558,20 +558,20 @@ endif
 #LOCK/CRASH test cases
 #[unit] \
 	backupable_db_test 			trocks Bug128\
-	db_iterator_test 			trocks Bug139\
-	vlog_files_test 			trocks Bug196\
-	write_prepared_transaction_test 	trocks Bug151\
-	write_prepared_transaction_test 	noflags Bug151\
+	db_iterator_test 			trocks+noflags Bug139\
+	write_prepared_transaction_test 	trocks+noflags Bug151\
+	transaction_test 			trocksrel Bug211\
 
 ifdef INDIRECT_VALUE_SUPPORT
 LOCKS= \
 	backupable_db_test \
 	db_iterator_test \
-	vlog_files_test \
+	transaction_test \
 	write_prepared_transaction_test \
 
 else
 LOCKS= \
+	db_iterator_test \
 	write_prepared_transaction_test \
 
 endif

@@ -230,6 +230,8 @@ void GetExpectedTableProperties(Options& options, TableProperties* expected_tp,
   int kEncodingSavePerKey = kKeySize / 4;
 #ifdef INDIRECT_VALUE_SUPPORT
   if(options.vlogring_activation_level.size())kEncodingSavePerKey = std::min(2,kKeySize / 10);  // empirical.  Using random keys it's very unlikely to share bytes
+#else
+  (void)options;
 #endif //INDIRECT_VALUE_SUPPORT
   expected_tp->raw_key_size = kKeyCount * (kKeySize + 8);
   expected_tp->raw_value_size = kKeyCount * kValueSize;

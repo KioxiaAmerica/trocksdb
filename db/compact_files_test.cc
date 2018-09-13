@@ -69,7 +69,7 @@ class FlushedFileCollector : public EventListener {
 #define INDOPTIONSEND(opts) }
 #endif
 // The tests in this file are not self-contained (they chain to each other).  So we must run all the direct-value tests first, then indirect
-static int useindirect = 0;  // set to make tests open with indirect values
+//static int useindirect = 0;  // set to make tests open with indirect values
 
 TEST_F(CompactFilesTest, L0ConflictsFiles) {
   Options options;

@@ -197,8 +197,8 @@ class CompactionFilter {
     switch (value_type) {
       case ValueType::kValueIndirect:
         if(pvlog)pvlog->VLogGet(existing_value,*new_value);   // resolve the indirect value, using new_value as a temp
-        resolved_value = *new_value;  // use resolved_value below
-      // fall through to...
+        resolved_value = *new_value; // fallthrough
+	// use resolved_value below
       case ValueType::kValue: {
         bool value_changed = false;
         bool rv = Filter(level, key, resolved_value, new_value, &value_changed);

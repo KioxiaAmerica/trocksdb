@@ -1468,7 +1468,7 @@ Status CompactionJob::InstallCompactionResults(
   // Add compaction inputs
   compaction->AddInputDeletions(compact_->compaction->edit());
 
-#ifndef NDEBUG  // to support test hooks
+#if !defined(NDEBUG) && defined(INDIRECT_VALUE_SUPPORT) // to support test hooks
   uint64_t comptotal_stats[4]={0,0,0,0};
   // number of bytes written to VLog before compression
   // number of bytes moved from one VLog to another
