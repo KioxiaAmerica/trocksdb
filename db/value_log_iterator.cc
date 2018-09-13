@@ -88,6 +88,10 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
   use_indirects_(use_indirects),
   current_vlog(cfd->vlog())
   {
+    // init stats we will keep
+    remappeddatalen = 0;  // number of bytes that were read & rewritten to a new VLog position
+    bytesintocompression = 0;  // number of bytes split off to go to VLog
+
     // If indirects are disabled, we have nothing to do.  We will just be returning values from c_iter_.
     if(!use_indirects_)return;
 #ifdef IITIMING
@@ -156,10 +160,6 @@ printf("\n");
     // They are immediately passed to Builder which must make a copy of the data.
     std::vector<NoInitChar> diskdata;  // where we accumulate the data to write
     std::string indirectbuffer;   // temp area where we read indirect values that need to be remapped
-
-    // init stats we will keep
-    remappeddatalen = 0;  // number of bytes that were read & rewritten to a new VLog position
-    bytesintocompression = 0;  // number of bytes split off to go to VLog
 
     // initialize the vectors to reduce later reallocation and copying
     keys.reserve((uint64_t)(std::min(10000000.0,1.2*compaction->max_compaction_bytes()))); diskdata.reserve(50000000);  // scaf size the diskdata better, depending on level
@@ -333,7 +333,9 @@ printf("\n");
     iitimevec[7] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 7 - before write to VLog
 #endif
     // Allocate space in the Value Log and write the values out, and save the information for assigning references
-    outputring->VLogRingWrite(current_vlog,diskdata,diskrecl,valueclass,compaction->mutable_cf_options()->vlogfile_max_size[outputringno],firstdiskref,fileendoffsets,outputerrorstatus);
+    VLogRingRefFileOffset initfrag;  // fragmentation created with initial writing of files
+    outputring->VLogRingWrite(current_vlog,diskdata,diskrecl,valueclass,compaction->mutable_cf_options()->vlogfile_max_size[outputringno],firstdiskref,fileendoffsets,outputerrorstatus,initfrag);
+    addedfrag[outputringno] += initfrag;  // add end-of-file fragmentation to fragmentation total
     // Now, before any SSTs have been released, switch over the first time from 'waiting for SST/VLog info' to 'normal operation'
     current_vlog->SetInitComplete();
     nextdiskref = firstdiskref;    // remember where we start, and initialize the running pointer to the disk data
@@ -344,7 +346,8 @@ printf("\n");
     outputring->UpdateDeadband(fileendoffsets.size(),compaction->mutable_cf_options()->active_recycling_size_trigger[outputringno]);
 
     // save what we need to return to stats
-    diskdatalen = bytesresvindiskdata;  // save # bytes written for stats report
+    diskdatalen = bytesresvindiskdata+initfrag;  // save # bytes written for stats report.  This is the actual file length on disk, including amounts added in rounding
+// obsolete printf("diskdatalen=%zd, initfrag=%zd, refsread[0]=%zd, addedfrag[0]=%zd\n",diskdatalen,initfrag,refsread[0],addedfrag[0]);  // scaf
 #if DEBLEVEL&4
 printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.size());
 #endif

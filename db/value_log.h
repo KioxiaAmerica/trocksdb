@@ -602,9 +602,10 @@ int64_t maxfilesize,   // recommended maximum VLogFile size - may be exceeded up
 VLogRingRef& firstdataref,   // result: reference to the first value written
 std::vector<VLogRingRefFileOffset>& fileendoffsets,   // result: ending offset of the data written to each file.  The file numbers written are sequential
           // following the one in firstdataref.  The starting offset in the first file is in firstdataref; it is 0 for the others
-std::vector<Status>& resultstatus   // place to save error status.  For any file that got an error in writing or reopening,
+std::vector<Status>& resultstatus,   // place to save error status.  For any file that got an error in writing or reopening,
           // we add the error status to resultstatus and change the sign of the file's entry in fileendoffsets.  (no entry in fileendoffsets
           // can be 0)
+VLogRingRefFileOffset& initfrag  // result: total fragmentation in the created files (bytes at the end that don't hold values)
 )
 ;
 

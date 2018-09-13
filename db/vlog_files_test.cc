@@ -282,8 +282,8 @@ static void ListVLogFileSizes(DBVLogTest *db, std::vector<uint64_t>& vlogfilesiz
   }
 }
 
-#if 0  // turn on for long r/w test.  This is the TRocks random-load test, and verifies that compaction picking picks oldest references
 static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
+#if 0  // turn on for long r/w test.  This is the TRocks random-load test, and verifies that compaction picking picks oldest references
 TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   const int32_t value_ref_size = 16;  // length of indirect reference
 // obsolete   int32_t value_size = 18;  // 10 KB
@@ -313,8 +313,8 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
 
   options.vlogring_activation_level = std::vector<int32_t>({0});
   options.min_indirect_val_size = std::vector<size_t>({0});
-  options.fraction_remapped_during_compaction = std::vector<int32_t>({50});
-  options.fraction_remapped_during_active_recycling = std::vector<int32_t>({25});
+  options.fraction_remapped_during_compaction = std::vector<int32_t>({20});
+  options.fraction_remapped_during_active_recycling = std::vector<int32_t>({15});
   options.fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
   options.fragmentation_active_recycling_klaxon = std::vector<int32_t>({50});
   options.active_recycling_size_trigger = std::vector<int64_t>({(int64_t)(0.8*batch_size*value_size)});   // start AR when the DB is almost full
@@ -346,13 +346,14 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
       "LevelCompactionBuilder::PickCompaction", [&](void* arg) {
         uint64_t *pickerinfo = static_cast<uint64_t *>(arg);
         ColumnFamilyData *cfd=(ColumnFamilyData*)pickerinfo[6];
-        if(cfd!=nullptr && pickerinfo[0]>0){  // to reduce typeout, type only if coming out of L1 or higher
+        if(cfd!=nullptr){  // to reduce typeout, type only if coming out of L1 or higher
+          int doprint = pickerinfo[0]>0;  // true if we type out
           if(pickerinfo[7]){ // Active recycle
             ++numARs;  // inc count of ARs
-            printf("PickCompaction: AR L%zd->%zd , #input SSTs=%zd, ring files=[%zd,%zd] SSTs={",pickerinfo[0],pickerinfo[5],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
+            if(doprint)printf("PickCompaction: AR L%zd->%zd , #input SSTs=%zd, ring files=[%zd,%zd] SSTs={",pickerinfo[0],pickerinfo[5],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
           } else {  // normal compaction
             ++numcompactions;
-            printf("PickCompaction: Level %zd->%zd, exp ref0=%zd, act ref0=%zd, ring files=[%zd,%zd] SSTs={",pickerinfo[0],pickerinfo[5],pickerinfo[1],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
+            if(doprint)printf("PickCompaction: Level %zd->%zd, exp ref0=%zd, act ref0=%zd, ring files=[%zd,%zd] SSTs={",pickerinfo[0],pickerinfo[5],pickerinfo[1],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
             if(pickerinfo[5]==(options.num_levels-1)){
               // compaction into final level
               if(pickerinfo[2]!=~0LL){  // don't count comps with no ref0.  They should not occur during the final data-collection pass
@@ -363,8 +364,10 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
               }
             }
           }
-          for(int t=0;t<options.num_levels;){printf("%d",cfd->current()->storage_info()->NumLevelFiles(t)); if(++t==options.num_levels)break; printf(", ");}
-          printf("}\n");
+          if(doprint){
+            for(int t=0;t<options.num_levels;){printf("%d",cfd->current()->storage_info()->NumLevelFiles(t)); if(++t==options.num_levels)break; printf(", ");}
+            printf("}\n");
+          }
         }
       });
   SyncPoint::GetInstance()->EnableProcessing();
@@ -462,7 +465,231 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
   }
   printf("numcompactions=%zd, numARs=%zd, avg ref0 pos=%7.5f\n",numcompactions,numARs,totalref0position/numfinalcompactions);
   ASSERT_LT(totalref0position/numfinalcompactions,0.12);  // the number is empirical.  Make sure we are picking compactions from the oldest values first
-  ASSERT_LT((double)numARs/(double)numcompactions,0.20);  // the number is empirical.  Make sure ARs aren't much more than 10% of compactions
+  ASSERT_LT((double)numARs/(double)(numARs+numcompactions),0.20);  // the number is empirical.  Make sure ARs aren't much more than 15% of compactions
+}
+#endif
+#if 1  // turn on for VLog space-accounting test
+TEST_F(DBVLogTest, SpaceAccountingTest) {
+  const int32_t value_ref_size = 16;  // length of indirect reference
+  const int32_t vlogoverhead = 5;  // # bytes added for header & CRC
+// obsolete   int32_t value_size = 18;  // 10 KB
+// obsolete   int32_t key_size = 10 * 1024 - value_size;
+  int32_t value_size = 800;  // 10 KB
+  int32_t key_size = 18;
+  int32_t value_size_var = 20;
+  int32_t batch_size = 10000; // scaf 200000;   
+
+  Options options = CurrentOptions();
+  options.max_bytes_for_level_multiplier = 10;
+
+  batch_size = std::max(batch_size,(int32_t)std::exp(3*std::log(options.max_bytes_for_level_multiplier)));  // at least 1000 keys in L1
+
+  options.num_levels = (int)std::floor(std::log(batch_size)/std::log(options.max_bytes_for_level_multiplier)-0.9);  // 1000 keys=> L1 only, 200000 keys=>3 levels on disk: 1,2,3
+  uint64_t kvsl1 = (uint64_t)std::exp(std::log(batch_size)-(options.num_levels-1-1)*std::log(options.max_bytes_for_level_multiplier));   // # kvs in L1
+  uint64_t bytesperkvinsst=key_size+value_ref_size+20;
+  uint64_t bytesperkvinmemtable=key_size+value_size+20;
+  options.max_bytes_for_level_base = bytesperkvinsst*kvsl1;  // size of all SSTs for those kvs
+  uint64_t L1filecount=10;  // desired # files in full L1
+  uint64_t sstkvcount = kvsl1/L1filecount;  // # kvs in a single file
+  double  nfilesperl0flush=3.5;   // when we get this many files, flush the memtable
+  options.target_file_size_base=bytesperkvinsst*sstkvcount;
+  options.write_buffer_size = (uint64_t)(nfilesperl0flush*bytesperkvinmemtable*sstkvcount);
+  options.level0_file_num_compaction_trigger = 3;
+  options.level0_slowdown_writes_trigger = 5;
+  options.level0_stop_writes_trigger = 11;
+  options.max_background_compactions = 3;
+
+  options.vlogring_activation_level = std::vector<int32_t>({0});
+  options.min_indirect_val_size = std::vector<size_t>({0});
+  options.fraction_remapped_during_compaction = std::vector<int32_t>({20});
+  options.fraction_remapped_during_active_recycling = std::vector<int32_t>({15});
+  options.fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
+  options.fragmentation_active_recycling_klaxon = std::vector<int32_t>({50});
+  options.active_recycling_size_trigger = std::vector<int64_t>({(int64_t)(0.8*batch_size*value_size)});   // start AR when the DB is almost full  scaf should be 0.8
+//  options.active_recycling_size_trigger = std::vector<int64_t>({armagictestingvalue});  // scaf
+  options.active_recycling_sst_minct = std::vector<int32_t>({5});
+  options.active_recycling_sst_maxct = std::vector<int32_t>({15});
+  options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
+  options.compaction_picker_age_importance = std::vector<int32_t>({100});
+  options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
+  options.vlogfile_max_size = std::vector<uint64_t>({sstkvcount*(value_size+10)});  // amount of value in 1 sst, allowing for CRC & header
+
+  options.vlog_direct_IO = false;
+
+  printf("Starting: #levels=%d, max_bytes_for_level_base=%zd target_file_size_base=%zd write_buffer_size=%zd vlogfile_max_size=%zd\n",options.num_levels,options.max_bytes_for_level_base, options.target_file_size_base,options.write_buffer_size,options.vlogfile_max_size[0]);
+  DestroyAndReopen(options);
+
+  int64_t numcompactions = 0;  // total number of non-AR compactions (coming from L1 or higher)
+  int64_t numARs = 0;  // number of ARs
+  int64_t numfinalcompactions = 0;  // compactions into last level
+  double totalref0position = 0.0;  //  total of ref0 position as a % of ring size
+  int64_t vlogtotalsize = 0;  // number of bytes in VLog, after removing fragmentation
+
+  SyncPoint::GetInstance()->SetCallBack(
+      "CompactionJob::InstallCompactionResults", [&](void* arg) {
+        uint64_t *compact_stats = static_cast<uint64_t *>(arg);
+        if(0&&(compact_stats[0]|compact_stats[1]|compact_stats[2])!=0){
+          printf("Compaction: %zd bytes in, %zd written to %zd files, %zd remapped\n",compact_stats[1],compact_stats[0],compact_stats[3],compact_stats[2]);
+        }
+      });
+  SyncPoint::GetInstance()->SetCallBack(
+      "LevelCompactionBuilder::PickCompaction", [&](void* arg) {
+        uint64_t *pickerinfo = static_cast<uint64_t *>(arg);
+        ColumnFamilyData *cfd=(ColumnFamilyData*)pickerinfo[6];
+        int printreq = 0;
+        if(cfd!=nullptr){
+          if(pickerinfo[7]){ // Active recycle
+            ++numARs;  // inc count of ARs
+// obsolete            printf("PickCompaction: AR L%zd->%zd , #input SSTs=%zd, ring files=[%zd,%zd] SSTs={",pickerinfo[0],pickerinfo[5],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
+// obsolete             printreq = 1;
+          } else {  // normal compaction
+            ++numcompactions;
+            if(pickerinfo[5]==(options.num_levels-1)){
+              // compaction into final level
+// obsolete               printf("PickCompaction: Level %zd->%zd, exp ref0=%zd, act ref0=%zd, ring files=[%zd,%zd] SSTs={",pickerinfo[0],pickerinfo[5],pickerinfo[1],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
+// obsolete               printreq = 1;
+              if(pickerinfo[2]!=~0LL){  // don't count comps with no ref0.  They should not occur during the final data-collection pass
+                ++numfinalcompactions;  // inc # final compactions
+                totalref0position += (double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3]);  // add in fractional position of ref0 file
+if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3]) > 1.0  || (double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3]) < 0.0)
+ printf("invalid ref0\n"); // scaf
+              }
+            }
+          }
+          if(printreq){
+            for(int t=0;t<options.num_levels;){printf("%d",cfd->current()->storage_info()->NumLevelFiles(t)); if(++t==options.num_levels)break; printf(", ");}
+            printf("}\n");
+          }
+        }
+      });
+
+
+  VLogRingRestartInfo restartinfo;
+  SyncPoint::GetInstance()->SetCallBack(
+      "VLogRingRestartInfo::Coalesce", [&](void* arg) {
+         restartinfo = *static_cast<VLogRingRestartInfo *>(arg);
+// obsolete printf("size=%zd, frag=%zd, net size=%zd\n",restartinfo.size,restartinfo.frag,restartinfo.size-restartinfo.frag);
+      });
+
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // Whenever we write, we have to housekeep the vlogtotalsize: remove the deleted key, add the new
+
+  // Add 2 non-overlapping files
+  Random rnd(301);
+  std::map<int32_t, std::string> values;
+
+  // file 1 [0 => 100]
+  for (int32_t i = 0; i < 100; i++) {
+    values[i] = RandomString(&rnd, value_size + rnd.Next()%value_size_var);
+    ASSERT_OK(Put(LongKey(i,key_size), values[i]));
+    vlogtotalsize += values[i].size()+vlogoverhead;
+  }
+  ASSERT_OK(Flush());
+
+  // file 2 [100 => 300]
+  for (int32_t i = 100; i < 300; i++) {
+    values[i] = RandomString(&rnd, value_size + rnd.Next()%value_size_var);
+    ASSERT_OK(Put(LongKey(i,key_size), values[i]));
+    vlogtotalsize += values[i].size()+vlogoverhead;
+  }
+  ASSERT_OK(Flush());
+  ASSERT_EQ(Get(LongKey(0,key_size)), values[0]);
+  ASSERT_EQ(Get(LongKey(299,key_size)), values[299]);
+
+  // 2 files in L0
+// obsolete   ASSERT_EQ("2", FilesPerLevel(0));
+  CompactRangeOptions compact_options;
+  compact_options.change_level = true;
+  compact_options.target_level = 1;
+  ASSERT_OK(db_->CompactRange(compact_options, nullptr, nullptr));
+  // 2 files in L2
+//  ASSERT_EQ("0,0,2", FilesPerLevel(0));
+
+  // file 3 [ 0 => 200]
+  for (int32_t i = 0; i < 200; i++) {
+    vlogtotalsize -= values[i].size()+vlogoverhead;
+    values[i] = RandomString(&rnd, value_size + rnd.Next()%value_size_var);
+    ASSERT_OK(Put(LongKey(i,key_size), values[i]));
+    vlogtotalsize += values[i].size()+vlogoverhead;
+  }
+  ASSERT_OK(Flush());
+  for (int32_t i = 300; i < 300+batch_size; i++) {
+  }
+
+
+  for(int32_t k=0;k<2;++k) {  // scaf 2
+    // Reinit stats variables so they get the last-pass data
+    numcompactions = 0;  // total number of non-AR compactions (coming from L1 or higher)
+    numARs = 0;  // number of ARs
+    numfinalcompactions = 0;  // compactions into last level
+    totalref0position = 0.0;  //  total of ref0 position as a % of ring size
+    // Many files 4 [300 => 4300)
+    for (int32_t i = 0; i < 2; i++) {  // scaf 5
+      for (int32_t j = 300; j < batch_size+300; j++) {
+//      if (j == 2300) {
+//        ASSERT_OK(Flush());
+//        dbfull()->TEST_WaitForFlushMemTable();
+//      }
+        int maxget = (i|k)?batch_size:j;   // don't read a slot we haven't written yet
+        int putpos = (i|k)?rnd.Next()%batch_size:j;  // put into a randow slot, but only after the first pass has filled all slots
+        if(!(i|k)){
+          // First pass: create a random value to use
+          std::string vstg =  RandomString(&rnd, value_size);
+          // append compressible suffix
+          vstg.append(rnd.Next()%value_size_var,'a');
+          values[putpos] = vstg;
+        } else {
+          // Not first pass: we are deleting the old value
+          vlogtotalsize -= values[putpos].size()+vlogoverhead;
+        }
+        if((rnd.Next()&0x7f)==0)values[putpos] = RandomString(&rnd, value_size + rnd.Next()%value_size_var);  // replace one value in 100
+        Status s = (Put(LongKey(putpos,key_size), values[putpos]));
+        vlogtotalsize += values[putpos].size()+vlogoverhead;
+        if(!s.ok())
+          printf("Put failed\n");
+        ASSERT_OK(s);
+        for(int32_t m=0;m<2;++m){  // read a couple times for every Put
+          int32_t randkey = (rnd.Next()) % maxget;  // make 2 random gets per put
+          std::string getresult = Get(LongKey(randkey,key_size));
+          ASSERT_EQ(getresult,values[randkey]);
+          if(getresult.compare(values[randkey])!=0) {
+            printf("mismatch: Get result=%s len=%zd\n",getresult.c_str(),getresult.size());
+            printf("mismatch: Expected=%s len=%zd\n",values[randkey].c_str(),values[randkey].size());
+            std::string getresult2 = Get(LongKey(randkey,key_size));
+            if(getresult.compare(getresult2)==0)printf("unchanged on reGet\n");
+            else if(getresult.compare(values[randkey])==0)printf("correct on reGet\n");
+            else printf("after ReGet: Get result=%s len=%zd\n",getresult2.c_str(),getresult2.size());
+          }
+        }
+      }
+      printf("\n\nbatch\n\n");
+      std::this_thread::sleep_for(std::chrono::seconds(5));  // give the compactor time to run
+    }
+//  ASSERT_OK(Flush());
+//  dbfull()->TEST_WaitForFlushMemTable();
+//  dbfull()->TEST_WaitForCompact();
+
+    for (int32_t j = 0; j < batch_size+300; j++) {
+      ASSERT_EQ(Get(LongKey(j,key_size)), values[j]);
+    }
+    printf("...verified.\n");
+    TryReopen(options);
+    printf("reopened...\n");
+  }
+  // Now compact everything down to the lowest level, so we have a true count of VLog bytes
+// obsolete printf("Before compacting to level %d, FilesPerLevel=%s\n",options.num_levels-1,FilesPerLevel(0).c_str());
+    CompactRangeOptions c_options;
+    c_options.change_level = true;
+    c_options.target_level = options.num_levels-1;
+    ASSERT_OK(db_->CompactRange(c_options, nullptr, nullptr));
+    for (int32_t j = 0; j < batch_size+300; j++) {
+      ASSERT_EQ(Get(LongKey(j,key_size)), values[j]);
+    }
+    printf("...verified again.\n");
+// obsolete printf("After compacting to level %d, FilesPerLevel=%s\n",options.num_levels-1,FilesPerLevel(0).c_str());
+  // Verify that the VLog size is correct
+  ASSERT_EQ(vlogtotalsize,restartinfo.size-restartinfo.frag);
 }
 #endif
 

@@ -267,6 +267,12 @@ void VLogRingRestartInfo::Coalesce(const VLogRingRestartInfo& sec,  // the stats
   }
   // we have written out all the intervals.  Replace the input intervals and we're done
   valid_files.swap(outarea);
+#if defined(INDIRECT_VALUE_SUPPORT) && !defined(NDEBUG)
+  if(!outputdeletion){
+    TEST_SYNC_POINT_CALLBACK("VLogRingRestartInfo::Coalesce",
+                             this);
+  }
+#endif
 }
 
 // fold the VLog edits in sec into pri.  Each is vector with one set of stats per ring
@@ -537,9 +543,10 @@ int64_t maxfilesize,   // recommended maximum VLogFile size - may be exceeded up
 VLogRingRef& firstdataref,   // result: reference to the first value written
 std::vector<VLogRingRefFileOffset>& fileendoffsets,   // result: ending offset of the data written to each file.  The file numbers written are sequential
           // following the one in firstdataref.  The starting offset in the first file is in firstdataref; it is 0 for the others
-std::vector<Status>& resultstatus   // result: place to save error status.  For any file that got an error in writing or reopening,
+std::vector<Status>& resultstatus,   // result: place to save error status.  For any file that got an error in writing or reopening,
           // we add the error status to resultstatus and change the sign of the file's entry in fileendoffsets.  (no entry in fileendoffsets
           // can be 0).
+VLogRingRefFileOffset& initfrag  // result: total fragmentation in the created files (bytes at the end that don't hold values)
 )
 {
   // In this implementation, we write only complete files, rather than adding on to the last one
@@ -551,6 +558,8 @@ std::vector<Status>& resultstatus   // result: place to save error status.  For 
   // is always available, but takes ~50 cycles to complete the read
 
   resultstatus.clear();  // init no errors returned
+  fileendoffsets.clear();  // init no files written
+  initfrag = 0;  // init no bytes wasted at end of files
   // If there is nothing to write, abort early.  We must, because 0-length files are not allowed when memory-mapping is turned on
   // This also avoids errors if there are no references
   if(!bytes.size())return;   // fast exit if no data
@@ -559,7 +568,7 @@ std::vector<Status>& resultstatus   // result: place to save error status.  For 
 
   VLogRingRefFileOffset maxallosize = BreakRecordsIntoFiles(filecumreccnts, rcdend, maxfilesize,   nullptr,nullptr,nullptr,nullptr,0);  // calculate filecumreccnts.  SST grandparent info not used
     // remember the size of the largest allocation
-  fileendoffsets.clear(); fileendoffsets.reserve(filecumreccnts.size());  //clear output area and give it the correct size
+  fileendoffsets.reserve(filecumreccnts.size());  //clear output area and give it the correct size
 
   // Log start of writing 
   ROCKS_LOG_INFO(
@@ -723,8 +732,8 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
         }
       }
 
-    // Log writing the file
-    ROCKS_LOG_INFO(
+      // Log writing the file
+      ROCKS_LOG_INFO(
         current_vlog->immdbopts_->info_log, "[%s] wrote file# %" PRIu64 ", %" PRIu64 " bytes",
         current_vlog->cfd_->GetName().c_str(), 
         VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber(), filebufferx+padlen-filebufferalignoffset);
@@ -783,6 +792,8 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
     // the filelength in anticipation of direct reads.
     fileendoffsets.push_back(reportedlen);   // the actual data length, negative if error
     fileendoffsetspadded.push_back(filebufferx+padlen-filebufferalignoffset);  // the padded data length, never negative
+    // If the metadata length is greater than the actual length, the difference must be included is initial fragmentation.
+    initfrag += (filebufferx+padlen-filebufferalignoffset) - reportedlen;
   }
 
   // Files are written and reopened.  Transfer them to the fd_ring under lock.

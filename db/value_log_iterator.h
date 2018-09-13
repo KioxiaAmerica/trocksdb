@@ -185,8 +185,8 @@ printf("\n");
 // scaf must handle the case where there was no diskref & thus no diskdatalen
     result.clear();  // init result to empty (i. e. no changes)
     if(!use_indirects_) return;  // return null value if no indirects
-    // return with no stats if there was a write error, or if nothing was written to the VLog
-    if(!status_.ok() || diskdatalen==0) {
+    // return with no stats if there was a write error.  The compaction should terminate
+    if(!status_.ok()) {
       vlog_bytes_written_comp = vlog_bytes_written_raw = vlog_bytes_remapped = vlog_files_created = 0;  // nothing was written
       return;
     }
