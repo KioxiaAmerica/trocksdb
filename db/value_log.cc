@@ -540,6 +540,7 @@ std::vector<NoInitChar>& bytes,   // The bytes to be written, jammed together
 std::vector<VLogRingRefFileOffset>& rcdend,  // The running length on disk of all records up to and including this one
 std::vector<char>& valueclass,  // record type of all records - the ones with diskdata and the others too
 int64_t maxfilesize,   // recommended maximum VLogFile size - may be exceeded up to 25%
+int job_id,  // job id for logmsgs
 VLogRingRef& firstdataref,   // result: reference to the first value written
 std::vector<VLogRingRefFileOffset>& fileendoffsets,   // result: ending offset of the data written to each file.  The file numbers written are sequential
           // following the one in firstdataref.  The starting offset in the first file is in firstdataref; it is 0 for the others
@@ -572,8 +573,8 @@ VLogRingRefFileOffset& initfrag  // result: total fragmentation in the created f
 
   // Log start of writing 
   ROCKS_LOG_INFO(
-      current_vlog->immdbopts_->info_log, "[%s] writing %" PRIu64 " VLog files, %" PRIu64 " bytes, max filesize=%" PRIu64,
-      current_vlog->cfd_->GetName().c_str(), 
+      current_vlog->immdbopts_->info_log, "[%s] [JOB %d] writing %" PRIu64 " VLog files, %" PRIu64 " bytes, max filesize=%" PRIu64,
+      current_vlog->cfd_->GetName().c_str(), job_id,
       filecumreccnts.size(), rcdend.size()?rcdend.back():0, maxfilesize);
 
 
@@ -734,8 +735,8 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
 
       // Log writing the file
       ROCKS_LOG_INFO(
-        current_vlog->immdbopts_->info_log, "[%s] wrote file# %" PRIu64 ", %" PRIu64 " bytes",
-        current_vlog->cfd_->GetName().c_str(), 
+        current_vlog->immdbopts_->info_log, "[%s] [JOB %d] wrote file# %" PRIu64 ", %" PRIu64 " bytes",
+        current_vlog->cfd_->GetName().c_str(), job_id,
         VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber(), filebufferx+padlen-filebufferalignoffset);
 
       // Sync the written data.  We must make sure it is synced before the SSTs referring to it are committed to the manifest.
@@ -768,8 +769,8 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
       }else{
         // Log reopening the file
         ROCKS_LOG_INFO(
-            current_vlog->immdbopts_->info_log, "[%s] reopened file# %" PRIu64,
-            current_vlog->cfd_->GetName().c_str(), 
+            current_vlog->immdbopts_->info_log, "[%s] [JOB %d] reopened file# %" PRIu64,
+            current_vlog->cfd_->GetName().c_str(), job_id,
             VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber());
       }
     }
@@ -842,8 +843,8 @@ ProbDelay();
   firstdataref.FillVLogRingRef(ringno_,fileno_for_writing,0,rcdend[0]);
 
   ROCKS_LOG_INFO(
-      current_vlog->immdbopts_->info_log, "[%s] all files added to VLogRing",
-      current_vlog->cfd_->GetName().c_str());
+      current_vlog->immdbopts_->info_log, "[%s] [JOB %d] all files added to VLogRing",
+      current_vlog->cfd_->GetName().c_str(),job_id);
 
   return;
 
@@ -1233,7 +1234,7 @@ void VLogRing::VLogRingFindLaggingSsts(
         // If the file is not marked as being compacted, copy it to the result area
         if(!chainptr->being_compacted)laggingssts.emplace_back(*chainptr);
       }
-      // at the end of the loop chainptr is null if we were able to all the SSTs for the file
+      // at the end of the loop chainptr is null if we were able to visit all the SSTs for the file
 
     // release lock
     ReleaseLock();

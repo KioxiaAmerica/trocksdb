@@ -136,7 +136,8 @@ public:
    const Compaction *compaction,   // variuos info for this compaction
    Slice *end,   // the last+1 key to include (i. e. end of open interval), or nullptr if not given
    bool use_indirects,   // if false, do not do any indirect processing, just pass through c_iter_
-   RecyclingIterator *recyciter  // null if not Active Recycling; then, points to the iterator
+   RecyclingIterator *recyciter,  // null if not Active Recycling; then, points to the iterator
+   int job_id  // job id for logmsgs
   );
 
 // the following lines are the interface that is shared with CompactionIterator, so these entry points

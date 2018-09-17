@@ -599,6 +599,7 @@ std::vector<NoInitChar>& bytes,   // The bytes to be written, jammed together
 std::vector<VLogRingRefFileOffset>& rcdend,  // The running length on disk of all records up to and including this one
 std::vector<char>& valueclass,  // record type of all records - the ones with diskdata and the others too
 int64_t maxfilesize,   // recommended maximum VLogFile size - may be exceeded up to 25%
+int job_id,  // job id for logmsgs
 VLogRingRef& firstdataref,   // result: reference to the first value written
 std::vector<VLogRingRefFileOffset>& fileendoffsets,   // result: ending offset of the data written to each file.  The file numbers written are sequential
           // following the one in firstdataref.  The starting offset in the first file is in firstdataref; it is 0 for the others

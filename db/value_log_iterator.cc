@@ -80,7 +80,8 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
    const Compaction *compaction,   // various info for this compaction
    Slice *end,  // end+1 key in range, if given
    bool use_indirects,  // if false, just pass c_iter through
-   RecyclingIterator *recyciter  // null if not Active Recycling; then, points to the iterator
+   RecyclingIterator *recyciter,  // null if not Active Recycling; then, points to the iterator
+   int job_id  // job id for logmsgs
  ) :
   c_iter_(c_iter),
   pcfd(cfd),
@@ -334,7 +335,7 @@ printf("\n");
 #endif
     // Allocate space in the Value Log and write the values out, and save the information for assigning references
     VLogRingRefFileOffset initfrag;  // fragmentation created with initial writing of files
-    outputring->VLogRingWrite(current_vlog,diskdata,diskrecl,valueclass,compaction->mutable_cf_options()->vlogfile_max_size[outputringno],firstdiskref,fileendoffsets,outputerrorstatus,initfrag);
+    outputring->VLogRingWrite(current_vlog,diskdata,diskrecl,valueclass,compaction->mutable_cf_options()->vlogfile_max_size[outputringno],job_id,firstdiskref,fileendoffsets,outputerrorstatus,initfrag);
     addedfrag[outputringno] += initfrag;  // add end-of-file fragmentation to fragmentation total
     // Now, before any SSTs have been released, switch over the first time from 'waiting for SST/VLog info' to 'normal operation'
     current_vlog->SetInitComplete();
