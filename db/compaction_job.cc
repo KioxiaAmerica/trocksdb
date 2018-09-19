@@ -333,6 +333,8 @@ struct CompactionJob::CompactionState {
   }
 };
 
+// Collect the statistics from the subcompactions and put them into the compaction totals
+// if there is a compaction_job_stats_ block, add them in there too
 void CompactionJob::AggregateStatistics() {
   for (SubcompactionState& sc : compact_->sub_compact_states) {
     compact_->total_bytes += sc.total_bytes;
@@ -1742,6 +1744,7 @@ void CopyPrefix(const Slice& src, size_t prefix_length, std::string* dst) {
 
 #endif  // !ROCKSDB_LITE
 
+// Collect subcompaction stats into compaction_stats_
 void CompactionJob::UpdateCompactionStats() {
   Compaction* compaction = compact_->compaction;
   compaction_stats_.num_input_files_in_non_output_levels = 0;
@@ -1768,6 +1771,13 @@ void CompactionJob::UpdateCompactionStats() {
       --num_output_files;
     }
     compaction_stats_.num_output_files += static_cast<int>(num_output_files);
+#ifdef INDIRECT_VALUE_SUPPORT
+    // transfer all subcompaction VLog stats to the compaction
+    compaction_stats_.vlog_bytes_written_comp += sub_compact.compaction_job_stats.vlog_bytes_written_comp;
+    compaction_stats_.vlog_bytes_written_raw += sub_compact.compaction_job_stats.vlog_bytes_written_raw;
+    compaction_stats_.vlog_bytes_remapped += sub_compact.compaction_job_stats.vlog_bytes_remapped;
+    compaction_stats_.vlog_files_created += sub_compact.compaction_job_stats.vlog_files_created;
+#endif
 
     for (const auto& out : sub_compact.outputs) {
       compaction_stats_.bytes_written += out.meta.fd.file_size;

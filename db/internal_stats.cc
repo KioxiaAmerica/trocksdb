@@ -60,9 +60,9 @@ const std::map<LevelStatType, LevelStat> InternalStats::compaction_level_stats =
 #ifdef INDIRECT_VALUE_SUPPORT
 const std::map<RingStatType, LevelStat> InternalStats::compaction_ring_stats =
     {
-        {RingStatType::NUM_FILES, LevelStat{"NumFiles", "Files"}},
-        {RingStatType::SIZE_BYTES, LevelStat{"SizeBytes", "Size"}},
-        {RingStatType::FRAGMENTATION, LevelStat{"Fragmentation", "Frag(%%)"}}
+        {RingStatType::NUM_FILES, LevelStat{"NumFiles", " Files"}},
+        {RingStatType::SIZE_BYTES, LevelStat{"SizeBytes", "  Size"}},
+        {RingStatType::FRAGMENTATION, LevelStat{"Fragmentation", " Frag(%)"}}
 };
 #endif
 
@@ -116,7 +116,6 @@ void PrintRingStatsHeader(char* buf, size_t len, const std::string& cf_name) {
       buf + written_size, len - written_size,
       "Ring %s %s %s"
       "\n",
-      // Note that we skip COMPACTED_FILES and merge it with Files column
       hdr(RingStatType::NUM_FILES),
       hdr(RingStatType::SIZE_BYTES),
       hdr(RingStatType::FRAGMENTATION)
@@ -1252,7 +1251,7 @@ void InternalStats::DumpCFMapStatsRing(
 
   uint64_t total_files = 0;
   double total_file_size = 0;
-  double avg_fragmentation = 0;
+  double total_frag = 0;
 
   std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
 
@@ -1274,14 +1273,13 @@ void InternalStats::DumpCFMapStatsRing(
     total_file_size += file_size;
     // the amount of fragmentation in each ring, i. e. bytes in VLogs
     double fragmentation = (vli[ring].frag*100.0)/(vli[ring].size+1);
-    avg_fragmentation += fragmentation;
+    total_frag += static_cast<double>(vli[ring].frag);
 
     PrepareRingStats(&ring_stats, files, file_size, fragmentation);
     (*rings_stats)[ring] = ring_stats;
   }
-  avg_fragmentation = avg_fragmentation/vli.size();
   std::map<RingStatType, double> sum_stats;
-  PrepareRingStats(&sum_stats, total_files, total_file_size, avg_fragmentation);
+  PrepareRingStats(&sum_stats, total_files, total_file_size, 100.0*total_frag/(total_file_size+1));
   (*rings_stats)[-1] = sum_stats;  //  -1 is for the Sum level
 }
 #endif //INDIRECT_VALUE_SUPPORT
@@ -1493,6 +1491,7 @@ void InternalStats::DumpCFStatsNoFileHistogram(std::string* value) {
   PrintRingStats(buf, sizeof(buf), "Sum", rings_stats[-1]);
   value->append(buf);
 #endif //INDIRECT_VALUE_SUPPORT
+printf("%s",value->c_str()); // scaf
   cf_stats_snapshot_.seconds_up = seconds_up;
   cf_stats_snapshot_.ingest_bytes_flush = flush_ingest;
   cf_stats_snapshot_.ingest_bytes_addfile = add_file_ingest;

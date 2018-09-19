@@ -310,6 +310,7 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   options.level0_slowdown_writes_trigger = 5;
   options.level0_stop_writes_trigger = 11;
   options.max_background_compactions = 3;
+  options.stats_dump_period_sec = 10;
 
   options.vlogring_activation_level = std::vector<int32_t>({0});
   options.min_indirect_val_size = std::vector<size_t>({0});
