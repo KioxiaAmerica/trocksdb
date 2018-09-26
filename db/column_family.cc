@@ -515,7 +515,7 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
 // extend those options to be the same length as vlogring_activation_level
   for (size_t i = 0; i < result.vlogring_activation_level.size(); ++i){
     if (i >= result.min_indirect_val_size.size())
-      result.min_indirect_val_size.emplace_back(0);
+      result.min_indirect_val_size.emplace_back(24);
     if (i >= result.fraction_remapped_during_compaction.size())
       result.fraction_remapped_during_compaction.emplace_back(25);
     if (i >= result.fraction_remapped_during_active_recycling.size())

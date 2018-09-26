@@ -36,7 +36,7 @@ static const int kValueSize = 1000;
 // Test in both normal and indirect configurations
 #ifdef INDIRECT_VALUE_SUPPORT
 #define INDOPTIONS do{
-#define INDOPTIONSEND(opts) }while(opts.vlogring_activation_level.push_back(0),opts.vlogring_activation_level.size()<2);
+#define INDOPTIONSEND(opts) }while(opts.vlogring_activation_level.push_back(0),opts.min_indirect_val_size[0]=0,opts.vlogring_activation_level.size()<2);
 #else
 #define INDOPTIONS {
 #define INDOPTIONSEND(opts) }
@@ -54,7 +54,7 @@ class CorruptionTest : public testing::Test {
 
   CorruptionTest() {
 #ifdef INDIRECT_VALUE_SUPPORT
-    if(useindirect)options_.vlogring_activation_level = std::vector<int32_t>{0};
+    if(useindirect)options_.vlogring_activation_level = std::vector<int32_t>{0},options_.min_indirect_val_size[0]=0;
 #endif
     // If LRU cache shard bit is smaller than 2 (or -1 which will automatically
     // set it to 0), test SequenceNumberRecovery will fail, likely because of a

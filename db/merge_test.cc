@@ -84,7 +84,7 @@ std::shared_ptr<DB> OpenDb(const std::string& dbname, const bool ttl = false,
   options.max_successive_merges = max_successive_merges;
   (void)num_vlogrings;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlogrings,0);  // set # rings
+  options.vlogring_activation_level.resize(num_vlogrings,0); options.min_indirect_val_size[0]=0;  // set # rings
 #endif
   Status s;
   DestroyDB(dbname, Options());

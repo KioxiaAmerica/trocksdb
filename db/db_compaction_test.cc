@@ -265,7 +265,7 @@ TEST_P(DBCompactionTestWithParam, CompactionDeletionTrigger) {
     Options options = DeletionTriggerOptions(CurrentOptions());
     options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-    options.vlogring_activation_level.resize(num_vlog_rings_,0);
+    options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0; options.min_indirect_val_size[0]=0;
 #endif
 
     if (tid == 1) {
@@ -316,7 +316,7 @@ TEST_P(DBCompactionTestWithParam, CompactionsPreserveDeletes) {
     options.preserve_deletes=true;
     options.num_levels = 2;
 #ifdef INDIRECT_VALUE_SUPPORT
-    options.vlogring_activation_level.resize(num_vlog_rings_,0);
+    options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
 #endif
 
     if (tid == 1) {
@@ -524,7 +524,7 @@ TEST_P(DBCompactionTestWithParam, CompactionDeletionTriggerReopen) {
     Options options = DeletionTriggerOptions(CurrentOptions());
     options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-    options.vlogring_activation_level.resize(num_vlog_rings_,0);
+    options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
 #endif
 
     if (tid == 1) {
@@ -646,7 +646,7 @@ TEST_P(DBCompactionTestWithParam, CompactionTrigger) {
   options.level0_file_num_compaction_trigger = 3;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-    options.vlogring_activation_level.resize(num_vlog_rings_,0);
+    options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
 #endif
   options.memtable_factory.reset(new SpecialSkipListFactory(kNumKeysPerFile));
   CreateAndReopenWithCF({"pikachu"}, options);
@@ -782,7 +782,7 @@ TEST_P(DBCompactionTestWithParam, CompactionsGenerateMultipleFiles) {
   options.write_buffer_size = 100000000;        // Large write buffer
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
 #endif
   CreateAndReopenWithCF({"pikachu"}, options);
   bool values_are_indirect = false;  // Set if we are using VLogging
@@ -1028,7 +1028,7 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveOneFile) {
   options.write_buffer_size = 100000000;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
   options.allow_trivial_move = true;
 #endif
   DestroyAndReopen(options);
@@ -1093,7 +1093,7 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveNonOverlappingFiles) {
   options.write_buffer_size = 10 * 1024 * 1024;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
   options.allow_trivial_move = true;
 #endif
 
@@ -1197,7 +1197,7 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveTargetLevel) {
   options.num_levels = 7;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
   options.allow_trivial_move = true;
 #endif
 
@@ -1282,7 +1282,7 @@ TEST_P(DBCompactionTestWithParam, ManualCompactionPartial) {
   options.max_background_compactions = 3;
   options.target_file_size_base = 1 << 23;  // 8 MB
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
   options.allow_trivial_move = true;
 #endif
 
@@ -1839,7 +1839,7 @@ TEST_P(DBCompactionTestWithParam, TrivialMoveToLastLevelWithFiles) {
   options.write_buffer_size = 100000000;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
   options.allow_trivial_move = true;
 #endif
   DestroyAndReopen(options);
@@ -1908,7 +1908,7 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionThirdPath) {
   options.max_bytes_for_level_base = 400 * 1024;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
 #endif
   //  options = CurrentOptions(options);
   int largevaluesize = 990;  // RandomFileInvInd produces value length of either 1 or this
@@ -2034,7 +2034,7 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionPathUse) {
   options.max_subcompactions = max_subcompactions_;
   //  options = CurrentOptions(options);
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
 #endif
 
   std::vector<std::string> filenames;
@@ -2154,7 +2154,7 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionCFPathUse) {
   options.max_bytes_for_level_base = 400 * 1024;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
 #endif
   int allowedvlen3 = 1;  // length used for values
   bool values_are_indirect = false;  // set if we are VLogging
@@ -2283,7 +2283,7 @@ TEST_P(DBCompactionTestWithParam, ConvertCompactionStyle) {
   options.target_file_size_multiplier = 1;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
 #endif
   CreateAndReopenWithCF({"pikachu"}, options);
 
@@ -2466,7 +2466,7 @@ TEST_P(DBCompactionTestWithParam, ManualCompaction) {
   Options options = CurrentOptions();
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
 #endif
   options.statistics = rocksdb::CreateDBStatistics();
   CreateAndReopenWithCF({"pikachu"}, options);
@@ -2531,7 +2531,7 @@ TEST_P(DBCompactionTestWithParam, ManualLevelCompactionOutputPathId) {
   options.db_paths.emplace_back(dbname_ + "_4", 120 * 10485760);
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
 #endif
   CreateAndReopenWithCF({"pikachu"}, options);
 
@@ -2639,7 +2639,7 @@ TEST_P(DBCompactionTestWithParam, DISABLED_CompactFilesOnLevelCompaction) {
   options.compression = kNoCompression;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
 #endif
   options = CurrentOptions(options);
   CreateAndReopenWithCF({"pikachu"}, options);
@@ -2702,7 +2702,7 @@ TEST_P(DBCompactionTestWithParam, PartialCompactionFailure) {
   options.compression = kNoCompression;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
 #endif
 
   env_->SetBackgroundThreads(1, Env::HIGH);
@@ -2793,7 +2793,7 @@ TEST_P(DBCompactionTestWithParam, DeleteMovedFileAfterCompaction) {
     options.listeners.emplace_back(listener);
     options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-    options.vlogring_activation_level.resize(num_vlog_rings_,0);  // not used here, but doesn't hurt
+    options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;  // not used here, but doesn't hurt
 #endif
     DestroyAndReopen(options);
     bool values_are_indirect = false;  // Set if we are using VLogging
@@ -2882,7 +2882,7 @@ TEST_P(DBCompactionTestWithParam, CompressLevelCompaction) {
   options.compression_per_level = {kNoCompression, kNoCompression,
                                    kZlibCompression};
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
   options.allow_trivial_move = true;
 #endif
   int matches = 0, didnt_match = 0, trivial_move = 0, non_trivial = 0;
@@ -3071,7 +3071,7 @@ TEST_P(DBCompactionTestWithParam, ForceBottommostLevelCompaction) {
   options.write_buffer_size = 100000000;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
   options.allow_trivial_move = true;
 #endif
   DestroyAndReopen(options);
@@ -3149,7 +3149,7 @@ TEST_P(DBCompactionTestWithParam, IntraL0Compaction) {
   options.max_background_compactions = 2;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
   options.allow_trivial_move = true;
 #endif
   DestroyAndReopen(options);
@@ -3211,7 +3211,7 @@ TEST_P(DBCompactionTestWithParam, IntraL0CompactionDoesNotObsoleteDeletions) {
   options.max_background_compactions = 2;
   options.max_subcompactions = max_subcompactions_;
 #ifdef INDIRECT_VALUE_SUPPORT
-  options.vlogring_activation_level.resize(num_vlog_rings_,0);
+  options.vlogring_activation_level.resize(num_vlog_rings_,0); options.min_indirect_val_size[0]=0;
   options.allow_trivial_move = true;
 #endif
   DestroyAndReopen(options);

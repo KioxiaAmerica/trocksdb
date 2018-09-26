@@ -1491,7 +1491,6 @@ void InternalStats::DumpCFStatsNoFileHistogram(std::string* value) {
   PrintRingStats(buf, sizeof(buf), "Sum", rings_stats[-1]);
   value->append(buf);
 #endif //INDIRECT_VALUE_SUPPORT
-printf("%s",value->c_str()); // scaf
   cf_stats_snapshot_.seconds_up = seconds_up;
   cf_stats_snapshot_.ingest_bytes_flush = flush_ingest;
   cf_stats_snapshot_.ingest_bytes_addfile = add_file_ingest;

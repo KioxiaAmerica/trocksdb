@@ -427,7 +427,7 @@ Options DBTestBase::GetOptions(
       options.allow_concurrent_memtable_write = false;
       break;
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kDirectIOInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kDirectIOInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
         options.vlog_direct_IO = true;
 #endif
     case kDirectIO: {
@@ -452,19 +452,19 @@ Options DBTestBase::GetOptions(
       }
 #endif  // ROCKSDB_LITE
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kMergePutInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kMergePutInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kMergePut:
       options.merge_operator = MergeOperators::CreatePutOperator();
       break;
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kFilterInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kFilterInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kFilter:
       table_options.filter_policy.reset(NewBloomFilterPolicy(10, true));
       break;
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kFullFilterWithNewTableReaderForCompactionsInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kFullFilterWithNewTableReaderForCompactionsInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kFullFilterWithNewTableReaderForCompactions:
       table_options.filter_policy.reset(NewBloomFilterPolicy(10, false));
@@ -472,7 +472,7 @@ Options DBTestBase::GetOptions(
       options.compaction_readahead_size = 10 * 1024 * 1024;
       break;
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kPartitionedFilterWithNewTableReaderForCompactionsInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kPartitionedFilterWithNewTableReaderForCompactionsInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kPartitionedFilterWithNewTableReaderForCompactions:
       table_options.filter_policy.reset(NewBloomFilterPolicy(10, false));
@@ -483,25 +483,25 @@ Options DBTestBase::GetOptions(
       options.compaction_readahead_size = 10 * 1024 * 1024;
       break;
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kUncompressedInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kUncompressedInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kUncompressed:
       options.compression = kNoCompression;
       break;
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kNumLevel_3Ind: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kNumLevel_3Ind: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kNumLevel_3:
       options.num_levels = 3;
       break;
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kDBLogDirInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kDBLogDirInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kDBLogDir:
       options.db_log_dir = alternative_db_log_dir_;
       break;
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kWalDirAndMmapReadsInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kWalDirAndMmapReadsInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kWalDirAndMmapReads:
       options.wal_dir = alternative_wal_dir_;
@@ -519,28 +519,28 @@ Options DBTestBase::GetOptions(
       // TODO(3.13) -- test more options
       break;
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kUniversalCompactionInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kUniversalCompactionInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kUniversalCompaction:
       options.compaction_style = kCompactionStyleUniversal;
       options.num_levels = 1;
       break;
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kUniversalCompactionMultiLevelInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kUniversalCompactionMultiLevelInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kUniversalCompactionMultiLevel:
       options.compaction_style = kCompactionStyleUniversal;
       options.num_levels = 8;
       break;
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kCompressedBlockCacheInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kCompressedBlockCacheInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kCompressedBlockCache:
       options.allow_mmap_writes = can_allow_mmap;
       table_options.block_cache_compressed = NewLRUCache(8 * 1024 * 1024);
       break;
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kInfiniteMaxOpenFilesInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kInfiniteMaxOpenFilesInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kInfiniteMaxOpenFiles:
       options.max_open_files = -1;
@@ -555,7 +555,7 @@ Options DBTestBase::GetOptions(
     }
 
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kBlockBasedTableWithPrefixHashIndexInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kBlockBasedTableWithPrefixHashIndexInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kBlockBasedTableWithPrefixHashIndex: {
       table_options.index_type = BlockBasedTableOptions::kHashSearch;
@@ -568,7 +568,7 @@ Options DBTestBase::GetOptions(
       break;
     }
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kBlockBasedTableWithPartitionedIndexInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kBlockBasedTableWithPartitionedIndexInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kBlockBasedTableWithPartitionedIndex: {
       table_options.index_type = BlockBasedTableOptions::kTwoLevelIndexSearch;
@@ -576,7 +576,7 @@ Options DBTestBase::GetOptions(
       break;
     }
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kBlockBasedTableWithPartitionedIndexFormat3Ind: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kBlockBasedTableWithPartitionedIndexFormat3Ind: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kBlockBasedTableWithPartitionedIndexFormat3: {
       table_options.format_version = 3;
@@ -590,14 +590,14 @@ Options DBTestBase::GetOptions(
       break;
     }
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kBlockBasedTableWithIndexRestartIntervalInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kBlockBasedTableWithIndexRestartIntervalInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kBlockBasedTableWithIndexRestartInterval: {
       table_options.index_block_restart_interval = 8;
       break;
     }
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kOptimizeFiltersForHitsInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kOptimizeFiltersForHitsInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kOptimizeFiltersForHits: {
       options.optimize_filters_for_hits = true;
@@ -605,7 +605,7 @@ Options DBTestBase::GetOptions(
       break;
     }
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kRowCacheInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kRowCacheInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kRowCache: {
       options.row_cache = NewLRUCache(1024 * 1024);
@@ -642,7 +642,7 @@ Options DBTestBase::GetOptions(
     }
  
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kDefaultInd: options.vlogring_activation_level=std::vector<int>{0};   // fall through to...
+    case kDefaultInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     default:
       break;
