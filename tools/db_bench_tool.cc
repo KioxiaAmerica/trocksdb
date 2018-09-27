@@ -1122,8 +1122,11 @@ DEFINE_uint64(vlogfile_max_size,{40 * (1LL < 20)},"Max VLog Filesize : recommend
 DEFINE_int32(compaction_picker_age_importance,100,"Age over Size preference: use during compaction picking.  When 0, the age of the VLogFiles referred to by the SST is ignored, and size is the criterion.  The larger this number,"
              "the more age matters.  A value of 100 makes age matter much more than size");
 
-// kZlibCompression=0x2
-DEFINE_int32(ring_compression_style,0x2,"Ring Compression Style: indicates what kind of compression will be applied to the data");
+DEFINE_string(ring_compression_style, "snappy",
+              "Ring Compression Style: indicates what kind of compression will be applied to the data");
+static enum rocksdb::CompressionType FLAGS_ring_compression_style_e = rocksdb::kSnappyCompression;
+
+DEFINE_bool(vlog_direct_IO, false, "Set to allow direct IO for vlog.");
 #endif //INDIRECT_VALUE_SUPPORT
 
 namespace rocksdb {
@@ -3270,6 +3273,9 @@ void VerifyDBFromDB(std::string& truth_db_name) {
         FLAGS_level0_file_num_compaction_trigger;
     options.level0_slowdown_writes_trigger =
       FLAGS_level0_slowdown_writes_trigger;
+#ifdef INDIRECT_VALUE_SUPPORT
+    options.ring_compression_style = std::vector<CompressionType>({FLAGS_ring_compression_style_e});
+#endif //INDIRECT_VALUE_SUPPORT
     options.compression = FLAGS_compression_type_e;
     options.WAL_ttl_seconds = FLAGS_wal_ttl_seconds;
     options.WAL_size_limit_MB = FLAGS_wal_size_limit_MB;
@@ -5514,6 +5520,10 @@ int db_bench_tool(int argc, char** argv) {
 #endif
   }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+  FLAGS_ring_compression_style_e = 
+    StringToCompressionType(FLAGS_ring_compression_style.c_str());
+#endif //INDIRECT_VALUE_SUPPORT
   FLAGS_compression_type_e =
     StringToCompressionType(FLAGS_compression_type.c_str());
 

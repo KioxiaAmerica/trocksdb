@@ -71,7 +71,7 @@ const_params="
   --cache_numshardbits=6 \
   --compression_max_dict_bytes=$compression_max_dict_bytes \
   --compression_ratio=0.5 \
-  --compression_type=$compression_type \
+  --compression_type=none \
   --level_compaction_dynamic_level_bytes=true \
   --bytes_per_sync=$((8 * M)) \
   --cache_index_and_filter_blocks=0 \
@@ -109,7 +109,9 @@ const_params="
   --active_recycling_vlogfile_freed_min=7 \
   --active_recycling_size_trigger=$((1 * G))\
   --vlogfile_max_size=$((16 * M)) \
-  --compaction_picker_age_importance=100"
+  --compaction_picker_age_importance=100 \
+  --ring_compression_style=$compression_type \
+  --vlog_direct_IO=0"
 #Indirect Options above
 
 l0_config="
