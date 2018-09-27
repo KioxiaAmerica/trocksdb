@@ -287,7 +287,7 @@ endif
 default: all
 
 WARNING_FLAGS = -W -Wextra -Wall -Wsign-compare -Wshadow \
-  -Wunused-parameter
+  -Wunused-parameter -Wimplicit-fallthrough=0
 
 ifeq ($(PLATFORM), OS_OPENBSD)
 	WARNING_FLAGS += -Wno-unused-lambda-capture
@@ -559,19 +559,28 @@ endif
 #[unit] \
 	backupable_db_test 			trocks Bug128\
 	db_iterator_test 			trocks+noflags Bug139\
+	db_universal_compaction_test		trocks Bug240\
+	spatial_db_test 			trocks+noflags Bug238\
+	table_test 				trocks Bug241\
+	vlog_files_test 			trocks Bug242\
 	write_prepared_transaction_test 	trocks+noflags Bug151\
-	transaction_test 			trocksrel Bug211\
 
 ifdef INDIRECT_VALUE_SUPPORT
 LOCKS= \
 	backupable_db_test \
 	db_iterator_test \
-	transaction_test \
+	db_universal_compaction_test \
+	spatial_db_test \
+	table_test \
+	vlog_files_test \
 	write_prepared_transaction_test \
 
 else
 LOCKS= \
 	db_iterator_test \
+	db_universal_compaction_test \
+	spatial_db_test \
+	table_test \
 	write_prepared_transaction_test \
 
 endif
