@@ -1,5 +1,7 @@
 # MySQL config file for small systems.
 #
+# Config Version 1.0
+#
 # This is for a system with little memory (<= 64M) where MySQL is only used
 # from time to time and it's important that the mysqld daemon
 # doesn't use much resources.
