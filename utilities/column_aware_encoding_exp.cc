@@ -142,7 +142,6 @@ class ColumnAwareEncodingExp {
     // Find Ring Compression
 #ifdef INDIRECT_VALUE_SUPPORT
     CompressionType ring_compression_style = compressions[FLAGS_ring_compression_style];
-    EnvOptions env_options;
     if (CompressionTypeSupported(ring_compression_style)) {
       fprintf(stdout, "[%s]\n", FLAGS_ring_compression_style.c_str());
       unique_ptr<WritableFile> encoded_out_file;

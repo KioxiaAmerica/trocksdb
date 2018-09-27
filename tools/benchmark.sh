@@ -95,6 +95,7 @@ const_params="
   \
   --memtablerep=skip_list \
   --bloom_bits=10 \
+  --allow_concurrent_memtable_write=0 \
   --open_files=-1"
 
 l0_config="

@@ -95,7 +95,9 @@ const_params="
   \
   --memtablerep=skip_list \
   --bloom_bits=10 \
+  --allow_concurrent_memtable_write=0 \
   --open_files=-1 \
+  \
   --allow_trivial_move=false \
   --compaction_score_limit_L0=1000.0 \
   --vlogring_activation_level=0 \
