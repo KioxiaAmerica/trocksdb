@@ -1,6 +1,6 @@
 # MySQL config file for small systems.
 #
-# Config Version 1.0
+# Config Version 1.1
 #
 # This is for a system with little memory (<= 64M) where MySQL is only used
 # from time to time and it's important that the mysqld daemon
@@ -46,8 +46,8 @@ max_connections=5000
 max_user_connections=4000
 max_connect_errors=3000
 #end edward_edit
-plugin-dir=/home/labuser/mariadb-10.2/storage/rocksdb
-language=/home/labuser/mariadb-10.2/sql/share/english
+plugin-dir=/home/labuser/mariadb-10.2-devel/storage/rocksdb
+language=/home/labuser/mariadb-10.2-devel/sql/share/english
 datadir=/mnt/nvme1n1/install.db
 plugin-load=ha_rocksdb
 default-storage-engine=rocksdb
@@ -80,7 +80,7 @@ rocksdb_max_subcompactions=8
 rocksdb_use_direct_reads=OFF
 rocksdb_use_direct_io_for_flush_and_compaction=OFF
 
-rocksdb_default_cf_options=compaction_style=kCompactionStyleLevel;write_buffer_size=40m;target_file_size_base=2m;max_bytes_for_level_base=32m;max_bytes_for_level_multiplier=10;level0_file_num_compaction_trigger=4;level0_slowdown_writes_trigger=8;level0_stop_writes_trigger=12;max_write_buffer_number=8;compression_per_level=kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression;block_based_table_factory={cache_index_and_filter_blocks=1;filter_policy=bloomfilter:10:false;whole_key_filtering=1};level_compaction_dynamic_level_bytes=false;allow_trivial_move=false;compaction_score_limit_L0=1000.0;vlogring_activation_level=0;min_indirect_val_size=0;fraction_remapped_during_compaction=20;fraction_remapped_during_active_recycling=15;fragmentation_active_recycling_trigger=25;fragmentation_active_recycling_klaxon=50;active_recycling_sst_minct=5;active_recycling_sst_maxct=15;active_recycling_vlogfile_freed_min=3;active_recycling_size_trigger=1073741824;vlogfile_max_size=33m;compaction_picker_age_importance=100;ring_compression_style=kLZ4Compression
+rocksdb_default_cf_options=compaction_style=kCompactionStyleLevel;write_buffer_size=40m;target_file_size_base=2m;max_bytes_for_level_base=32m;max_bytes_for_level_multiplier=10;level0_file_num_compaction_trigger=4;level0_slowdown_writes_trigger=8;level0_stop_writes_trigger=12;max_write_buffer_number=8;compression_per_level=kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression;block_based_table_factory={cache_index_and_filter_blocks=1;filter_policy=bloomfilter:10:false;whole_key_filtering=1};level_compaction_dynamic_level_bytes=false;allow_trivial_move=false;compaction_score_limit_L0=1000.0;vlogring_activation_level=0;min_indirect_val_size=24;fraction_remapped_during_compaction=20;fraction_remapped_during_active_recycling=15;fragmentation_active_recycling_trigger=25;fragmentation_active_recycling_klaxon=50;active_recycling_sst_minct=5;active_recycling_sst_maxct=15;active_recycling_vlogfile_freed_min=3;active_recycling_size_trigger=1073741824;vlogfile_max_size=33m;compaction_picker_age_importance=100;ring_compression_style=kLZ4Compression
 
 rocksdb_override_cf_options=cf_link_pk={prefix_extractor=capped:20};rev:cf_link_id1_type={prefix_extractor=capped:20}
 
