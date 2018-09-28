@@ -145,6 +145,9 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
   // orig_ikey is backed by original_key if keys_.empty()
   // orig_ikey is backed by keys_.back() if !keys_.empty()
   ParsedInternalKey orig_ikey;
+#ifdef ROCKSDB_UBSAN_RUN
+  orig_ikey.type=kMaxValue; //Required to suppress maybe-uninitialized warning
+#endif
   ParseInternalKey(origkeyslice, &orig_ikey);
 #ifdef INDIRECT_VALUE_SUPPORT
   // If the type was changed when the value was resolved, replicate that change here.  This is a pitiable kludge.  It would be better
