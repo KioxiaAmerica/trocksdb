@@ -535,7 +535,7 @@ TEST_F(DBVLogTest, SpaceAccountingTest) {
       });
   SyncPoint::GetInstance()->SetCallBack(
       "LevelCompactionBuilder::PickCompaction", [&](void* arg) {
-        uint64_t *pickerinfo = static_cast<uint64_t *>(arg);
+        int64_t *pickerinfo = static_cast<int64_t *>(arg);
         ColumnFamilyData *cfd=(ColumnFamilyData*)pickerinfo[6];
         int printreq = 0;
         if(cfd!=nullptr){

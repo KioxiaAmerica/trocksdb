@@ -42,6 +42,10 @@ DEFINE_bool(stat, false,
             "Print column distribution statistics. Cannot decode in this mode");
 DEFINE_string(compression_type, "kNoCompression",
               "The compression algorithm used to compress data blocks");
+#ifdef INDIRECT_VALUE_SUPPORT
+DEFINE_string(ring_compression_style, "kNoCompression",
+              "The compression algorithm used to compress values in the ring blocks");
+#endif //INDIRECT_VALUE_SUPPORT
 
 namespace rocksdb {
 
@@ -135,6 +139,59 @@ class ColumnAwareEncodingExp {
       fprintf(stdout, "Unsupported compression type: %s.\n",
               FLAGS_compression_type.c_str());
     }
+    // Find Ring Compression
+#ifdef INDIRECT_VALUE_SUPPORT
+    CompressionType ring_compression_style = compressions[FLAGS_ring_compression_style];
+    if (CompressionTypeSupported(ring_compression_style)) {
+      fprintf(stdout, "[%s]\n", FLAGS_ring_compression_style.c_str());
+      unique_ptr<WritableFile> encoded_out_file;
+
+      std::unique_ptr<Env> env(NewMemEnv(Env::Default()));
+      if (!FLAGS_encoded_file.empty()) {
+        env->NewWritableFile(FLAGS_encoded_file, &encoded_out_file,
+                             env_options);
+      }
+
+      std::vector<KVPairBlock> kv_pair_blocks;
+      reader.GetKVPairsFromDataBlocks(&kv_pair_blocks);
+
+      std::vector<std::string> encoded_blocks;
+      StopWatchNano sw(env.get(), true);
+      if (FLAGS_format == "col") {
+        reader.EncodeBlocks(kvp_cd, encoded_out_file.get(), ring_compression_style,
+                            kv_pair_blocks, &encoded_blocks, FLAGS_stat);
+      } else {  // row format
+        reader.EncodeBlocksToRowFormat(encoded_out_file.get(), ring_compression_style,
+                                       kv_pair_blocks, &encoded_blocks);
+      }
+      if (encoded_out_file != nullptr) {
+        uint64_t size = 0;
+        env->GetFileSize(FLAGS_encoded_file, &size);
+        fprintf(stdout, "File size: %" PRIu64 "\n", size);
+      }
+      uint64_t encode_time = sw.ElapsedNanosSafe(false /* reset */);
+      fprintf(stdout, "Encode time: %" PRIu64 "\n", encode_time);
+      if (decode) {
+        unique_ptr<WritableFile> decoded_out_file;
+        if (!FLAGS_decoded_file.empty()) {
+          env->NewWritableFile(FLAGS_decoded_file, &decoded_out_file,
+                               env_options);
+        }
+        sw.Start();
+        if (FLAGS_format == "col") {
+          reader.DecodeBlocks(kvp_cd, decoded_out_file.get(), &encoded_blocks);
+        } else {
+          reader.DecodeBlocksFromRowFormat(decoded_out_file.get(),
+                                           &encoded_blocks);
+        }
+        uint64_t decode_time = sw.ElapsedNanosSafe(true /* reset */);
+        fprintf(stdout, "Decode time: %" PRIu64 "\n", decode_time);
+      }
+    } else {
+      fprintf(stdout, "Unsupported compression type: %s.\n",
+              FLAGS_ring_compression_style.c_str());
+    }
+#endif //INDIRECT_VALUE_SUPPORT
     delete key_col_declarations;
     delete value_col_declarations;
     delete value_checksum_declaration;

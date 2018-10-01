@@ -377,7 +377,11 @@ class IndexKey {
   // 1 -- primary key
   // 2 -- primary key offset
   Slice parts_[3];
+#ifdef ROCKSDB_UBSAN_RUN
+  char primary_key_offset_buf_[sizeof(uint32_t)]={0}; //Required to suppress maybe-uninitialized warning
+#else
   char primary_key_offset_buf_[sizeof(uint32_t)];
+#endif
 };
 
 class SimpleSortedIndex : public Index {

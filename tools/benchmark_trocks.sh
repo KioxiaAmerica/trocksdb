@@ -71,7 +71,7 @@ const_params="
   --cache_numshardbits=6 \
   --compression_max_dict_bytes=$compression_max_dict_bytes \
   --compression_ratio=0.5 \
-  --compression_type=$compression_type \
+  --compression_type=none \
   --level_compaction_dynamic_level_bytes=true \
   --bytes_per_sync=$((8 * M)) \
   --cache_index_and_filter_blocks=0 \
@@ -80,9 +80,9 @@ const_params="
   \
   --hard_rate_limit=3 \
   --rate_limit_delay_max_milliseconds=1000000 \
-  --write_buffer_size=$((128 * M)) \
-  --target_file_size_base=$((128 * M)) \
-  --max_bytes_for_level_base=$((1 * G)) \
+  --write_buffer_size=$((35200 * K)) \
+  --target_file_size_base=$((3200 * K)) \
+  --max_bytes_for_level_base=$((12800 * K)) \
   \
   --verify_checksum=1 \
   --delete_obsolete_files_period_micros=$((60 * M)) \
@@ -96,7 +96,25 @@ const_params="
   --memtablerep=skip_list \
   --bloom_bits=10 \
   --allow_concurrent_memtable_write=0 \
-  --open_files=-1"
+  --open_files=-1 \
+  \
+  --allow_trivial_move=false \
+  --compaction_score_limit_L0=1000.0 \
+  --vlogring_activation_level=0 \
+  --min_indirect_val_size=0 \
+  --fraction_remapped_during_compaction=20 \
+  --fraction_remapped_during_active_recycling=15 \
+  --fragmentation_active_recycling_trigger=25 \
+  --fragmentation_active_recycling_klaxon=50 \
+  --active_recycling_sst_minct=5 \
+  --active_recycling_sst_maxct=15 \
+  --active_recycling_vlogfile_freed_min=7 \
+  --active_recycling_size_trigger=$((1 * G))\
+  --vlogfile_max_size=$((16 * M)) \
+  --compaction_picker_age_importance=100 \
+  --ring_compression_style=$compression_type \
+  --vlog_direct_IO=0"
+#Indirect Options above
 
 l0_config="
   --level0_file_num_compaction_trigger=4 \
