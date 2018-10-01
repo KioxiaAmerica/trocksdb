@@ -282,8 +282,8 @@ static void ListVLogFileSizes(DBVLogTest *db, std::vector<uint64_t>& vlogfilesiz
   }
 }
 
+#if 1  // turn on for long r/w test.  This is the TRocks random-load test, and verifies that compaction picking picks oldest references
 static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
-#if 0  // turn on for long r/w test.  This is the TRocks random-load test, and verifies that compaction picking picks oldest references
 TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   const int32_t value_ref_size = 16;  // length of indirect reference
 // obsolete   int32_t value_size = 18;  // 10 KB
@@ -291,7 +291,7 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   int32_t value_size = 800;  // 10 KB
   int32_t key_size = 18;
   int32_t value_size_var = 20;
-  int32_t batch_size = 200000; // scaf 200;   
+  int32_t batch_size = 2000; // scaf 200;  00 
 
   Options options = CurrentOptions();
 
@@ -641,26 +641,36 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
           vstg.append(rnd.Next()%value_size_var,'a');
           values[putpos] = vstg;
         } else {
-          // Not first pass: we are deleting the old value
-          vlogtotalsize -= values[putpos].size()+vlogoverhead;
+          // Not first pass: we are deleting the old value, which may have 0 length.  0-length values have no overhead
+          vlogtotalsize -= values[putpos].size()+(values[putpos].size()?vlogoverhead:0);
         }
-        if((rnd.Next()&0x7f)==0)values[putpos] = RandomString(&rnd, value_size + rnd.Next()%value_size_var);  // replace one value in 100
-        Status s = (Put(LongKey(putpos,key_size), values[putpos]));
-        vlogtotalsize += values[putpos].size()+vlogoverhead;
+        if((rnd.Next()&0x1f)==0)values[putpos] = RandomString(&rnd, ((rnd.Next()&0x3)==0)?0:value_size + rnd.Next()%value_size_var);  // replace one value in 32, 1/4 of them deletes
+        Status s;
+        if(values[putpos].size()){
+          s = (Put(LongKey(putpos,key_size), values[putpos]));
+        } else {
+          s = Delete(LongKey(putpos,key_size));
+        }
+        vlogtotalsize += values[putpos].size()+(values[putpos].size()?vlogoverhead:0);
         if(!s.ok())
           printf("Put failed\n");
         ASSERT_OK(s);
         for(int32_t m=0;m<2;++m){  // read a couple times for every Put
           int32_t randkey = (rnd.Next()) % maxget;  // make 2 random gets per put
           std::string getresult = Get(LongKey(randkey,key_size));
-          ASSERT_EQ(getresult,values[randkey]);
-          if(getresult.compare(values[randkey])!=0) {
-            printf("mismatch: Get result=%s len=%zd\n",getresult.c_str(),getresult.size());
-            printf("mismatch: Expected=%s len=%zd\n",values[randkey].c_str(),values[randkey].size());
-            std::string getresult2 = Get(LongKey(randkey,key_size));
-            if(getresult.compare(getresult2)==0)printf("unchanged on reGet\n");
-            else if(getresult.compare(values[randkey])==0)printf("correct on reGet\n");
-            else printf("after ReGet: Get result=%s len=%zd\n",getresult2.c_str(),getresult2.size());
+          if(values[randkey].size()){
+            ASSERT_EQ(getresult,values[randkey]);
+            if(getresult.compare(values[randkey])!=0) {
+              printf("mismatch: Get result=%s len=%zd\n",getresult.c_str(),getresult.size());
+              printf("mismatch: Expected=%s len=%zd\n",values[randkey].c_str(),values[randkey].size());
+              std::string getresult2 = Get(LongKey(randkey,key_size));
+              if(getresult.compare(getresult2)==0)printf("unchanged on reGet\n");
+              else if(getresult.compare(values[randkey])==0)printf("correct on reGet\n");
+              else printf("after ReGet: Get result=%s len=%zd\n",getresult2.c_str(),getresult2.size());
+            }
+          }else{
+            // value was empty, key should not be found
+            ASSERT_EQ(getresult,"NOT_FOUND");
           }
         }
       }
@@ -672,7 +682,13 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
 //  dbfull()->TEST_WaitForCompact();
 
     for (int32_t j = 0; j < batch_size+300; j++) {
-      ASSERT_EQ(Get(LongKey(j,key_size)), values[j]);
+      std::string getresult = Get(LongKey(j,key_size));
+      if(values[j].size()){
+        ASSERT_EQ(getresult,values[j]);
+      }else{
+        // value was empty, key should not be found
+        ASSERT_EQ(getresult,"NOT_FOUND");
+      }
     }
     printf("...verified.\n");
     TryReopen(options);
@@ -680,14 +696,20 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
   }
   // Now compact everything down to the lowest level, so we have a true count of VLog bytes
 // obsolete printf("Before compacting to level %d, FilesPerLevel=%s\n",options.num_levels-1,FilesPerLevel(0).c_str());
-    CompactRangeOptions c_options;
-    c_options.change_level = true;
-    c_options.target_level = options.num_levels-1;
-    ASSERT_OK(db_->CompactRange(c_options, nullptr, nullptr));
-    for (int32_t j = 0; j < batch_size+300; j++) {
-      ASSERT_EQ(Get(LongKey(j,key_size)), values[j]);
+  CompactRangeOptions c_options;
+  c_options.change_level = true;
+  c_options.target_level = options.num_levels-1;
+  ASSERT_OK(db_->CompactRange(c_options, nullptr, nullptr));
+  for (int32_t j = 0; j < batch_size+300; j++) {
+    std::string getresult = Get(LongKey(j,key_size));
+    if(values[j].size()){
+      ASSERT_EQ(getresult,values[j]);
+    }else{
+      // value was empty, key should not be found
+      ASSERT_EQ(getresult,"NOT_FOUND");
     }
-    printf("...verified again.\n");
+  }
+  printf("...verified again.\n");
 // obsolete printf("After compacting to level %d, FilesPerLevel=%s\n",options.num_levels-1,FilesPerLevel(0).c_str());
   // Verify that the VLog size is correct
   ASSERT_EQ(vlogtotalsize,restartinfo.size-restartinfo.frag);
@@ -1034,7 +1056,7 @@ void DBVLogTest::SetUpForActiveRecycleTest() {
   options.max_bytes_for_level_multiplier = 10;
 
   //const int32_t key_size = 100;
-  const int32_t value_size = 16384;  // k+v=16KB
+  const int32_t value_size = 16384-10;  // k+v=16KB, and make sure the value doesn't round up to over 0x4000 - that would make the internal frag ct high & change behavior
   const int32_t nkeys = 100;  // number of files
   options.target_file_size_base = 100LL << 20;  // high limit for compaction result, so we don't subcompact
 
@@ -1129,6 +1151,7 @@ TEST_F(DBVLogTest, ActiveRecycleTriggerTest1) {
 
   // Verify that we don't pick a compaction when the database is too small
   mutable_cf_options_.fragmentation_active_recycling_trigger = std::vector<int32_t>({10});
+  mutable_cf_options_.min_indirect_val_size = std::vector<size_t>({0});
   mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({1LL<<30});
   mutable_cf_options_.active_recycling_sst_minct = std::vector<int32_t>({5});
   mutable_cf_options_.active_recycling_sst_maxct = std::vector<int32_t>({15});
@@ -1141,6 +1164,7 @@ TEST_F(DBVLogTest, ActiveRecycleTriggerTest1) {
 
   // Verify that we don't pick a compaction with a 20% size requirement
   mutable_cf_options_.fragmentation_active_recycling_trigger = std::vector<int32_t>({20});
+  mutable_cf_options_.min_indirect_val_size = std::vector<size_t>({0});
   mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({armagictestingvalue});
   mutable_cf_options_.active_recycling_sst_minct = std::vector<int32_t>({5});
   mutable_cf_options_.active_recycling_sst_maxct = std::vector<int32_t>({15});
