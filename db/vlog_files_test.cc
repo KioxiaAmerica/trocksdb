@@ -282,8 +282,8 @@ static void ListVLogFileSizes(DBVLogTest *db, std::vector<uint64_t>& vlogfilesiz
   }
 }
 
-#if 1  // turn on for long r/w test.  This is the TRocks random-load test, and verifies that compaction picking picks oldest references
 static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
+#if 0  // turn on for long r/w test.  This is the TRocks random-load test, and verifies that compaction picking picks oldest references
 TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   const int32_t value_ref_size = 16;  // length of indirect reference
 // obsolete   int32_t value_size = 18;  // 10 KB
@@ -291,7 +291,7 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   int32_t value_size = 800;  // 10 KB
   int32_t key_size = 18;
   int32_t value_size_var = 20;
-  int32_t batch_size = 2000; // scaf 200;  00 
+  int32_t batch_size = 200000; // if you make this smaller you'd better reduce num_levels accordingly
 
   Options options = CurrentOptions();
 
