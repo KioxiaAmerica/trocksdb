@@ -559,29 +559,15 @@ endif
 #[unit] \
 	backupable_db_test 			trocks Bug128\
 	db_iterator_test 			trocks+noflags Bug139\
-	db_universal_compaction_test		trocks Bug240\
-	spatial_db_test 			trocks+noflags Bug238\
-	table_test 				trocks Bug241\
-	vlog_files_test 			trocks Bug242\
-	write_prepared_transaction_test 	trocks+noflags Bug151\
 
 ifdef INDIRECT_VALUE_SUPPORT
 LOCKS= \
 	backupable_db_test \
 	db_iterator_test \
-	db_universal_compaction_test \
-	spatial_db_test \
-	table_test \
-	vlog_files_test \
-	write_prepared_transaction_test \
 
 else
 LOCKS= \
 	db_iterator_test \
-	db_universal_compaction_test \
-	spatial_db_test \
-	table_test \
-	write_prepared_transaction_test \
 
 endif
 
@@ -1889,7 +1875,7 @@ jdb_bench:
 
 commit_prereq: build_tools/rocksdb-lego-determinator \
                build_tools/precommit_checker.py
-	J=$(J) build_tools/precommit_checker.py unit asan tsan ubsan release java_build
+	J=$(J) build_tools/precommit_checker.py unit asan tsan ubsan release
 
 # ---------------------------------------------------------------------------
 #  	Platform-specific compilation

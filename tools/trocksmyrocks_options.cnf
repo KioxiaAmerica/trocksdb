@@ -1,6 +1,6 @@
 # MySQL config file for small systems.
 #
-# Config Version 1.1
+# Config Version 1.2
 #
 # This is for a system with little memory (<= 64M) where MySQL is only used
 # from time to time and it's important that the mysqld daemon
@@ -33,8 +33,8 @@ port            = 3307
 socket          = /tmp/mysql3307.sock
 skip-external-locking
 key_buffer_size = 16K
-#max_allowed_packet = 1M
-table_open_cache = 4
+max_allowed_packet = 1M
+table_open_cache = 2000
 sort_buffer_size = 64K
 read_buffer_size = 256K
 read_rnd_buffer_size = 256K
@@ -54,33 +54,33 @@ default-storage-engine=rocksdb
 skip-innodb
 default-tmp-storage-engine=MyISAM
 collation-server=latin1_bin
-transaction-isolation=READ-COMMITTED #Edward:per tuning tip
+#transaction-isolation=READ-COMMITTED #Edward:per tuning tip
 
 server-id       = 2 
 
 rocksdb_max_open_files=-1
-rocksdb_max_background_jobs=12
+rocksdb_max_background_jobs=20
 rocksdb_max_total_wal_size=4G
-rocksdb_block_size=16384
+rocksdb_block_size=2048
 rocksdb_block_cache_size=16g
 rocksdb_table_cache_numshardbits=6
 rocksdb_lock_wait_timeout=2
 
 # rate limiter
-rocksdb_bytes_per_sync=4194304
-rocksdb_wal_bytes_per_sync=4194304
-rocksdb_rate_limiter_bytes_per_sec=1572864000
+rocksdb_bytes_per_sync=8m
+rocksdb_wal_bytes_per_sync=8m
+rocksdb_rate_limiter_bytes_per_sec=600m
 
 # triggering compaction if there are many sequential deletes
 rocksdb_compaction_sequential_deletes_count_sd=1
 rocksdb_compaction_sequential_deletes=199999
 rocksdb_compaction_sequential_deletes_window=200000
-rocksdb_max_subcompactions=8
+rocksdb_max_subcompactions=2
 #rocksdb_compaction_readahead_size=16m
 rocksdb_use_direct_reads=OFF
 rocksdb_use_direct_io_for_flush_and_compaction=OFF
 
-rocksdb_default_cf_options=compaction_style=kCompactionStyleLevel;write_buffer_size=40m;target_file_size_base=2m;max_bytes_for_level_base=32m;max_bytes_for_level_multiplier=10;level0_file_num_compaction_trigger=4;level0_slowdown_writes_trigger=8;level0_stop_writes_trigger=12;max_write_buffer_number=8;compression_per_level=kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression;block_based_table_factory={cache_index_and_filter_blocks=1;filter_policy=bloomfilter:10:false;whole_key_filtering=1};level_compaction_dynamic_level_bytes=false;allow_trivial_move=false;compaction_score_limit_L0=1000.0;vlogring_activation_level=0;min_indirect_val_size=24;fraction_remapped_during_compaction=20;fraction_remapped_during_active_recycling=15;fragmentation_active_recycling_trigger=25;fragmentation_active_recycling_klaxon=50;active_recycling_sst_minct=5;active_recycling_sst_maxct=15;active_recycling_vlogfile_freed_min=3;active_recycling_size_trigger=1073741824;vlogfile_max_size=33m;compaction_picker_age_importance=100;ring_compression_style=kLZ4Compression
+rocksdb_default_cf_options=compaction_style=kCompactionStyleLevel;write_buffer_size=40m;target_file_size_base=2m;max_bytes_for_level_base=1g;level0_file_num_compaction_trigger=4;level0_slowdown_writes_trigger=12;level0_stop_writes_trigger=20;max_write_buffer_number=8;compression_per_level=kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression;block_based_table_factory={cache_index_and_filter_blocks=1;filter_policy=bloomfilter:10:false;whole_key_filtering=1};level_compaction_dynamic_level_bytes=true;allow_trivial_move=false;compaction_score_limit_L0=1000.0;vlogring_activation_level=0;min_indirect_val_size=24;fraction_remapped_during_compaction=20;fraction_remapped_during_active_recycling=15;fragmentation_active_recycling_trigger=25;fragmentation_active_recycling_klaxon=50;active_recycling_sst_minct=5;active_recycling_sst_maxct=15;active_recycling_vlogfile_freed_min=3;active_recycling_size_trigger=1073741824;vlogfile_max_size=1m;compaction_picker_age_importance=100;ring_compression_style=kNoCompression
 
 rocksdb_override_cf_options=cf_link_pk={prefix_extractor=capped:20};rev:cf_link_id1_type={prefix_extractor=capped:20}
 

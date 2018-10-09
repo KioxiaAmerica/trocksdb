@@ -67,7 +67,7 @@ class TransactionTestBase : public ::testing::Test {
     env = new FaultInjectionTestEnv(Env::Default());
     options.env = env;
     options.two_write_queues = two_write_queue;
-    dbname = test::TmpDir() + "/transaction_testdb";
+    dbname = test::PerThreadDBPath("transaction_testdb");
 
     DestroyDB(dbname, options);
     txn_db_options.transaction_lock_timeout = 0;
@@ -104,11 +104,10 @@ class TransactionTestBase : public ::testing::Test {
     Status s;
     if (use_stackable_db_ == false) {
       s = TransactionDB::Open(options, txn_db_options, dbname, &db);
-      assert(s.ok());
     } else {
       s = OpenWithStackableDB();
-      assert(s.ok());
     }
+    assert(!s.ok() || db != nullptr);
     return s;
   }
 
@@ -130,6 +129,7 @@ class TransactionTestBase : public ::testing::Test {
     } else {
       s = OpenWithStackableDB(cfs, handles);
     }
+    assert(db != nullptr);
     return s;
   }
 
@@ -143,6 +143,7 @@ class TransactionTestBase : public ::testing::Test {
     } else {
       s = OpenWithStackableDB();
     }
+    assert(db != nullptr);
     return s;
   }
 
@@ -187,6 +188,11 @@ class TransactionTestBase : public ::testing::Test {
         txn_db_options.write_policy == WRITE_UNPREPARED;
     Status s = DBImpl::Open(options_copy, dbname, column_families, &handles,
                             &root_db, use_seq_per_batch);
+    if (!s.ok()) {
+      delete root_db;
+      return s;
+    }
+
     StackableDB* stackable_db = new StackableDB(root_db);
     if (s.ok()) {
       assert(root_db != nullptr);
@@ -451,6 +457,8 @@ class TransactionTest : public TransactionTestBase,
       : TransactionTestBase(std::get<0>(GetParam()), std::get<1>(GetParam()),
                             std::get<2>(GetParam())){};
 };
+
+class TransactionStressTest : public TransactionTest {};
 
 class MySQLStyleTransactionTest : public TransactionTest {};
 
