@@ -16,6 +16,11 @@
 #include <chrono>
 #include <thread>
 #include <cmath>
+#include "rocksdb/merge_operator.h"
+#include "rocksdb/utilities/db_ttl.h"
+#include "utilities/merge_operators.h"
+#include "utilities/merge_operators/string_append/stringappend.h"
+#include "utilities/merge_operators/string_append/stringappend2.h"
 #ifdef INDIRECT_VALUE_SUPPORT
 #include "db/value_log.h"
 #endif
@@ -291,7 +296,7 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   int32_t value_size = 800;  // 10 KB
   int32_t key_size = 18;
   int32_t value_size_var = 20;
-  int32_t batch_size = 200000; // if you make this smaller you'd better reduce num_levels accordingly
+  int32_t batch_size = 2000; // if you make this smaller you'd better reduce num_levels accordingly 00
 
   Options options = CurrentOptions();
 
@@ -307,7 +312,7 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   options.target_file_size_base=bytesperkvinsst*sstkvcount;
   options.write_buffer_size = (uint64_t)(nfilesperl0flush*bytesperkvinmemtable*sstkvcount);
   options.level0_file_num_compaction_trigger = 3;
-  options.level0_slowdown_writes_trigger = 5;
+  options.level0_slowdown_writes_trigger = 9;
   options.level0_stop_writes_trigger = 11;
   options.max_background_compactions = 3;
   options.stats_dump_period_sec = 10;
@@ -478,7 +483,9 @@ TEST_F(DBVLogTest, SpaceAccountingTest) {
   int32_t value_size = 800;  // 10 KB
   int32_t key_size = 18;
   int32_t value_size_var = 20;
+  int32_t merge_append_size = 10;
   int32_t batch_size = 10000; // scaf 200000;   
+
 
   Options options = CurrentOptions();
   options.max_bytes_for_level_multiplier = 10;
@@ -516,6 +523,8 @@ TEST_F(DBVLogTest, SpaceAccountingTest) {
   options.vlogfile_max_size = std::vector<uint64_t>({sstkvcount*(value_size+10)});  // amount of value in 1 sst, allowing for CRC & header
 
   options.vlog_direct_IO = false;
+  options.merge_operator.reset(new StringAppendOperator(','));
+
 
   printf("Starting: #levels=%d, max_bytes_for_level_base=%zd target_file_size_base=%zd write_buffer_size=%zd vlogfile_max_size=%zd\n",options.num_levels,options.max_bytes_for_level_base, options.target_file_size_base,options.write_buffer_size,options.vlogfile_max_size[0]);
   DestroyAndReopen(options);
@@ -598,6 +607,7 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
   ASSERT_EQ(Get(LongKey(0,key_size)), values[0]);
   ASSERT_EQ(Get(LongKey(299,key_size)), values[299]);
 
+
   // 2 files in L0
 // obsolete   ASSERT_EQ("2", FilesPerLevel(0));
   CompactRangeOptions compact_options;
@@ -634,6 +644,7 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
 //      }
         int maxget = (i|k)?batch_size:j;   // don't read a slot we haven't written yet
         int putpos = (i|k)?rnd.Next()%batch_size:j;  // put into a randow slot, but only after the first pass has filled all slots
+        // Figure out the size of the incumbent value, and remove it from the total
         if(!(i|k)){
           // First pass: create a random value to use
           std::string vstg =  RandomString(&rnd, value_size);
@@ -644,12 +655,24 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
           // Not first pass: we are deleting the old value, which may have 0 length.  0-length values have no overhead
           vlogtotalsize -= values[putpos].size()+(values[putpos].size()?vlogoverhead:0);
         }
-        if((rnd.Next()&0x1f)==0)values[putpos] = RandomString(&rnd, ((rnd.Next()&0x3)==0)?0:value_size + rnd.Next()%value_size_var);  // replace one value in 32, 1/4 of them deletes
+        // Optionally modify the value; do Put, Merge, or Delete.  Leave the merged value
         Status s;
-        if(values[putpos].size()){
-          s = (Put(LongKey(putpos,key_size), values[putpos]));
-        } else {
+        int dice = rnd.Next()&0xf;  // roll the dice for the operation type
+        if((i|k) && values[putpos].size() && dice<4){
+          // Not first pass, value is not empty: do a Merge 25% of the time
+          std::string appendstg = RandomString(&rnd, merge_append_size);
+          values[putpos].append(1,',');   // emulate the merge operator: add ',' followed by the merge arg
+          values[putpos].append(appendstg);
+          s = (Merge(LongKey(putpos,key_size), appendstg));
+        }else if((i|k) && values[putpos].size() && dice<5) {
+          // Not first pass, value is not empty: do a Delete 6% of the time
+          values[putpos].clear();  
           s = Delete(LongKey(putpos,key_size));
+        }else{
+          // Otherwise, do a Put.  Replace the value 6% of the time/
+          if(dice==0xf)values[putpos] = RandomString(&rnd, value_size + rnd.Next()%value_size_var); 
+          // If the value is empty, don't put.  That will ensure that the only empty values are deleted ones, which will show 'not found'
+          if(values[putpos].size())s = (Put(LongKey(putpos,key_size), values[putpos]));
         }
         vlogtotalsize += values[putpos].size()+(values[putpos].size()?vlogoverhead:0);
         if(!s.ok())
