@@ -174,9 +174,9 @@ void PrepareLevelStats(std::map<LevelStatType, double>* level_stats,
 
 #ifdef INDIRECT_VALUE_SUPPORT
 void PrepareRingStats(std::map<RingStatType, double>* ring_stats,
-                       int64_t num_files, double total_file_size, double fragmentation) {
-  (*ring_stats)[RingStatType::NUM_FILES] = (double)num_files;
-  (*ring_stats)[RingStatType::SIZE_BYTES] = total_file_size;
+                       double num_files, int64_t file_size, double fragmentation) {
+  (*ring_stats)[RingStatType::NUM_FILES] = num_files;
+  (*ring_stats)[RingStatType::SIZE_BYTES] = static_cast<double>(file_size);
   (*ring_stats)[RingStatType::FRAGMENTATION] = fragmentation;
 }
 #endif
@@ -250,15 +250,15 @@ void PrintRingStats(char* buf, size_t len, const std::string& name,
   snprintf(
       buf, len,
       "%4s "             /*  Ring */
-      "%6d "             /*  Files */
+      "%8d "             /*  Files */
       "%8s "             /*  Size */
-      "%6d "             /*  Fragmentation */
+      "%5.1f "             /*  Fragmentation */
       "\n",
       name.c_str(), static_cast<int>(stat_value.at(RingStatType::NUM_FILES)),
       BytesToHumanString(
-        static_cast<int>(stat_value.at(RingStatType::SIZE_BYTES)))
+        static_cast<uint64_t>(stat_value.at(RingStatType::SIZE_BYTES)))
           .c_str(),
-      static_cast<int>(stat_value.at(RingStatType::FRAGMENTATION))
+      stat_value.at(RingStatType::FRAGMENTATION)
            );
 }
 #endif
@@ -645,27 +645,31 @@ bool InternalStats::HandleLevelStats(std::string* value, Slice /*suffix*/) {
 #ifdef INDIRECT_VALUE_SUPPORT
 bool InternalStats::HandleVLogRingStats(std::string* value, Slice /*suffix*/) {
   char buf[1000];
-  std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
-  //Warning: Unused Variable
-  //const auto* vstorage = cfd_->current()->storage_info();
   snprintf(buf, sizeof(buf),
            "Ring Files Size(MB) Frag(%%)\n"
            "---------------------------\n");
   value->append(buf);
-
-  for(uint32_t i = 0;i<vli.size();++i) { // for each ring...
+  double total_files = 0;
+  double total_file_size = 0;
+  double total_frag = 0;
+  const auto* vstorage = cfd_->current()->storage_info();
+  int total_rings = vstorage->num_rings();
+  for(int ring = 0;ring<total_rings;++ring) {  // for each ring...
     // number of files per ring
-    uint64_t nfiles = 0;
-    uint64_t vfx=0;  // running index of file-pair
-    uint64_t prevend;  // end of previous interval, starting with 0 or delete interval.  The first file is file 1
-    // the first filenumber-pair may be a delete record, if the first file# is 0.  In that case, remember the delete-to point and skip over the pair
-    if(vli[i].valid_files.size()>1 && vli[i].valid_files[0]==0){prevend=vli[i].valid_files[1]; vfx+=2;}else prevend = 0;
-    for(;vfx<vli[i].valid_files.size();vfx+=2)nfiles += vli[i].valid_files[vfx+1] - std::max(prevend+1,vli[i].valid_files[vfx]) + 1; // interval is (start,end)
+    double files = static_cast<double>(vstorage->NumRingFiles(ring));
+    total_files += files;
     // the number of bytes allocated in each VLog ring
-    // the amount of fragmentation in each ring, i. e. bytes in VLogs 
-    snprintf(buf, sizeof(buf), "%3d %7zd %8.0f %8.0f\n", i, nfiles, vli[i].size / kMB, (vli[i].frag*100.0)/(vli[i].size+1));
+    double file_size = static_cast<double>(vstorage->NumRingBytes(ring));
+    total_file_size += file_size;
+    // the amount of fragmentation in each ring, i. e. bytes in VLogs
+    double fragmentation = 100.0*vstorage->RingFrag(ring);
+    total_frag += fragmentation;
+
+    snprintf(buf, sizeof(buf), "%4d %8d %8.0f %5.1f\n", ring, static_cast<int>(files), file_size / kMB, fragmentation);
     value->append(buf);
   }
+  snprintf(buf, sizeof(buf), "%4s %8d %8.0f %5.1f\n", "Sum", static_cast<int>(total_files), total_file_size / kMB, total_frag/static_cast<double>(total_rings));
+  value->append(buf);
   return true;
 }
 #endif
@@ -1248,38 +1252,28 @@ void InternalStats::DumpCFMapStats(
 #ifdef INDIRECT_VALUE_SUPPORT
 void InternalStats::DumpCFMapStatsRing(
     std::map<int, std::map<RingStatType, double>>* rings_stats) {
-
-  uint64_t total_files = 0;
-  double total_file_size = 0;
+  double total_files = 0;
+  int64_t total_file_size = 0;
   double total_frag = 0;
-
-  std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
-
-  for(uint32_t ring = 0;ring<vli.size();++ring) {  // for each ring...
+  const auto* vstorage = cfd_->current()->storage_info();
+  int total_rings = vstorage->num_rings();
+  for(int ring = 0;ring<total_rings;++ring) {  // for each ring...
     // number of files per ring
-    uint64_t files = 0;
-    std::map<RingStatType, double> ring_stats;
-    uint64_t vfx=0;  // running index of file-pair
-    uint64_t prevend;  // end of previous interval, starting with 0 or delete interval.  The first file is file 1
-    // the first filenumber-pair may be a delete record, if the first file# is 0.  In that case, remember the delete-to point and skip over the pair
-    if(vli[ring].valid_files.size()>1 && vli[ring].valid_files[0]==0){prevend=vli[ring].valid_files[1]; vfx+=2;}else prevend = 0;
-    for(;vfx<vli[ring].valid_files.size();vfx+=2){
-      files += vli[ring].valid_files[vfx+1] - std::max(prevend+1,vli[ring].valid_files[vfx]) + 1; // interval is (start,end)
-      total_files += files;
-      // interval is (start,end)
-    }
+    double files = static_cast<double>(vstorage->NumRingFiles(ring));
+    total_files += files;
     // the number of bytes allocated in each VLog ring
-    double file_size = static_cast<double>(vli[ring].size);
+    int64_t file_size = vstorage->NumRingBytes(ring);
     total_file_size += file_size;
     // the amount of fragmentation in each ring, i. e. bytes in VLogs
-    double fragmentation = (vli[ring].frag*100.0)/(vli[ring].size+1);
-    total_frag += static_cast<double>(vli[ring].frag);
+    double fragmentation = 100.0*vstorage->RingFrag(ring);
+    total_frag += fragmentation;
 
+    std::map<RingStatType, double> ring_stats;
     PrepareRingStats(&ring_stats, files, file_size, fragmentation);
     (*rings_stats)[ring] = ring_stats;
   }
   std::map<RingStatType, double> sum_stats;
-  PrepareRingStats(&sum_stats, total_files, total_file_size, 100.0*total_frag/(total_file_size+1));
+  PrepareRingStats(&sum_stats, total_files, total_file_size, total_frag/static_cast<double>(total_rings));
   (*rings_stats)[-1] = sum_stats;  //  -1 is for the Sum level
 }
 #endif //INDIRECT_VALUE_SUPPORT
@@ -1474,20 +1468,20 @@ void InternalStats::DumpCFStatsNoFileHistogram(std::string* value) {
            total_stall_count - cf_stats_snapshot_.stall_count);
   value->append(buf);
 #ifdef INDIRECT_VALUE_SUPPORT
-  /* VLog Ring Stats */
-  std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
+  // Ring stats header
   PrintRingStatsHeader(buf, sizeof(buf), cfd_->GetName());
   value->append(buf);
+  // Print stats for each ring
   std::map<int, std::map<RingStatType, double>> rings_stats;
   DumpCFMapStatsRing(&rings_stats);
-
+  std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
   for(uint32_t i = 0;i<vli.size();++i) {  // for each ring...
     if (rings_stats.find(i) != rings_stats.end()) {
       PrintRingStats(buf, sizeof(buf), "R" + ToString(i), rings_stats[i]);
       value->append(buf);
     }
   }
-  // Print sum of level stats
+  // Print sum of ring stats
   PrintRingStats(buf, sizeof(buf), "Sum", rings_stats[-1]);
   value->append(buf);
 #endif //INDIRECT_VALUE_SUPPORT

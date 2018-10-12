@@ -152,6 +152,33 @@ class VersionStorageInfo {
     const double bias = 0.3;  // end of the tail is at 0.3    scaf use option
     return f->compensated_file_size * std::pow(base , bias-((double)(std::max((int64_t)0,(int64_t)avgparent.fileno()-(int64_t)file0))/(double)nfiles));  // effective size.  fileno may be obsolete and low, so clamp it to file0
   }
+
+  int NumRingFiles(uint32_t ring) const {
+    assert(finalized_);
+    std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
+    uint64_t files = 0;
+    uint64_t vfx=0;  // running index of file-pair
+    uint64_t prevend=0;  // end of previous interval, starting with 0 or delete interval.  The first file is file 1
+    // the first filenumber-pair may be a delete record, if the first file# is 0.  In that case, remember the delete-to point and skip over the pair
+    if(vli[ring].valid_files.size()>1 && vli[ring].valid_files[0]==0){prevend=vli[ring].valid_files[1]; vfx+=2;}else prevend = 0;
+    for(;vfx<vli[ring].valid_files.size();vfx+=2){
+      files += static_cast<double>(vli[ring].valid_files[vfx+1] - std::max(prevend+1,vli[ring].valid_files[vfx]) + 1); // interval is (start,end)
+      // interval is (start,end)
+    }
+    return static_cast<int>(files);
+  }
+
+  int64_t RingFiles(int ring) const {
+    return cfd_->vloginfo()[ring].size;
+  }
+
+  int64_t NumRingBytes(int ring) const;
+  
+  double RingFrag(int ring) const {
+    return cfd_->vloginfo()[ring].fragfrac;
+  }
+
+  int num_rings() const { return cfd_->vloginfo().size(); }
 #endif
 
   // Update num_non_empty_levels_.
