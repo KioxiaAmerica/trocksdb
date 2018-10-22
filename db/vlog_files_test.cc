@@ -350,7 +350,7 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
       });
   SyncPoint::GetInstance()->SetCallBack(
       "LevelCompactionBuilder::PickCompaction", [&](void* arg) {
-        uint64_t *pickerinfo = static_cast<uint64_t *>(arg);
+        int64_t *pickerinfo = static_cast<int64_t *>(arg);
         ColumnFamilyData *cfd=(ColumnFamilyData*)pickerinfo[6];
         if(cfd!=nullptr){  // to reduce typeout, type only if coming out of L1 or higher
           int doprint = pickerinfo[0]>0;  // true if we type out

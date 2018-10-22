@@ -2434,8 +2434,6 @@ int64_t VersionStorageInfo::NumRingBytes(int ring) const {
   assert(ring >= 0);
   std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
   assert(ring < static_cast<int>(vli.size()));
-
-  printf("NumRingBytes %d\n", static_cast<int>(vli[ring].size));
   return vli[ring].size;
 }
 #endif //INDIRECT_VALUE_SUPPORT
