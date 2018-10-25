@@ -1,6 +1,6 @@
 # MySQL config file for small systems.
 #
-# Config Version 1.1
+# Config Version 1.2
 #
 # This is for a system with little memory (<= 64M) where MySQL is only used
 # from time to time and it's important that the mysqld daemon
@@ -34,7 +34,8 @@ socket          = /tmp/mysql3306.sock
 skip-external-locking
 key_buffer_size = 16K
 max_allowed_packet = 1M
-table_open_cache = 2000
+table_open_cache = 20000
+table_open_cache_instances = 64
 sort_buffer_size = 64K
 read_buffer_size = 256K
 read_rnd_buffer_size = 256K
@@ -59,7 +60,7 @@ transaction-isolation=READ-COMMITTED #Edward:per tuning tip
 server-id       = 2 
 
 rocksdb_max_open_files=-1
-rocksdb_max_background_jobs=8
+rocksdb_max_background_jobs=12
 rocksdb_max_total_wal_size=4G
 rocksdb_block_size=2048
 rocksdb_table_cache_numshardbits=6
