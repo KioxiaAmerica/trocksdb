@@ -1092,7 +1092,7 @@ DEFINE_double(compaction_score_limit_L0, 1000.0, "Compaction limit for L0.  The 
              "This parameter gives the maximum compaction priority that L0 can have."
              "Setting a value such as, say, 2.0 will limit L1 to twice its natural size and cause compactions to be scheduled for lower levels."
              "Default is to leave L0 unlimited");
-DEFINE_int32(vlogring_activation_level, 1, "Activation Level : values coming into this level are written to the ring. Level 1 is the smallest level on disk."
+DEFINE_int32(vlogring_activation_level, 0, "Activation Level : values coming into this level are written to the ring. Level 1 is the smallest level on disk."
              "Activation level should be in increasing order.  Values greater than 0 indicate the level; values less than 0 are relative to the END of the ring AT THE TIME THE VLOG IS CREATED, i. e."
              "a value of -1 means 'the last level'");
 
@@ -3274,9 +3274,26 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     options.level0_slowdown_writes_trigger =
       FLAGS_level0_slowdown_writes_trigger;
 #ifdef INDIRECT_VALUE_SUPPORT
+    options.allow_trivial_move = FLAGS_allow_trivial_move;
+    options.compaction_score_limit_L0 = FLAGS_compaction_score_limit_L0;
+    options.vlog_direct_IO = FLAGS_vlog_direct_IO;
+    options.vlogring_activation_level = std::vector<int32_t>({FLAGS_vlogring_activation_level});
+    options.min_indirect_val_size = std::vector<uint64_t>({FLAGS_min_indirect_val_size});
+    options.fraction_remapped_during_compaction = std::vector<int32_t>({FLAGS_fraction_remapped_during_compaction});
+    options.fraction_remapped_during_active_recycling = std::vector<int32_t>({FLAGS_fraction_remapped_during_active_recycling});
+    options.fragmentation_active_recycling_trigger = std::vector<int32_t>({FLAGS_fragmentation_active_recycling_trigger});
+    options.fragmentation_active_recycling_klaxon = std::vector<int32_t>({FLAGS_fragmentation_active_recycling_klaxon});
+    options.active_recycling_sst_minct = std::vector<int32_t>({FLAGS_active_recycling_sst_minct});
+    options.active_recycling_sst_maxct = std::vector<int32_t>({FLAGS_active_recycling_sst_maxct});
+    options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({FLAGS_active_recycling_vlogfile_freed_min});
+    options.active_recycling_size_trigger = std::vector<int64_t>({FLAGS_active_recycling_size_trigger});
+    options.vlogfile_max_size = std::vector<uint64_t>({FLAGS_vlogfile_max_size});
+    options.compaction_picker_age_importance = std::vector<int32_t>({FLAGS_compaction_picker_age_importance});
     options.ring_compression_style = std::vector<CompressionType>({FLAGS_ring_compression_style_e});
-#endif //INDIRECT_VALUE_SUPPORT
+    options.compression = kNoCompression;
+#else
     options.compression = FLAGS_compression_type_e;
+#endif //INDIRECT_VALUE_SUPPORT
     options.WAL_ttl_seconds = FLAGS_wal_ttl_seconds;
     options.WAL_size_limit_MB = FLAGS_wal_size_limit_MB;
     options.max_total_wal_size = FLAGS_max_total_wal_size;
