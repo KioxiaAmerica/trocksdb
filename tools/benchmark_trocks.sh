@@ -80,9 +80,9 @@ const_params="
   \
   --hard_rate_limit=3 \
   --rate_limit_delay_max_milliseconds=1000000 \
-  --write_buffer_size=$((44 * M)) \
-  --target_file_size_base=$((4 * M)) \
-  --max_bytes_for_level_base=$((32 * M)) \
+  --write_buffer_size=$((110 * M)) \
+  --target_file_size_base=$((10 * M)) \
+  --max_bytes_for_level_base=$((80 * M)) \
   \
   --verify_checksum=1 \
   --delete_obsolete_files_period_micros=$((60 * M)) \
@@ -110,7 +110,7 @@ const_params="
   --active_recycling_sst_maxct=15 \
   --active_recycling_vlogfile_freed_min=7 \
   --active_recycling_size_trigger=$((1 * G))\
-  --vlogfile_max_size=$((20 * M)) \
+  --vlogfile_max_size=$((50 * M)) \
   --compaction_picker_age_importance=100 \
   --ring_compression_style=$compression_type \
   --vlog_direct_IO=0"
@@ -191,9 +191,9 @@ function run_bulkload {
   echo "Bulk loading $num_keys random keys"
   cmd="./db_bench --benchmarks=fillrandom \
        --use_existing_db=0 \
-       --disable_auto_compactions=1 \
+       --disable_auto_compactions=0 \
        --sync=0 \
-       $params_bulkload \
+       $params_w \
        --threads=1 \
        --memtablerep=vector \
        --disable_wal=1 \
@@ -202,16 +202,16 @@ function run_bulkload {
   echo $cmd | tee $output_dir/benchmark_bulkload_fillrandom.log
   eval $cmd
   summarize_result $output_dir/benchmark_bulkload_fillrandom.log bulkload fillrandom
-  echo "Compacting..."
-  cmd="./db_bench --benchmarks=compact \
-       --use_existing_db=1 \
-       --disable_auto_compactions=1 \
-       --sync=0 \
-       $params_w \
-       --threads=1 \
-       2>&1 | tee -a $output_dir/benchmark_bulkload_compact.log"
-  echo $cmd | tee $output_dir/benchmark_bulkload_compact.log
-  eval $cmd
+  #echo "Compacting..."
+  #cmd="./db_bench --benchmarks=compact \
+  #     --use_existing_db=1 \
+  #     --disable_auto_compactions=1 \
+  #     --sync=0 \
+  #     $params_w \
+  #     --threads=1 \
+  #     2>&1 | tee -a $output_dir/benchmark_bulkload_compact.log"
+  #echo $cmd | tee $output_dir/benchmark_bulkload_compact.log
+  #eval $cmd
 }
 
 #
