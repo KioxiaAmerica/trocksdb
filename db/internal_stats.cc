@@ -1230,8 +1230,13 @@ void InternalStats::DumpCFMapStats(
       double w_amp =
           (input_bytes == 0)
               ? 0.0
+#ifdef INDIRECT_VALUE_SUPPORT
+              : (static_cast<double>(comp_stats_[level].bytes_written) + static_cast<double>(comp_stats_[level].vlog_bytes_written_comp)) /
+                    (input_bytes + comp_stats_[level].vlog_bytes_written_raw);
+#else
               : static_cast<double>(comp_stats_[level].bytes_written) /
                     input_bytes;
+#endif // INDIRECT_VALUE_SUPPORT
       std::map<LevelStatType, double> level_stats;
       PrepareLevelStats(&level_stats, files, files_being_compacted[level],
                         static_cast<double>(vstorage->NumLevelBytes(level)),
@@ -1240,8 +1245,13 @@ void InternalStats::DumpCFMapStats(
     }
   }
   // Cumulative summary
+#ifdef INDIRECT_VALUE_SUPPORT
+  double w_amp = (compaction_stats_sum->bytes_written + compaction_stats_sum->vlog_bytes_written_comp) /
+                 (static_cast<double>(curr_ingest + 1) + compaction_stats_sum->vlog_bytes_written_raw);
+#else
   double w_amp = compaction_stats_sum->bytes_written /
                  static_cast<double>(curr_ingest + 1);
+#endif // INDIRECT_VALUE_SUPPORT
   // Stats summary across levels
   std::map<LevelStatType, double> sum_stats;
   PrepareLevelStats(&sum_stats, total_files, total_files_being_compacted,
@@ -1360,7 +1370,11 @@ void InternalStats::DumpCFStatsNoFileHistogram(std::string* value) {
   CompactionStats interval_stats(compaction_stats_sum);
   interval_stats.Subtract(cf_stats_snapshot_.comp_stats);
   double w_amp =
+#ifdef INDIRECT_VALUE_SUPPORT
+      (interval_stats.bytes_written+interval_stats.vlog_bytes_written_comp) / (static_cast<double>(interval_ingest)+static_cast<double>(interval_stats.vlog_bytes_written_raw));
+#else
       interval_stats.bytes_written / static_cast<double>(interval_ingest);
+#endif //INDIRECT_VALUE_SUPPORT
   PrintLevelStats(buf, sizeof(buf), "Int", 0, 0, 0, 0, w_amp, interval_stats);
   value->append(buf);
 
