@@ -1,6 +1,6 @@
 # MySQL config file for small systems.
 #
-# Config Version 1.3
+# Config Version 1.4
 #
 # This is for a system with little memory (<= 64M) where MySQL is only used
 # from time to time and it's important that the mysqld daemon
@@ -32,6 +32,7 @@ socket          = /tmp/mysql3307.sock
 port            = 3307
 socket          = /tmp/mysql3307.sock
 skip-external-locking
+default-storage-engine=rocksdb
 key_buffer_size = 16K
 max_allowed_packet = 1M
 table_open_cache = 20000
@@ -81,7 +82,7 @@ rocksdb_max_subcompactions=2
 rocksdb_use_direct_reads=OFF
 rocksdb_use_direct_io_for_flush_and_compaction=OFF
 
-rocksdb_default_cf_options=compaction_style=kCompactionStyleLevel;write_buffer_size=40800k;target_file_size_base=8m;max_bytes_for_level_base=128m;level0_file_num_compaction_trigger=4;level0_slowdown_writes_trigger=12;level0_stop_writes_trigger=20;max_write_buffer_number=8;compression_per_level=kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression;block_based_table_factory={cache_index_and_filter_blocks=1;filter_policy=bloomfilter:10:false;whole_key_filtering=1};level_compaction_dynamic_level_bytes=true;allow_trivial_move=false;compaction_score_limit_L0=1000.0;vlogring_activation_level=0;min_indirect_val_size=24;fraction_remapped_during_compaction=20;fraction_remapped_during_active_recycling=15;fragmentation_active_recycling_trigger=25;fragmentation_active_recycling_klaxon=50;active_recycling_sst_minct=5;active_recycling_sst_maxct=15;active_recycling_vlogfile_freed_min=3;active_recycling_size_trigger=1g;vlogfile_max_size=2560k;compaction_picker_age_importance=100;ring_compression_style=kNoCompression
+rocksdb_default_cf_options=compaction_style=kCompactionStyleLevel;write_buffer_size=12800k;target_file_size_base=11520k;max_bytes_for_level_base=92160k;level0_file_num_compaction_trigger=4;level0_slowdown_writes_trigger=12;level0_stop_writes_trigger=20;max_write_buffer_number=8;compression_per_level=kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression;block_based_table_factory={cache_index_and_filter_blocks=1;filter_policy=bloomfilter:10:false;whole_key_filtering=1};level_compaction_dynamic_level_bytes=true;allow_trivial_move=false;compaction_score_limit_L0=1000.0;vlogring_activation_level=0;min_indirect_val_size=24;fraction_remapped_during_compaction=20;fraction_remapped_during_active_recycling=15;fragmentation_active_recycling_trigger=25;fragmentation_active_recycling_klaxon=50;active_recycling_sst_minct=5;active_recycling_sst_maxct=15;active_recycling_vlogfile_freed_min=3;active_recycling_size_trigger=1g;vlogfile_max_size=1280k;compaction_picker_age_importance=100;ring_compression_style=kNoCompression
 
 rocksdb_override_cf_options=cf_link_pk={prefix_extractor=capped:20};rev:cf_link_id1_type={prefix_extractor=capped:20}
 

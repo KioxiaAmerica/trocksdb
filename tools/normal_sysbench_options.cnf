@@ -55,7 +55,7 @@ symbolic-links=0
 
 # files
 skip-innodb
-
+default-storage-engine=rocksdb
 max_prepared_stmt_count=1000000
 
 # Monitoring

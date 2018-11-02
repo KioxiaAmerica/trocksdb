@@ -154,7 +154,7 @@ function summarize_result {
   mb_sec=$( grep ^${bench_name} $test_out | awk '{ print $7 }' )
   lo_wgb=$( grep "^  L0" $test_out | tail -1 | awk '{ print $9 }' )
   sum_wgb=$( grep "^ Sum" $test_out | tail -1 | awk '{ print $9 }' )
-  sum_size=$( grep "^ Sum" $test_out | tail -1 | awk '{ printf "%.1f", $3 / 1024.0 }' )
+  sum_size=$( grep "^ Sum" $test_out | tail -1 | awk '{ printf "%.1f", $3 }' )
   wamp=$( grep "^ Sum" $test_out | tail -1 | awk '{ print $12 }' )
   wmb_ps=$( echo "scale=1; ( $sum_wgb * 1024.0 ) / $uptime" | bc )
   usecs_op=$( grep ^${bench_name} $test_out | awk '{ printf "%.1f", $3 }' )
