@@ -1,0 +1,105 @@
+# MySQL config file for small systems.
+#
+# Config Version 1.4
+#
+# This is for a system with little memory (<= 64M) where MySQL is only used
+# from time to time and it's important that the mysqld daemon
+# doesn't use much resources.
+#
+# MySQL programs look for option files in a set of
+# locations which depend on the deployment platform.
+# You can copy this option file to one of those
+# locations. For information about these locations, see:
+# http://dev.mysql.com/doc/mysql/en/option-files.html
+#
+# In this file, you can use all long options that a program supports.
+# If you want to know which options a program supports, run the program
+# with the "--help" option.
+
+# The following options will be passed to all MySQL clients
+[client]
+#password       = your_password
+port            = 3307
+socket          = /tmp/mysql3307.sock
+
+# Here follows entries for some specific programs
+
+# MSSD Comment: TRocks mariadb MYRocks Configuration using Snappy Compression
+
+
+# The MySQL server
+[mysqld]
+port            = 3307
+socket          = /tmp/mysql3307.sock
+ssl=0
+
+log-bin=mysql-bin
+binlog_format = 'ROW'
+binlog_row_image=minimal
+sync_binlog=10000
+
+#gtid-mode=ON
+#enforce-gtid-consistency
+
+# Disabling symbolic-links is recommended to prevent assorted security risks
+symbolic-links=0
+
+# Recommended in standard MySQL setup
+
+# general
+  table_open_cache = 200000
+  table_open_cache_instances=64
+  back_log=3500
+  query_cache_type=0
+  max_connections=4000
+
+# files
+skip-innodb
+default-storage-engine=rocksdb
+max_prepared_stmt_count=1000000
+
+# Monitoring
+#innodb_monitor_enable = '%'
+#performance_schema=OFF
+#performance_schema=ON
+#performance-schema-instrument='wait/synch/%=ON'
+#innodb_monitor_enable=all
+#log-error=mysqld.log
+
+plugin-dir=/home/labuser/mariadb-10.2-devel/storage/rocksdb
+language=/home/labuser/mariadb-10.2-devel/sql/share/english
+datadir=/mnt/nvme1n1/install.db
+plugin-load=ha_rocksdb
+
+server-id       = 2 
+
+rocksdb_max_open_files=-1
+rocksdb_max_background_jobs=8
+rocksdb_max_total_wal_size=4G
+rocksdb_block_size=16384
+rocksdb_block_cache_size=16g
+rocksdb_table_cache_numshardbits=6
+
+# rate limiter
+rocksdb_bytes_per_sync=16m
+rocksdb_wal_bytes_per_sync=4m
+#rocksdb_rate_limiter_bytes_per_sec=600m
+
+# triggering compaction if there are many sequential deletes
+rocksdb_compaction_sequential_deletes_count_sd=1
+rocksdb_compaction_sequential_deletes=199999
+rocksdb_compaction_sequential_deletes_window=200000
+
+rocksdb_default_cf_options="compaction_style=kCompactionStyleLevel;write_buffer_size=128m;target_file_size_base=320k;max_bytes_for_level_base=2560k;level0_file_num_compaction_trigger=4;level0_slowdown_writes_trigger=20;level0_stop_writes_trigger=30;max_write_buffer_number=4;compression_per_level=kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression:kNoCompression;block_based_table_factory={cache_index_and_filter_blocks=1;filter_policy=bloomfilter:10:false;whole_key_filtering=0};level_compaction_dynamic_level_bytes=true;allow_trivial_move=false;compaction_score_limit_L0=1000.0;vlogring_activation_level=0;min_indirect_val_size=24;fraction_remapped_during_compaction=20;fraction_remapped_during_active_recycling=15;fragmentation_active_recycling_trigger=25;fragmentation_active_recycling_klaxon=50;active_recycling_sst_minct=5;active_recycling_sst_maxct=15;active_recycling_vlogfile_freed_min=3;active_recycling_size_trigger=1g;vlogfile_max_size=115200k;compaction_picker_age_importance=100;ring_compression_style=kNoCompression"
+
+rocksdb_max_subcompactions=4
+#rocksdb_compaction_readahead_size=16m
+#
+rocksdb_use_direct_reads=OFF
+rocksdb_use_direct_io_for_flush_and_compaction=OFF
+
+[mysqld_safe]
+thp-setting=never
+log-error=/var/log/mysqld.log
+pid-file=/var/run/mysqld/mysqld.pid
+

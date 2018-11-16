@@ -2429,6 +2429,15 @@ void VersionStorageInfo::ExtendFileRangeWithinInterval(
   *end_index = right;
 }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+int64_t VersionStorageInfo::NumRingBytes(int ring) const {
+  assert(ring >= 0);
+  std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
+  assert(ring < static_cast<int>(vli.size()));
+  return vli[ring].size;
+}
+#endif //INDIRECT_VALUE_SUPPORT
+
 uint64_t VersionStorageInfo::NumLevelBytes(int level) const {
   assert(level >= 0);
   assert(level < num_levels());
