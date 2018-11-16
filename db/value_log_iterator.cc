@@ -380,13 +380,19 @@ void IndirectIterator::ReadAndResolveInputBlock() {
     // if there are no more keys, combine the main and overflow
     if(!inputnotempty){
       // for the values that are running totals, add the main ending value to all the values in the overflow
-      for(auto& atom : outputrcdend2)atom += outputrcdend.back(); for(auto& atom : diskrecl2)atom += diskrecl.back(); for(auto& atom : keylens2)atom += keylens.back();
+      for(auto& atom : outputrcdend2)atom += outputrcdend.back();
+      for(auto& atom : diskrecl2)atom += diskrecl.back();
+      for(auto& atom : keylens2)atom += keylens.back();
       // append the overflow to the main
       outputrcdend.insert(outputrcdend.end(), outputrcdend2.begin(), outputrcdend2.end()); 
-        diskdata.insert(diskdata.end(), diskdata2.begin(), diskdata2.end()); keys.insert(keys.end(), keys2.begin(), keys2.end());  keylens.insert(keylens.end(), keylens2.begin(), keylens2.end()); 
-        passthroughdata.insert(passthroughdata.end(), passthroughdata2.begin(), passthroughdata2.end()); passthroughrecl.insert(passthroughrecl.end(), passthroughrecl2.begin(), passthroughrecl2.end());
-        diskfileref.insert(diskfileref.end(), diskfileref2.begin(), diskfileref2.end()); valueclass.insert(valueclass.end(), valueclass2.begin(), valueclass2.end());
-        diskrecl.insert(diskrecl.end(), diskrecl2.begin(), diskrecl2.end());
+      diskdata.insert(diskdata.end(), diskdata2.begin(), diskdata2.end());
+      keys.insert(keys.end(), keys2.begin(), keys2.end());
+      keylens.insert(keylens.end(), keylens2.begin(), keylens2.end()); 
+      passthroughdata.insert(passthroughdata.end(), passthroughdata2.begin(), passthroughdata2.end());
+      passthroughrecl.insert(passthroughrecl.end(), passthroughrecl2.begin(), passthroughrecl2.end());
+      diskfileref.insert(diskfileref.end(), diskfileref2.begin(), diskfileref2.end());
+      valueclass.insert(valueclass.end(), valueclass2.begin(), valueclass2.end());
+      diskrecl.insert(diskrecl.end(), diskrecl2.begin(), diskrecl2.end());
     }
   }
 
