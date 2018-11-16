@@ -507,7 +507,7 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
     } else if (result.vlogfile_max_size[i] < (100LL << 10)) {
       ROCKS_LOG_WARN(db_options.info_log.get(),
                    "vlogfile_max_size[%" ROCKSDB_PRIszt "] is recommended to be greater than to 100KB",i);
-      result.vlogfile_max_size[i] = 40 * (1LL << 20);
+      // obsolete we are content with the warning, since some testcases use short files result.vlogfile_max_size[i] = 40 * (1LL << 20);
     }
   }
 

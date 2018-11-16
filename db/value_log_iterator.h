@@ -140,6 +140,9 @@ public:
    int job_id  // job id for logmsgs
   );
 
+  // Routine to read and process one normal compaction's worth of input, called multiple times if compactions are immense
+  void ReadAndResolveInputBlock();
+
 // the following lines are the interface that is shared with CompactionIterator, so these entry points
 // must not be modified
   const Slice& key() { return  use_indirects_ ? key_ : c_iter_->key(); }
@@ -224,12 +227,42 @@ private:
   ColumnFamilyData* pcfd;  // ColumnFamilyData for this run
   Slice *end_;   // if given, the key+1 of the end of range
   bool use_indirects_;  // if false, just pass c_iter_ result through
-  std::vector<NoInitChar> keys;  // all the keys read from the iterator, jammed together
-  std::vector<size_t> keylens;   // cumulative length of each string in keys
-  std::vector<NoInitChar> passthroughdata;  // data that is passed through unchanged
-  std::vector<VLogRingRefFileOffset> passthroughrecl;  // record lengths (NOT running total) of records in passthroughdata
-  std::vector<char> valueclass;   // one entry per key.  bit 0 means 'value is a passthrough'; bit 1 means 'value is being converted from direct to indirect'
-  std::vector<VLogRingRefFileOffset> diskrecl;  // running total of record lengths in diskdata
+  RecyclingIterator *recyciter_;  // null if not Active Recycling; then, points to the iterator
+  int job_id_;  // job id for logmsgs
+  const Compaction *compaction_;  // the current compaction info
+
+  // values set for all compaction blocks and used in ReadAndResolveInputBlock
+  size_t outputringno;   // The ring# we will be writing VLog files to
+  VLogRing *outputring;  // the output ring we will write to
+  VLogRingRefFileno earliest_passthrough;  // the lowest file# that will remain unmapped in the output ring.  All other rings pass through
+  CompressionType compressiontype;  // selected compression type for the output ring
+  size_t compactionblocksize;  // size of one of the 2 compaction blocks
+  size_t minindirectlen;  // size of the largest value that will not be made indirect (0=everything except empty values is indirect)
+
+  // ping-pong buffer numbers.  blocktofill is the block data is being written into (or will be written to on the next call to ReadAndResolveInputBlock()).
+  // blocktoprocess is the block that will be written to disk next.
+  // for normal 1-block compactions these just stay at 0.
+  // when blocktoprocess!=blocktofill, it means there is another block to process after the current one is passed into compaction
+  bool inputnotempty;  // at end of loop, will indicate that there are more keys to follow
+
+struct RingFno {
+  uint32_t ringno;
+  VLogRingRefFileno fileno;
+};
+
+  // info for the compaction blocks.  We could more elegantly make each of these a vector of two vectors; but the case of multiple blocks happens so rarely that
+  // the indexing overhead isn't worth it
+  std::vector<NoInitChar> keys, keys2;  // all the keys read from the iterator, jammed together
+  std::vector<size_t> keylens, keylens2;   // cumulative length of each string in keys
+  std::vector<NoInitChar> passthroughdata, passthroughdata2;  // data that is passed through unchanged
+  std::vector<RingFno> diskfileref, diskfileref2;   // where we hold the reference values from the input passthroughs
+  std::vector<VLogRingRefFileOffset> passthroughrecl, passthroughrecl2;  // record lengths (NOT running total) of records in passthroughdata
+  std::vector<char> valueclass, valueclass2;   // one entry per key.  bit 0 means 'value is a passthrough'; bit 1 means 'value is being converted from direct to indirect'
+  std::vector<VLogRingRefFileOffset> diskrecl, diskrecl2;  // running total of record lengths in diskdata
+  // For these next ones the mains local to ReadAndResolveInputBlock but the overflow must be preserved over calls
+  std::vector<VLogRingRefFileOffset> outputrcdend2; // each entry here is the running total of the bytecounts that will be sent to the SST from each kv
+  std::vector<NoInitChar> diskdata2;  // where we accumulate the data to write
+
   VLogRingRef firstdiskref;  // reference for the first data written to VLog
   VLogRingRef nextdiskref;  // reference for the next data to be written to VLog
   std::vector<VLogRingRefFileOffset>fileendoffsets;   // end+1 offset of the data written to successive VLog files  (starting offset is 0)
@@ -238,11 +271,6 @@ private:
   std::shared_ptr<VLog> current_vlog;
   std::vector<uint64_t> ref0_;  // for each ring, the earliest reference found into the ring.  Reset when we start each new file
   std::vector<int64_t> addedfrag;  // fragmentation added, for each ring
-struct RingFno {
-  uint32_t ringno;
-  VLogRingRefFileno fileno;
-};
-  std::vector<RingFno> diskfileref;   // where we hold the reference values from the input passthroughs
   RingFno prevringfno;  // set to the ring/file for the key we are returning now.  It is not included in the ref0_ value until
     // the NEXT key is returned (this to match the way the compaction job uses the iterator), at which time it is the previous key to use
   std::vector<size_t> filecumreccnts;  // record# of the last kvs in each of the input files we encounter
@@ -259,7 +287,6 @@ struct RingFno {
   size_t diskdatalen;  // number of bytes written to disk
   size_t remappeddatalen;  // number of bytes that were read & rewritten to a new VLog position
   size_t bytesintocompression;  // number of bytes split off to go to VLog
-
 
 };
 

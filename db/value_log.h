@@ -125,6 +125,10 @@ static const float expansion_fraction = (float)0.25;  // fraction of valid files
 static const int expansion_minimum = 10;  // minimum number of expansion files   // scaf 100
 static const float ARdesired_Vlog_files_per_SST = (float)0.20;  // For picking AR, we take another SST as long as we are getting this many VLog files per SST processed
 static const int64_t armagictestingvalue = 0x63a6b38ad8014e36;  // if active_recycling_size_trigger is set to this value, it is treated as 0 and deadband is set to 10 (for testing)
+static const size_t maxcompactionblocksize = 1LL<<29;  // block large compactions into blocks no bigger than this (max 2 per compaction)
+static const double compactionblocksizefudge = 1.4;  // expand the nominal block size by this amount, subject to the overall limit
+static const size_t compactionblockinitkeyalloc = 20000;  // number of keys to preallocate for a normal compaction (if more are needed, the alloc is extended)
+static const size_t compactionblockavgkeylen = 24;  // estimated bytes per key
 
 static const int max_simultaneous_deletions = 1000;  // maximum number of files we can delete in one go.  The limitation is that we have to reserve
    // space for them before we acquire the lock
