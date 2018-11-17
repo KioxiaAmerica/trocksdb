@@ -162,7 +162,7 @@ class VersionStorageInfo {
     // the first filenumber-pair may be a delete record, if the first file# is 0.  In that case, remember the delete-to point and skip over the pair
     if(vli[ring].valid_files.size()>1 && vli[ring].valid_files[0]==0){prevend=vli[ring].valid_files[1]; vfx+=2;}else prevend = 0;
     for(;vfx<vli[ring].valid_files.size();vfx+=2){
-      files += static_cast<double>(vli[ring].valid_files[vfx+1] - std::max(prevend+1,vli[ring].valid_files[vfx]) + 1); // interval is (start,end)
+      files += (vli[ring].valid_files[vfx+1] - std::max(prevend+1,vli[ring].valid_files[vfx]) + 1); // interval is (start,end)
       // interval is (start,end)
     }
     return static_cast<int>(files);
@@ -178,7 +178,7 @@ class VersionStorageInfo {
     return cfd_->vloginfo()[ring].fragfrac;
   }
 
-  int num_rings() const { return cfd_->vloginfo().size(); }
+  int num_rings() const { return (int)cfd_->vloginfo().size(); }
 #endif
 
   // Update num_non_empty_levels_.
