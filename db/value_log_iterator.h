@@ -227,6 +227,7 @@ private:
   ColumnFamilyData* pcfd;  // ColumnFamilyData for this run
   Slice *end_;   // if given, the key+1 of the end of range
   bool use_indirects_;  // if false, just pass c_iter_ result through
+  std::shared_ptr<VLog> current_vlog;
   RecyclingIterator *recyciter_;  // null if not Active Recycling; then, points to the iterator
   int job_id_;  // job id for logmsgs
   const Compaction *compaction_;  // the current compaction info
@@ -268,7 +269,6 @@ struct RingFno {
   std::vector<VLogRingRefFileOffset>fileendoffsets;   // end+1 offset of the data written to successive VLog files  (starting offset is 0)
   std::vector<Status> inputerrorstatus;  // error status returned by the iterator
   std::vector<Status> outputerrorstatus;  // error status returned when writing the output files
-  std::shared_ptr<VLog> current_vlog;
   std::vector<uint64_t> ref0_;  // for each ring, the earliest reference found into the ring.  Reset when we start each new file
   std::vector<int64_t> addedfrag;  // fragmentation added, for each ring
   RingFno prevringfno;  // set to the ring/file for the key we are returning now.  It is not included in the ref0_ value until
