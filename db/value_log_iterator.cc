@@ -208,6 +208,7 @@ void IndirectIterator::ReadAndResolveInputBlock() {
     // check to see if the compaction batch is full.  If so, switch to the other one; if both are full, exit loop
     if(totalsstlen+bytesresvindiskdata > compactionblocksize  && recyciter_==nullptr){  // never break up an AR.  But they shouldn't get big anyway
       // main compaction block is full.  If the overflow is not empty, we have to stop and process the overflow
+*(int*)0=0;  // scaf crash if we enter the big-compaction code
       if(valueclass2.size()!=0)break;  // if 2 full blocks, stop
       // Here when the first block fills.  The second block is empty, so we just swap the current block into the overflow, which will reset the current to empty
       outputrcdend2.swap(outputrcdend); diskdata2.swap(diskdata); keys2.swap(keys); keylens2.swap(keylens); passthroughdata2.swap(passthroughdata);
