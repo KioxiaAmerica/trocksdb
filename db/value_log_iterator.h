@@ -196,10 +196,9 @@ printf("\n");
     }
     result.resize(ref0_.size());  // reserve space for all the rings
     // account for size added to the output ring
-    if(fileendoffsets.size()){   // if there are no files, output no record, since a 0 record is a delete
+    if(nfileswritten){   // if there are no files, output no record, since a 0 record is a delete
       result[nextdiskref.Ringno()].size = diskdatalen;  // # bytes written
-      result[nextdiskref.Ringno()].valid_files.push_back(firstdiskref.Fileno());  // output start,end of the added files
-      result[nextdiskref.Ringno()].valid_files.push_back(firstdiskref.Fileno()+fileendoffsets.size()-1);
+      result[nextdiskref.Ringno()].valid_files = createdfilelist;  // start/end of each compaction block
     }
     // account for fragmentation, added to any ring we read from
     for(uint32_t i=0;i<result.size();++i)result[i].frag = addedfrag[i];   // copy our internal calculation
@@ -207,7 +206,7 @@ printf("\n");
     vlog_bytes_written_comp = diskdatalen;   // total written after compression & CRC
     vlog_bytes_written_raw = bytesintocompression;  // total size of values that are compressed & written
     vlog_bytes_remapped = remappeddatalen; // total size of values that are compressed & written
-    vlog_files_created = fileendoffsets.size();   // number of files created
+    vlog_files_created = nfileswritten;   // number of files created
   }
 
   // Indicate whether the current key/value is the last key/value in its file.  0=we don't know, 1=yes, -1=no
@@ -287,7 +286,8 @@ struct RingFno {
   size_t diskdatalen;  // number of bytes written to disk
   size_t remappeddatalen;  // number of bytes that were read & rewritten to a new VLog position
   size_t bytesintocompression;  // number of bytes split off to go to VLog
-
+  size_t nfileswritten;  // total # files created
+  std::vector<VLogRingRefFileno> createdfilelist;  // start,end of each set of files created
 };
 
 } // namespace rocksdb

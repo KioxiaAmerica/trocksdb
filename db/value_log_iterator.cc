@@ -95,6 +95,7 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
     // init stats we will keep
     remappeddatalen = 0;  // number of bytes that were read & rewritten to a new VLog position
     bytesintocompression = 0;  // number of bytes split off to go to VLog
+    nfileswritten = 0;  // number of files created
 
     // If indirects are disabled, we have nothing to do.  We will just be returning values from c_iter_.
     if(!use_indirects_)return;
@@ -420,8 +421,13 @@ void IndirectIterator::ReadAndResolveInputBlock() {
 #ifdef IITIMING
   iitimevec[8] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 8 - after write to VLog
 #endif
-  // record the number of files created here
+  // add the new batch into the file-related stats we keep
+  nfileswritten += fileendoffsets.size();
   outputring->UpdateDeadband(fileendoffsets.size(),compaction_->mutable_cf_options()->active_recycling_size_trigger[outputringno]);
+  if(nfileswritten) {  // start file# of 0 means delete, so don't add an entry if there are no files added
+    createdfilelist.push_back(firstdiskref.Fileno());  // output start,end of the added files
+    createdfilelist.push_back(firstdiskref.Fileno()+fileendoffsets.size()-1);
+  }
 
   // save what we need to return to stats
   diskdatalen += bytesresvindiskdata+initfrag;  // save # bytes written for stats report.  This is the actual file length on disk, including amounts added in rounding
