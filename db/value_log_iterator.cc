@@ -149,8 +149,12 @@ printf("\n");
     // Calculate the total size of keys+values that we will allow in a single compaction block.  This is enough to hold all the SSTs in max_compaction_bytes, plus 1 VLog file per each of those SSTs.  This is high for non-L0 compactions, which
     // need only enough storage for references that are being copied; but the limit is needed mainly for initial manual compaction of the whole database, which comes from L0 and has to have all the (compressed) data.
     // We will fill up to 2 compaction blocks before we start writing VLogs and SSTs
-    compactionblocksize = std::min(maxcompactionblocksize,(size_t)(compactionblocksizefudge * compaction->max_compaction_bytes() * (1 + (double)compaction->mutable_cf_options()->vlogfile_max_size[outputringno] / (double)compaction->mutable_cf_options()->max_file_size[compaction->output_level()])));
-
+    // File size of -1 means 'unlimited', and we use a guess.
+    double sstsizemult = compaction->mutable_cf_options()->vlogfile_max_size[outputringno]>0 && compaction->mutable_cf_options()->max_file_size[compaction->output_level()]>0 ?
+       (double)compaction->mutable_cf_options()->vlogfile_max_size[outputringno] / (double)compaction->mutable_cf_options()->max_file_size[compaction->output_level()] :  // normal value
+       5;  // if filesize unlimited, make the batch pretty big
+    compactionblocksize = std::min(maxcompactionblocksize,(size_t)(compactionblocksizefudge * compaction->max_compaction_bytes() * (1 + sstsizemult)));
+// scaf printf("cbs=%zd, vlms=%zd,maxfs=%zd\n",compactionblocksize,compaction->mutable_cf_options()->vlogfile_max_size[outputringno],compaction->mutable_cf_options()->max_file_size[compaction->output_level()]);
     // Get the minimum mapped size for the output level we are writing into
     minindirectlen = (size_t)compaction->mutable_cf_options()->min_indirect_val_size[outputringno];
 
@@ -208,8 +212,8 @@ void IndirectIterator::ReadAndResolveInputBlock() {
 #endif
     // check to see if the compaction batch is full.  If so, switch to the other one; if both are full, exit loop
     if(totalsstlen+bytesresvindiskdata > compactionblocksize  && recyciter_==nullptr){  // never break up an AR.  But they shouldn't get big anyway
+*(int*)0=0;  // scaf
       // main compaction block is full.  If the overflow is not empty, we have to stop and process the overflow
-*(int*)0=0;  // scaf crash if we enter the big-compaction code
       if(valueclass2.size()!=0)break;  // if 2 full blocks, stop
       // Here when the first block fills.  The second block is empty, so we just swap the current block into the overflow, which will reset the current to empty
       outputrcdend2.swap(outputrcdend); diskdata2.swap(diskdata); keys2.swap(keys); keylens2.swap(keylens); passthroughdata2.swap(passthroughdata);
@@ -425,8 +429,13 @@ void IndirectIterator::ReadAndResolveInputBlock() {
   nfileswritten += fileendoffsets.size();
   outputring->UpdateDeadband(fileendoffsets.size(),compaction_->mutable_cf_options()->active_recycling_size_trigger[outputringno]);
   if(nfileswritten) {  // start file# of 0 means delete, so don't add an entry if there are no files added
-    createdfilelist.push_back(firstdiskref.Fileno());  // output start,end of the added files
-    createdfilelist.push_back(firstdiskref.Fileno()+fileendoffsets.size()-1);
+    // for huge compactions, coalesce adjacent runs.  Not necessary, supposedly
+    if(createdfilelist.size() && createdfilelist.back()==firstdiskref.Fileno()-1) {
+      createdfilelist.pop_back();  // new extends previous; remove previous end
+    }else{
+      createdfilelist.push_back(firstdiskref.Fileno());  // output new start
+    }
+    createdfilelist.push_back(firstdiskref.Fileno()+fileendoffsets.size()-1);   // append new end
   }
 
   // save what we need to return to stats

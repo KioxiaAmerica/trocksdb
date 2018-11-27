@@ -742,6 +742,19 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
 // obsolete printf("After compacting to level %d, FilesPerLevel=%s\n",options.num_levels-1,FilesPerLevel(0).c_str());
   // Verify that the VLog size is correct
   ASSERT_EQ(vlogtotalsize,restartinfo.size-restartinfo.frag);
+  // Reopen the database and reverify, to make sure the file list was updated correctly
+  TryReopen(options);
+  printf("reopened after compaction...\n");
+  for (int32_t j = 0; j < batch_size+300; j++) {
+    std::string getresult = Get(LongKey(j,key_size));
+    if(values[j].size()){
+      ASSERT_EQ(getresult,values[j]);
+    }else{
+      // value was empty, key should not be found
+      ASSERT_EQ(getresult,"NOT_FOUND");
+    }
+  }
+  printf("...verified after compaction.\n");
 }
 #endif
 #if 0  // turn on for VLog space-accounting test
