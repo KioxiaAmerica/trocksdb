@@ -158,7 +158,16 @@ printf("\n");
     compactionblocksize = std::min(maxcompactionblocksize,(size_t)(compactionblocksizefudge * maxcompbytes * (1 + sstsizemult)));
     // If something was specified funny, make sure the compaction block is big enough to allow progress
     compactionblocksize = std::max(mincompactionblocksize,compactionblocksize);
-printf("cbs=%zd, vlms=%zd,maxfs=%zd\n",compactionblocksize,compaction->mutable_cf_options()->vlogfile_max_size[outputringno],compaction->mutable_cf_options()->max_file_size[compaction->output_level()]);
+
+
+if(0==std::min(maxcompactionblocksize,(size_t)(compactionblocksizefudge * compaction->max_compaction_bytes() * (1 + (double)compaction->mutable_cf_options()->vlogfile_max_size[outputringno] / (double)compaction->mutable_cf_options()->max_file_size[compaction->output_level()])))){
+size_t a,d; double b,c;
+a = std::min(maxcompactionblocksize,d = (size_t)(b = compactionblocksizefudge * compaction->max_compaction_bytes() * (c = 1 + (double)compaction->mutable_cf_options()->vlogfile_max_size[outputringno] / (double)compaction->mutable_cf_options()->max_file_size[compaction->output_level()])));
+printf("a=%zd,d=%zd,b=%f,c=%f,compaction->max_compaction_bytes()=%zd,compaction->mutable_cf_options()->vlogfile_max_size[outputringno]=%zd,compaction->mutable_cf_options()->max_file_size[compaction->output_level()]=%zd\n",
+a,d,b,c,compaction->max_compaction_bytes(),compaction->mutable_cf_options()->vlogfile_max_size[outputringno],compaction->mutable_cf_options()->max_file_size[compaction->output_level()]);
+*(int*)0=0;  // scaf crash
+}
+
     // Get the minimum mapped size for the output level we are writing into
     minindirectlen = (size_t)compaction->mutable_cf_options()->min_indirect_val_size[outputringno];
 
@@ -216,7 +225,6 @@ void IndirectIterator::ReadAndResolveInputBlock() {
 #endif
     // check to see if the compaction batch is full.  If so, switch to the other one; if both are full, exit loop
     if(totalsstlen+bytesresvindiskdata > compactionblocksize  && recyciter_==nullptr){  // never break up an AR.  But they shouldn't get big anyway
-*(int*)0=0;  // scaf
       // main compaction block is full.  If the overflow is not empty, we have to stop and process the overflow
       if(valueclass2.size()!=0)break;  // if 2 full blocks, stop
       // Here when the first block fills.  The second block is empty, so we just swap the current block into the overflow, which will reset the current to empty
