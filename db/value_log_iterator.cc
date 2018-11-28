@@ -153,8 +153,12 @@ printf("\n");
     double sstsizemult = compaction->mutable_cf_options()->vlogfile_max_size[outputringno]>0 && compaction->mutable_cf_options()->max_file_size[compaction->output_level()]>0 ?
        (double)compaction->mutable_cf_options()->vlogfile_max_size[outputringno] / (double)compaction->mutable_cf_options()->max_file_size[compaction->output_level()] :  // normal value
        5;  // if filesize unlimited, make the batch pretty big
-    compactionblocksize = std::min(maxcompactionblocksize,(size_t)(compactionblocksizefudge * compaction->max_compaction_bytes() * (1 + sstsizemult)));
-// scaf printf("cbs=%zd, vlms=%zd,maxfs=%zd\n",compactionblocksize,compaction->mutable_cf_options()->vlogfile_max_size[outputringno],compaction->mutable_cf_options()->max_file_size[compaction->output_level()]);
+    // For some reason, if compaction->max_compaction_bytes() is HIGH_VALUE gcc overflows and ends up with compactionblocksize set to 0.  We try to avoid that case
+    double maxcompbytes = (double)std::min(maxcompactionblocksize,compaction->max_compaction_bytes());
+    compactionblocksize = std::min(maxcompactionblocksize,(size_t)(compactionblocksizefudge * maxcompbytes * (1 + sstsizemult)));
+    // If something was specified funny, make sure the compaction block is big enough to allow progress
+    compactionblocksize = std::max(mincompactionblocksize,compactionblocksize);
+printf("cbs=%zd, vlms=%zd,maxfs=%zd\n",compactionblocksize,compaction->mutable_cf_options()->vlogfile_max_size[outputringno],compaction->mutable_cf_options()->max_file_size[compaction->output_level()]);
     // Get the minimum mapped size for the output level we are writing into
     minindirectlen = (size_t)compaction->mutable_cf_options()->min_indirect_val_size[outputringno];
 
