@@ -159,7 +159,7 @@ printf("\n");
     // If something was specified funny, make sure the compaction block is big enough to allow progress
     compactionblocksize = std::max(mincompactionblocksize,compactionblocksize);
 
-
+#if 0 // obsolete scaf
 if(0==std::min(maxcompactionblocksize,(size_t)(compactionblocksizefudge * compaction->max_compaction_bytes() * (1 + (double)compaction->mutable_cf_options()->vlogfile_max_size[outputringno] / (double)compaction->mutable_cf_options()->max_file_size[compaction->output_level()])))){
 size_t a,d; double b,c;
 a = std::min(maxcompactionblocksize,d = (size_t)(b = compactionblocksizefudge * compaction->max_compaction_bytes() * (c = 1 + (double)compaction->mutable_cf_options()->vlogfile_max_size[outputringno] / (double)compaction->mutable_cf_options()->max_file_size[compaction->output_level()])));
@@ -167,6 +167,7 @@ printf("a=%zd,d=%zd,b=%f,c=%f,compaction->max_compaction_bytes()=%zd,compaction-
 a,d,b,c,compaction->max_compaction_bytes(),compaction->mutable_cf_options()->vlogfile_max_size[outputringno],compaction->mutable_cf_options()->max_file_size[compaction->output_level()]);
 *(int*)0=0;  // scaf crash
 }
+#endif
 
     // Get the minimum mapped size for the output level we are writing into
     minindirectlen = (size_t)compaction->mutable_cf_options()->min_indirect_val_size[outputringno];
