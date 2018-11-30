@@ -1280,7 +1280,7 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
   options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
   options.compaction_picker_age_importance = std::vector<int32_t>({100});
   options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
-  options.vlogfile_max_size = std::vector<uint64_t>({value_size+500});  // one value per vlog file; but doesn't apply to manual compaction
+  options.vlogfile_max_size = std::vector<uint64_t>({value_size+500});  // one value per vlog file
 
   Random rnd(301);
   // Key of 100 bytes, kv of 16KB
@@ -1335,7 +1335,7 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
     Slice minkey(minkeystring), maxkey(maxkeystring);
     ASSERT_OK(db_->CompactRange(remap_options, &minkey, &maxkey));
     dbfull()->TEST_WaitForCompact();
-    // verify that the VLog file total has grown by 5%
+    // verify that the VLog file total has grown by 4%
     vlogfilesizes.clear();  // reinit list of files
     ListVLogFileSizes(this,vlogfilesizes);
     int64_t newtotalsize=0;  // place to build file stats
@@ -1343,7 +1343,7 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
      newtotalsize += vlogfilesizes[i];
     }
     // expected increase is 4% of the UNrounded value, rounded up
-    int64_t expincr = (int64_t) ((value_size+5) * nkeys * 0.04);
+    int64_t expincr = (int64_t) (onefilesize * nkeys * 0.04);
     expincr = (expincr + (bufferalignment-1)) & -bufferalignment;
     ASSERT_GT(1000, (int64_t)std::abs(newtotalsize-(totalsize+expincr)));  // not a tight match, but if it works throughout the range it's OK
   }
