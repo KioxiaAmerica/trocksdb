@@ -1488,16 +1488,43 @@ uint32_t LevelCompactionBuilder::GetPathId(
 }
 
 bool LevelCompactionBuilder::PickFileToCompact() {
+
+#ifdef INDIRECT_VALUE_SUPPORTSCAF  // actually this is OK whether you have indirect values or not.  It allows multiple L0 compactions
+  // If a compaction from L0 is running, usually there is no reason to bother trying to start another, since the keys usually overlap.
+  // The exception is sequential load, when each new L0 file has keys beyond the range of all previous L0 files.
+  // We want to detect this case as quickly as possible.  The point is that if a set of L0 files does not overlap any L0 file currently in compaction,
+  // it is safe to compact the lot.  It could be that the L0 files overlap some L1 file that overlaps (and thus is part of) a current
+  // L0 compaction, but we will detect that in the usual way, when we look for output-level files that are in compaction.
+
+  // Go through the files for level 0, to find the index of the first file that is being compacted and the index of the first file NOT being compacted.
+
+  // If there is no file not being compacted, return failure.
+
+  // if there is a file being compacted, we have to make sure the non-compacting files do not overlap the keys of the compacting files.
+  // We will check only for the ascending-key case, i. e. highest compacting key less than smallest non-compacting key
+
+    // compare the keys and avoid searching if there is overlap
+    // set initial values for 'best keys'
+    // loop till we have examined all files
+
+      // advance to next file for the compacting and noncompacting; if there is another file, udpate the best key for its type
+
+      // abort if there is overlap
+
+    // no overlap, OK to continue with the compaction picking.  We will pick one of the uncompacted files and then expand
+    // the selection with anything that overlaps it.  Eventually we will throw in all the other files L0 too, known to be safe since they don't
+    // overlap any existing compaction.
+#else
   // level 0 files are overlapping. So we cannot pick more
   // than one concurrent compactions at this level. This
   // could be made better by looking at key-ranges that are
   // being compacted at level 0.
-// FIXHERE this is where to change HHR
   if (start_level_ == 0 &&
       !compaction_picker_->level0_compactions_in_progress()->empty()) {
     TEST_SYNC_POINT("LevelCompactionPicker::PickCompactionBySize:0");
     return false;
   }
+#endif
 
   start_level_inputs_.clear();
 
@@ -1521,7 +1548,8 @@ bool LevelCompactionBuilder::PickFileToCompact() {
     if (f->being_compacted) {
       continue;
     }
-
+if(start_level_==0 && index)
+  index=index;  // scaf debug
     start_level_inputs_.files.push_back(f);
     start_level_inputs_.level = start_level_;
     if (!compaction_picker_->ExpandInputsToCleanCut(cf_name_, vstorage_,

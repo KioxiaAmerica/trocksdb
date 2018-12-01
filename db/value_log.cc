@@ -1392,7 +1392,7 @@ Status VLog::VLogGet(
   if(!ref.Len()){ result.clear(); return s; }   // length 0; return empty string, no error
 
   if(ref.Len()<(1+4)){
-      ROCKS_LOG_ERROR(immdbopts_->info_log,
+    ROCKS_LOG_ERROR(immdbopts_->info_log,
         "Reference too short in file %zd in ring %d",ref.Fileno(),ref.Ringno());
     return s = Status::Corruption("indirect reference is too short.");
   }
