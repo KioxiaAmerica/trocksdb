@@ -122,7 +122,7 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
       if(!(merge_context_->GetVlog()->VLogGet((Slice)value,resolved_value)).ok()) {
         // error reading from log; will have been logged earlier.  Abort here
         state_ = kCorrupt;  // indicate failure type
-printf("Get() corruption 1\n");  // scaf
+fprintf(stdout,"Get() corruption 1\n");  // scaf
         return false;  // ask for no more keys
       }
       (Slice&)value = Slice(resolved_value);  // violates const correctness, but that's better than interface changes  scaf MUST PIN THIS
@@ -176,7 +176,7 @@ printf("Get() corruption 1\n");  // scaf
             pinnable_val_->PinSelf();
             if (!merge_status.ok()) {
               state_ = kCorrupt;
-printf("Get() corruption 2\n");
+fprintf(stdout,"Get() corruption 2\n");  // scaf
             }
           }
         }
@@ -203,7 +203,7 @@ printf("Get() corruption 2\n");
             pinnable_val_->PinSelf();
             if (!merge_status.ok()) {
               state_ = kCorrupt;
-printf("Get() corruption 3\n");
+fprintf(stdout,"Get() corruption 3\n");  // scaf
             }
           }
         }
@@ -234,7 +234,7 @@ printf("Get() corruption 3\n");
             pinnable_val_->PinSelf();
             if (!merge_status.ok()) {
               state_ = kCorrupt;
-printf("Get() corruption 4\n");
+fprintf(stdout,"Get() corruption 4\n"); // scaf
             }
           }
           return false;
