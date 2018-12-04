@@ -895,6 +895,7 @@ Status VLogRing::VLogRingGet(
 
   // loop until we have resolved the pointer:
   int retrystate = 0;   // number of times we have retried
+fprintf(stderr,"VLogRingGet for %Id/%Id: point 00\n",request.Fileno(),request.Offset());  // scaf
 
   while(1) {
     // acquire the head pointer
@@ -962,7 +963,9 @@ ProbDelay();
       iostatus = Status::Corruption("Indirect reference to unopened file");
     } 
     response.clear();   // error, return empty string
+fprintf(stderr,"VLogRingGet for %Id/%Id: point 05\n",request.Fileno(),request.Offset());  // scaf
   } else {  // no error on file pointer, resolve the reference
+fprintf(stderr,"VLogRingGet for %Id/%Id: point 01\n",request.Fileno(),request.Offset());  // scaf
     VLogRingRefFileLen readlen;  // the length of the read request
     VLogRingRefFileLen readfileoffset;  // the offset of the read from beginning-of-file
     size_t alignoffset;  // the offset in response of the actual read buffer
@@ -982,15 +985,19 @@ ProbDelay();
       alignoffset=0;  // read into the beginning of the response buffer
       offset=0; // tell the caller the result is at the beginning of the read buffer
     }
+fprintf(stderr,"VLogRingGet for %Id/%Id: point 02\n",request.Fileno(),request.Offset());  // scaf
     iostatus = selectedfile->Read(readfileoffset, readlen, &resultslice, (char *)response.data()+alignoffset);  // Read the reference
+fprintf(stderr,"VLogRingGet for %Id/%Id: point 03, status=%d\n",request.Fileno(),request.Offset(),iostatus.code());  // scaf
     if(!iostatus.ok()) {
       ROCKS_LOG_ERROR(immdbopts_->info_log,
         "Error reading reference from file number %zd in ring %d",request.Fileno(),ringno_);
       response.clear();   // error, return empty string
+fprintf(stderr,"VLogRingGet for %Id/%Id: point 04\n",request.Fileno(),request.Offset());  // scaf
     } else {
       // normal path.  if the data was read into the user's buffer, leave it there; otherwise copy it in
       // this copy should never be needed for direct I/O, so we don't bother discarding the padding for that case
       if(response.data()+alignoffset!=resultslice.data())response.replace(alignoffset,readlen,resultslice.data(),readlen);
+fprintf(stderr,"VLogRingGet for %Id/%Id: point 06\n",request.Fileno(),request.Offset());  // scaf
     }
   }
   return iostatus;
