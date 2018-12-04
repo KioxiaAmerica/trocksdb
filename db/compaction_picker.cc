@@ -1489,6 +1489,9 @@ uint32_t LevelCompactionBuilder::GetPathId(
 
 bool LevelCompactionBuilder::PickFileToCompact() {
 
+  const std::vector<FileMetaData*>& level_files =
+      vstorage_->LevelFiles(start_level_);   // files at the current level
+
 #ifdef INDIRECT_VALUE_SUPPORTSCAF  // actually this is OK whether you have indirect values or not.  It allows multiple L0 compactions
   // If a compaction from L0 is running, usually there is no reason to bother trying to start another, since the keys usually overlap.
   // The exception is sequential load, when each new L0 file has keys beyond the range of all previous L0 files.
@@ -1497,13 +1500,21 @@ bool LevelCompactionBuilder::PickFileToCompact() {
   // L0 compaction, but we will detect that in the usual way, when we look for output-level files that are in compaction.
 
   // Go through the files for level 0, to find the index of the first file that is being compacted and the index of the first file NOT being compacted.
-
+  // We scan through the files from back to front since any files not in the current compaction will normally have been added at the end
   // If there is no file not being compacted, return failure.
+  int compactx, noncompactx;  // index to a file being compacted, and one that is not
+  for(noncompactx = level_files.size()-1;noncompactx>=0;--noncompactx)if(!level_files[noncompactx].being_compacted)break;
+  if(noncompactx<0)return false;  // if there is no file not being compacted, we can stop looking
+  for(compactx = 0;compactx<level_files.size();++compactx)if(level_files[compactx].being_compacted)break;
 
-  // if there is a file being compacted, we have to make sure the non-compacting files do not overlap the keys of the compacting files.
-  // We will check only for the ascending-key case, i. e. highest compacting key less than smallest non-compacting key
+  if(compactx<level_files.size()){
+    // There is a file being compacted.  We have to make sure the non-compacting files do not overlap the keys of the compacting files.
+    // We will check only for the ascending-key case, i. e. highest compacting key less than smallest non-compacting key
 
-    // compare the keys and avoid searching if there is overlap
+    // To give an early exit, compare the keys for the first 2 files and avoid searching if there is overlap
+ if (compaction_picker_->GetComparator ->Compare(f->smallest, f->largest));
+// const InternalKeyComparator icmp;
+    
     // set initial values for 'best keys'
     // loop till we have examined all files
 
@@ -1534,8 +1545,6 @@ bool LevelCompactionBuilder::PickFileToCompact() {
   // being compacted
   const std::vector<int>& file_size =
       vstorage_->FilesByCompactionPri(start_level_);
-  const std::vector<FileMetaData*>& level_files =
-      vstorage_->LevelFiles(start_level_);
 
   unsigned int cmp_idx;
   for (cmp_idx = vstorage_->NextCompactionIndex(start_level_);

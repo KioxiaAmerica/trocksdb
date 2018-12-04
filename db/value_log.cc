@@ -1378,6 +1378,7 @@ Status VLog::VLogGet(
 )
 {
   Status s = VLogRingRef::VLogRefAuditOpaque(reference);  // return status, initialized to ok
+fprintf(stderr,"VLogGet point 00, status code=%d\n",s.code());  // scaf
   if(!s.ok()){
     ROCKS_LOG_ERROR(immdbopts_->info_log,
       "Indirect reference is not %d bytes long",VLogRingRef::sstrefsize);
@@ -1385,23 +1386,27 @@ Status VLog::VLogGet(
   }
 
   VLogRingRef ref = VLogRingRef(reference.data());   // analyze the reference
+fprintf(stderr,"VLogGet point 01, status code=%d\n",s.code());  // scaf
 
   // Because of the OS kludge that doesn't allow zero-length files to be memory-mapped, we have to check to make
   // sure that the reference doesn't have 0 length: because the 0-length reference might be contained in a
   // (nonexistent) 0-length file, and we'd better not try to read it
   if(!ref.Len()){ result.clear(); return s; }   // length 0; return empty string, no error
+fprintf(stderr,"VLogGet point 02, status code=%d\n",s.code());  // scaf
 
   if(ref.Len()<(1+4)){
     ROCKS_LOG_ERROR(immdbopts_->info_log,
         "Reference too short in file %zd in ring %d",ref.Fileno(),ref.Ringno());
     return s = Status::Corruption("indirect reference is too short.");
   }
+fprintf(stderr,"VLogGet point 03, status code=%d\n",s.code());  // scaf
 
   // Vector to the appropriate ring to do the read
   std::string ringresult;  // place where ring value will be read
   size_t dataoffset;   // offset in ringresult where the data starts (0 except for direct I/O)
   if(!(s = rings_[ref.Ringno()]->VLogRingGet(ref,ringresult,dataoffset)).ok())
     return s;  // read the data; if error reading, return the error.  Was logged in the ring
+fprintf(stderr,"VLogGet point 04, status code=%d\n",s.code());  // scaf
 
   // check the CRC
   // CRC the type/data and compare the CRC to the value in the record
@@ -1415,12 +1420,14 @@ Status VLog::VLogGet(
     }
     crcint>>=8;  // move to next byte
   }
+fprintf(stderr,"VLogGet point 05, status code=%d\n",s.code());  // scaf
 
    // extract the compression type and decompress the data
   unsigned char ctype = ringresult[dataoffset];
   if(ctype==CompressionType::kNoCompression) {
     // data is uncompressed; move it to the user's area
     result.assign(&ringresult[dataoffset+1],ref.Len()-(1+4));   // data starts at offset 1, and doesn't include 1-byte header or 4-byte trailer 
+fprintf(stderr,"VLogGet point 06, status code=%d\n",s.code());  // scaf
   } else {
     BlockContents contents;
    const UncompressionContext ucontext((CompressionType)ctype);
@@ -1434,7 +1441,10 @@ Status VLog::VLogGet(
       return s;
     }
     result.assign(contents.data.data(),contents.data.size());  // move data to user's buffer
+fprintf(stderr,"VLogGet point 07, status code=%d\n",s.code());  // scaf
   }
+fprintf(stderr,"VLogGet point 08, status code=%d\n",s.code());  // scaf
+
   return s;
 
 }

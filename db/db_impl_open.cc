@@ -1042,12 +1042,9 @@ Status DBImpl::OpenVLogs(const DBOptions& db_options) {
   // Get the options to use for the VLog files   scaf perhaps we need to modify these based on column options
   EnvOptions vlog_options(db_options);
   // for each column family that supports VLogs, init the VLogs.  Abort if there is an error
-fprintf(stdout,"Preparing to init VLogs\n");  // scaf
   for (auto cfd : *versions_->GetColumnFamilySet()){
     if(cfd->vlog()!=nullptr){
-fprintf(stdout,"calling VLogInit...\n");  // scaf
       if(!(s = cfd->vlog()->VLogInit(existing_vlog_files,existing_vlog_sizes,immutable_db_options_,vlog_options)).ok())return s;  // if error, it has been logged
-fprintf(stdout,"...successful completion\n"); // scaf
     }
   }
   return s;
