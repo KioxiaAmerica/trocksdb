@@ -1321,6 +1321,7 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
     // Verify total file size is pretty close to right.  Filesize gets rounded up to multiple of 4096
     const int64_t bufferalignment = 4096;
     int64_t onefilesize = ((value_size+5) + (bufferalignment-1)) & -bufferalignment;
+onefilesize = vlogfilesizes[0];
     int64_t totalsize=0;  // place to build file stats
     for(size_t i=0;i<vlogfilesizes.size();++i){
      totalsize += vlogfilesizes[i];
@@ -1342,9 +1343,16 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
     for(size_t i=0;i<vlogfilesizes.size();++i){
      newtotalsize += vlogfilesizes[i];
     }
-    // expected increase is 4% of the UNrounded value, rounded up
+printf("Head and tail of filesizes:");  // scaf
+for(int i = 0;i<5;++i)printf(" %zd",vlogfilesizes[i]);
+printf(" /");
+for(int i = 0;i<5;++i)printf(" %zd",vlogfilesizes[vlogfilesizes.size()-5+i]);
+printf("\n"); // scaf
+ 
+    // expected increase is 4% of the size.  Each filesize is rounded up
     int64_t expincr = (int64_t) (onefilesize * nkeys * 0.04);
     expincr = (expincr + (bufferalignment-1)) & -bufferalignment;
+    ASSERT_EQ(104, vlogfilesizes.size());
     ASSERT_GT(1000, (int64_t)std::abs(newtotalsize-(totalsize+expincr)));  // not a tight match, but if it works throughout the range it's OK
   }
   printf("\n");

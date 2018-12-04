@@ -1548,8 +1548,6 @@ bool LevelCompactionBuilder::PickFileToCompact() {
     if (f->being_compacted) {
       continue;
     }
-if(start_level_==0 && index)
-  index=index;  // scaf debug
     start_level_inputs_.files.push_back(f);
     start_level_inputs_.level = start_level_;
     if (!compaction_picker_->ExpandInputsToCleanCut(cf_name_, vstorage_,
