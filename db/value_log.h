@@ -573,14 +573,7 @@ void CollectDeletions(
 );
 
 // Delete the files collected by CollectDeletions.  We must have released the lock
-void ApplyDeletions(std::vector<VLogRingFileDeletion>& deleted_files) {
-  for(size_t i = 0;i<deleted_files.size();++i) {
-#if DEBLEVEL&1
-  printf("Deleting: %llx\n",deleted_files[i].fileno);
-#endif
-    deleted_files[i].DeleteFile(*this,immdbopts_,envopts_);
-  }
-}
+void ApplyDeletions(std::vector<VLogRingFileDeletion>& deleted_files);
 
 // Resize the ring if necessary, updating currentarrayx if it is resized
 // If the ring is resized, or if we found that no change was needed, return the new value of currentarrayx

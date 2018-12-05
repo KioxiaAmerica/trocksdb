@@ -351,12 +351,12 @@ printf("VLogRing cfd_=%p\n",cfd_);
   while(power2-->0)fd_ring[0].emplace_back();  // mustn't use resize() - if requires copy semantics, incompatible with unique_ptr
 
   // Log out the files that we expect in the database
-  std::string allfnos; allfnos.reserve(5 * cfd_->vloginfo()[ringno_].valid_files.size());
+  std::string allfnos; allfnos.reserve(8 * cfd_->vloginfo()[ringno_].valid_files.size());
   for(int i=0;  i<cfd_->vloginfo()[ringno_].valid_files.size();i+=2){
     allfnos.append(" "); allfnos.append(std::to_string(cfd_->vloginfo()[ringno_].valid_files[i]));  // write start value
     allfnos.append("-"); allfnos.append(std::to_string(cfd_->vloginfo()[ringno_].valid_files[i+1]));  // write end value
   }
-  ROCKS_LOG_INFO(immdbopts_->info_log,"Ring #%d initial files:%s\n",allfnos.c_str());
+  ROCKS_LOG_INFO(immdbopts_->info_log,"Ring #%d initial files:%s\n",ringno_,allfnos.c_str());
   // For each file in this ring, open it (if its number is in the manifest) or delete it (if not)
   for(uint32_t i=0;i<filenames.size();++i) {
     ParsedFnameRing fnring = VlogFnametoRingFname(filenames[i]);
@@ -371,11 +371,8 @@ printf("VLogRing cfd_=%p\n",cfd_);
 #if DEBLEVEL&2
 printf("Opening file %s\n",filenames[i].c_str());
 #endif
-        if(!s.ok()) {
-          ROCKS_LOG_ERROR(immdbopts_->info_log,
-                        "Error opening VLog file %s",filenames[i].c_str());
-          initialstatus = Status::Corruption("VLog file cannot be opened");
-        }
+        if(!s.ok()) {fd_ring[0][Ringx(fd_ring[0],fnring.fileno_)].filepointer=nullptr;}  // if error, ensure pointer is null
+
         // if error opening file, we can't do anything useful, so leave file unopened, which will give an error if a value in it is referenced
       } else {
 #if DEBLEVEL&2
@@ -388,6 +385,23 @@ printf("Deleting file %s\n",filenames[i].c_str());
         }
       }
     }
+  }
+
+  // Audit to make sure that all files that were supposed to be opened were actually opened
+  size_t nmissingfiles=0, firstmissingfile=0;  // keep track of what's lacking
+  for(int i=0;  i<cfd_->vloginfo()[ringno_].valid_files.size();i+=2){ // for each start/end pair
+    for(size_t j=cfd_->vloginfo()[ringno_].valid_files[i];j<=cfd_->vloginfo()[ringno_].valid_files[i+1];++j){  // for each file in the interval
+      if(fd_ring[0][Ringx(fd_ring[0],j)].filepointer==nullptr){  // if file was not opened
+        if(nmissingfiles==0)firstmissingfile=j;   // remember it, if it's the first
+        ++nmissingfiles;   // and keep track of how many there were
+      }
+    }
+  }
+  // Message if there were unopened files
+  if(nmissingfiles){
+    ROCKS_LOG_ERROR(immdbopts_->info_log,
+         "%zd VLog files could not be opened.  The first was #%zd\n",nmissingfiles,firstmissingfile);
+    initialstatus = Status::Corruption("VLog file cannot be opened");
   }
 
   // Set up the pointers for the ring, indicating validity
@@ -473,6 +487,23 @@ printf("Tail pointer set; pointers=%lld %lld\n",atomics.fd_ring_tail_fileno.load
 #endif
 
 }
+
+// Delete the files collected by CollectDeletions.  We must have released the lock
+void VLogRing::ApplyDeletions(std::vector<VLogRingFileDeletion>& deleted_files) {
+  std::string dfstring; dfstring.reserve(8 * deleted_files.size());
+  for(size_t i = 0;i<deleted_files.size();++i) {
+#if DEBLEVEL&1
+  printf("Deleting: %llx\n",deleted_files[i].fileno);
+#endif
+    dfstring.append(" "); dfstring.append(std::to_string(deleted_files[i].fileno)); 
+    deleted_files[i].DeleteFile(*this,immdbopts_,envopts_);
+  }
+  // Log deletion
+  ROCKS_LOG_INFO(
+      immdbopts_->info_log, "Deleting %" PRIu64 " VLog files: %s\n",
+      deleted_files.size(), dfstring.c_str());
+}
+
 
 
 // Resize the ring if necessary, updating currentarrayx if it is resized
