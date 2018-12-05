@@ -1291,7 +1291,6 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
         *status = Status::NotFound();
         return;
       case GetContext::kCorrupt:
-fprintf(stderr,"corrupt state at end of Get()\n");  // scaf
         *status = Status::Corruption("corrupted key for ", user_key);
         return;
       case GetContext::kBlobIndex:

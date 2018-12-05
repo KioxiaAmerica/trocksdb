@@ -122,7 +122,6 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
       if(!(merge_context_->GetVlog()->VLogGet((Slice)value,resolved_value)).ok()) {
         // error reading from log; will have been logged earlier.  Abort here
         state_ = kCorrupt;  // indicate failure type
-fprintf(stderr,"Get() corruption 1\n");  // scaf
         return false;  // ask for no more keys
       }
       (Slice&)value = Slice(resolved_value);  // violates const correctness, but that's better than interface changes  scaf MUST PIN THIS
