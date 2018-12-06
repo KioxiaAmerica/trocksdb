@@ -352,7 +352,7 @@ printf("VLogRing cfd_=%p\n",cfd_);
 
   // Log out the files that we expect in the database
   std::string allfnos; allfnos.reserve(8 * cfd_->vloginfo()[ringno_].valid_files.size());
-  for(int i=0;  i<cfd_->vloginfo()[ringno_].valid_files.size();i+=2){
+  for(size_t i=0;  i<cfd_->vloginfo()[ringno_].valid_files.size();i+=2){
     allfnos.append(" "); allfnos.append(std::to_string(cfd_->vloginfo()[ringno_].valid_files[i]));  // write start value
     allfnos.append("-"); allfnos.append(std::to_string(cfd_->vloginfo()[ringno_].valid_files[i+1]));  // write end value
   }
@@ -388,10 +388,11 @@ printf("Deleting file %s\n",filenames[i].c_str());
   }
 
   // Audit to make sure that all files that were supposed to be opened were actually opened
-  size_t nmissingfiles=0, firstmissingfile=0;  // keep track of what's lacking
-  for(int i=0;  i<cfd_->vloginfo()[ringno_].valid_files.size();i+=2){ // for each start/end pair
+  size_t nmissingfiles=0, firstmissingfile=0, lastmissingfile=0;  // keep track of what's lacking
+  for(size_t i=0; i<cfd_->vloginfo()[ringno_].valid_files.size();i+=2){ // for each start/end pair
     for(size_t j=cfd_->vloginfo()[ringno_].valid_files[i];j<=cfd_->vloginfo()[ringno_].valid_files[i+1];++j){  // for each file in the interval
       if(fd_ring[0][Ringx(fd_ring[0],j)].filepointer==nullptr){  // if file was not opened
+        lastmissingfile=j;
         if(nmissingfiles==0)firstmissingfile=j;   // remember it, if it's the first
         ++nmissingfiles;   // and keep track of how many there were
       }
@@ -400,7 +401,7 @@ printf("Deleting file %s\n",filenames[i].c_str());
   // Message if there were unopened files
   if(nmissingfiles){
     ROCKS_LOG_ERROR(immdbopts_->info_log,
-         "%zd VLog files could not be opened.  The first was #%zd\n",nmissingfiles,firstmissingfile);
+         "%zd VLog files could not be opened.  The first was #%zd, last was #%zd\n",nmissingfiles,firstmissingfile,lastmissingfile);
     initialstatus = Status::Corruption("VLog file cannot be opened");
   }
 
