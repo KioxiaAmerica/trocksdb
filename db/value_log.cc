@@ -371,7 +371,11 @@ printf("VLogRing cfd_=%p\n",cfd_);
 #if DEBLEVEL&2
 printf("Opening file %s\n",filenames[i].c_str());
 #endif
-        if(!s.ok()) {fd_ring[0][Ringx(fd_ring[0],fnring.fileno_)].filepointer=nullptr;}  // if error, ensure pointer is null
+        if(!s.ok()) {
+          fd_ring[0][Ringx(fd_ring[0],fnring.fileno_)].filepointer=nullptr;  // if error, ensure pointer is null
+          ROCKS_LOG_ERROR(immdbopts_->info_log,
+              "Error opening VLog file %s: %s",filenames[i].c_str(),s.getState());
+        }
 
         // if error opening file, we can't do anything useful, so leave file unopened, which will give an error if a value in it is referenced
       } else {
@@ -401,7 +405,7 @@ printf("Deleting file %s\n",filenames[i].c_str());
   // Message if there were unopened files
   if(nmissingfiles){
     ROCKS_LOG_ERROR(immdbopts_->info_log,
-         "%zd VLog files could not be opened.  The first was #%zd, last was #%zd\n",nmissingfiles,firstmissingfile,lastmissingfile);
+         "%zd Not all VLog files could be opened.  The first one missing was #%zd, last was #%zd\n",nmissingfiles,firstmissingfile,lastmissingfile);
     initialstatus = Status::Corruption("VLog file cannot be opened");
   }
 
