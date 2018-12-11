@@ -366,8 +366,8 @@ printf("VLogRing cfd_=%p\n",cfd_);
         // the file is valid according to the manifest.  Open it
         std::unique_ptr<RandomAccessFile> fileptr;  // pointer to the opened file
         Status s = immdbopts_->env->NewRandomAccessFile(filenames[i], &fileptr,envopts_);  // open the file if it exists
-          // move the file reference into the ring, and publish it to all threads
-        fd_ring[0][Ringx(fd_ring[0],fnring.fileno_)]=std::move(VLogRingFile(fileptr,filesizes[i]));
+          // move the file reference into the ring, and publish it to all threads.  These files start as deletable since we don't try to delete until references have been installed
+        fd_ring[0][Ringx(fd_ring[0],fnring.fileno_)]=std::move(VLogRingFile(fileptr,filesizes[i],0));
 #if DEBLEVEL&2
 printf("Opening file %s\n",filenames[i].c_str());
 #endif
@@ -391,29 +391,11 @@ printf("Deleting file %s\n",filenames[i].c_str());
     }
   }
 
-  // Audit to make sure that all files that were supposed to be opened were actually opened
-  size_t nmissingfiles=0, firstmissingfile=0, lastmissingfile=0;  // keep track of what's lacking
-  for(size_t i=0; i<cfd_->vloginfo()[ringno_].valid_files.size();i+=2){ // for each start/end pair
-    for(size_t j=cfd_->vloginfo()[ringno_].valid_files[i];j<=cfd_->vloginfo()[ringno_].valid_files[i+1];++j){  // for each file in the interval
-      if(fd_ring[0][Ringx(fd_ring[0],j)].filepointer==nullptr){  // if file was not opened
-        lastmissingfile=j;
-        if(nmissingfiles==0)firstmissingfile=j;   // remember it, if it's the first
-        ++nmissingfiles;   // and keep track of how many there were
-      }
-    }
-  }
-  // Message if there were unopened files
-  if(nmissingfiles){
-    ROCKS_LOG_ERROR(immdbopts_->info_log,
-         "%zd Not all VLog files could be opened.  The first one missing was #%zd, last was #%zd\n",nmissingfiles,firstmissingfile,lastmissingfile);
-    initialstatus = Status::Corruption("VLog file cannot be opened");
-  }
-
   // Set up the pointers for the ring, indicating validity
   // The conversion from file# to slot is fixed given the size of the ring, so the first
   // file does not necessarily go into position 0
   // The tail pointers point to the oldest ref
-  atomics.fd_ring_tail_fileno.store(earliest_ref,std::memory_order_release);  // init at 0
+  atomics.fd_ring_tail_fileno.store(earliest_ref,std::memory_order_release);  // oldest file in the ring
   // The head pointers point to the last entry.  But, we always start by
   // creating a new file.  The oldest file may have some junk at the end, which will hang around until
   // the ring recycles.
@@ -428,22 +410,60 @@ printf("Deleting file %s\n",filenames[i].c_str());
   atomics.currentarrayx.store(0,std::memory_order_release);
 }
 
-  // Delete the file.  Close it as random-access, then delete it
-  void VLogRingFileDeletion::DeleteFile(VLogRing& v,   // the current ring
-    const ImmutableDBOptions *immdbopts,   // The current Env
-    EnvOptions& /*file_options*/  // options to use for all VLog files
-  ) {
-    filepointer = nullptr;  // This closes the file if it was open
-    std::string filename = VLogFileName(v.immdbopts_->db_paths,
-      VLogRingRef(v.ringno_,(int)fileno).FileNumber(), (uint32_t)v.immdbopts_->db_paths.size()-1, v.cfd_->GetName());
+// We call here after the initial SSTs for the ring have been installed.  We verify that no referenced files are missing.
+// If there were snapshots, it is possible that when a snapshot closed, a file it was holding got deleted, but that file may remain
+// in the file-list for the CF until a later deletion happens.  If the database is closed at that point, the early file will
+// be missing but unreferenced.  So, we look here for files that are missing, but we ignore any that are earlier than the first reference
+Status VLogRing::VerifyFilesPresent() {
+  Status s;
+  // Audit to make sure that all files that were supposed to be opened were actually opened
+  size_t nmissingfiles=0, firstmissingfile=0, lastmissingfile=0;  // keep track of what's lacking
+  int fileisreqd = 0;  // we don't start noticing errors until there is a reference to the file.  The files must be in order coming in from vloginfo
+  for(size_t i=0; i<cfd_->vloginfo()[ringno_].valid_files.size();i+=2){ // for each start/end pair
+    for(size_t j=cfd_->vloginfo()[ringno_].valid_files[i];j<=cfd_->vloginfo()[ringno_].valid_files[i+1];++j){  // for each file in the interval
+      if(fd_ring[0][Ringx(fd_ring[0],j)].filepointer!=nullptr)fileisreqd = 1;  // once a file is found, later files should be also
+      else{  // if file was not opened
+        if(fd_ring[0][Ringx(fd_ring[0],j)].queue!=nullptr)fileisreqd = 1;  // once a file is referenced, it and later files are required
+        if(fileisreqd){   // file is missing, but we need it.  That's going to be fatal.
+          lastmissingfile=j;
+          if(nmissingfiles==0)firstmissingfile=j;   // remember it, if it's the first
+          ++nmissingfiles;   // and keep track of how many there were
+        }else{
+          // File was missing, but before any references.  We'll just step over it.  When the next deletion happens, the file numbers will be repaired
+          atomics.fd_ring_tail_fileno.store(j+1,std::memory_order_release);  // skip over  the empty file, so we don't try to delete it
+          // It is possible that this will empty the ring, if the new tail is in front of the head.  That's OK.  We DO NOT reset the tail/head to 1/0, even
+          // though that is the normal 'empty' state, in case there are other undeleted files about that we might later collide with
+        }
+      }
+    }
+  }
+  // Message if there were unopened files
+  if(nmissingfiles){
+    ROCKS_LOG_ERROR(immdbopts_->info_log,
+         "%zd Not all VLog files could be opened.  The first one missing was #%zd, last was #%zd\n",nmissingfiles,firstmissingfile,lastmissingfile);
+    s = Status::Corruption("VLog file cannot be opened");
+  }
+
+  return s;
+
+}
+
+// Delete the file.  Close it as random-access, then delete it
+void VLogRingFileDeletion::DeleteFile(VLogRing& v,   // the current ring
+  const ImmutableDBOptions *immdbopts,   // The current Env
+  EnvOptions& /*file_options*/  // options to use for all VLog files
+) {
+  filepointer = nullptr;  // This closes the file if it was open
+  std::string filename = VLogFileName(v.immdbopts_->db_paths,
+    VLogRingRef(v.ringno_,(int)fileno).FileNumber(), (uint32_t)v.immdbopts_->db_paths.size()-1, v.cfd_->GetName());
 #if DEBLEVEL&2
 printf("Deleting file: %s\n",filename.c_str());
 #endif
-    if(!immdbopts->env->DeleteFile(filename).ok()){
-      ROCKS_LOG_WARN(immdbopts->info_log,
-                    "Error trying to delete VLog file %s",filename.c_str());
-    }
+  if(!immdbopts->env->DeleteFile(filename).ok()){
+    ROCKS_LOG_WARN(immdbopts->info_log,
+                  "Error trying to delete VLog file %s",filename.c_str());
   }
+}
 
 // See how many files need to be deleted.  Result is a vector of them, with the ring entries for the old files cleared.
 // The tail pointer is moved over the deleted files.
@@ -649,6 +669,11 @@ ProbDelay();
 
     // Allocate file#s for this write.
     VLogRingRefFileno fileno_for_writing = headfile+1;
+
+    // Mark the first slot as nondeletable.  This will prevent anyone from looking at it until it has had references installed.  The file pointer is invalid now so we don't
+    // want anyone to try to delete the file prematurely.  This will protect the entire block.
+    fd_ring[currentarray][Ringx(fd_ring[currentarray],fileno_for_writing)].refcount_deletion=-1;  // nondeletable indicator
+    fd_ring[currentarray][Ringx(fd_ring[currentarray],fileno_for_writing)].refcount_manifest=-1;  // nondeletable indicator
   
     // Move the head pointer in the ring.  This reserves the files we are skipping over for us to use.  Does not have to be atomic with the read, since we have acquired writelock
     atomics.fd_ring_head_fileno.store(headfile+filecumreccnts.size(),std::memory_order_release);
@@ -864,7 +889,7 @@ ProbDelay();
 
     // Loop to add each file to the ring
     for(uint32_t i=0;i<pathnames.size();++i) {
-      (*fdring)[new_ring_slot]=std::move(VLogRingFile(filepointers[i],fileendoffsetspadded[i]));
+      (*fdring)[new_ring_slot]=std::move(VLogRingFile(filepointers[i],fileendoffsetspadded[i],(i?0:1)));  // mark the first file (only) as nondeletable.  That will be enough to protect them all.
       if(++new_ring_slot==(*fdring).size()){
         //  The write wraps around the end of the ring buffer...
         new_ring_slot = 0;   // advance to next slot, and handle wraparound (avoiding divide)
@@ -1062,9 +1087,9 @@ ProbDelay();
     size_t slotx = Ringx(*fdring,reffile);  // the place this file's info is stored - better be valid
 // scaf out of bounds?
 
-    // Increment the usecounts for the slot
-    ++(*fdring)[slotx].refcount_deletion;  // starting from now until this SST is deleted, this VLog file is in use
-    ++(*fdring)[slotx].refcount_manifest;  // starting from now until this SST is deleted, this VLog file is in use
+    // Increment the usecounts for the slot.  The usecounts are -1 in the first file of a new group, until the first reference is added.  This prevents deleting the group until the references have been installed
+    (*fdring)[slotx].refcount_deletion=std::max((*fdring)[slotx].refcount_deletion,0)+1;  // starting from now until this SST is deleted, this VLog file is in use locally
+    (*fdring)[slotx].refcount_manifest=std::max((*fdring)[slotx].refcount_manifest,0)+1;  // starting from now until this SST is uncurrent, this VLog file is in use in the manifest
 
     // Install the SST into the head of the chain for the slot
     newsst.ringfwdchain[ringno_] = (*fdring)[slotx].queue;   // attach old chain after new head
@@ -1412,6 +1437,10 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
     FileMetaData *sstptr = waiting_sst_queues[i];  // start on the chain for this ring
     while(sstptr!=nullptr){FileMetaData *nextsstptr = sstptr->ringfwdchain[i]; rings_[i]->VLogRingSstInstall(*sstptr); sstptr = nextsstptr; }
        // remove new block from chain before installing it into the ring
+
+    // Now that the ring hss all the files and all the references, verify that all the needed files are present
+    Status s  = rings_[i]->VerifyFilesPresent();  // Verify initial validity
+    if(!s.ok())return s;   // abort if files missing.  Erro has beenn logged
   }
 
   return Status();
@@ -1597,6 +1626,39 @@ extern void DetectVLogDeletions(ColumnFamilyData *cfd,   // CF to work on
     }
   }
 }
+
+  // Mark the VLog files that we have created as fully initialized, including being deletable when they have no referencess.
+  // This must be called after the new SSTs have been installed into the VLogRingFiles
+  void VLog::MarkVlogFilesDeletable(
+    std::vector<VLogRingRestartInfo> vlog_edits){  // Info on the changes, one per ring.  All we care about is added files
+    // Go through each ring
+    for(size_t ringno = 0; ringno<vlog_edits.size();++ringno){
+      rings_[ringno]->AcquireLock();
+        // Fetch the up-to-date value for the current ring index
+        uint64_t arrayx = rings_[ringno]->atomics.currentarrayx.load(std::memory_order_acquire);
+        // Go through each (start,end) segment
+        for(size_t startendx = 0; startendx<vlog_edits[ringno].valid_files.size();startendx+=2) {
+          if(vlog_edits[ringno].valid_files[startendx]==0)continue;  // startfile=0 means deleted files; ignore that (should be first pair only)
+          // Go through each file.  We do this under lock, but it's probably not necessary to lock, because no SST has a reference to these new VLog files yet,
+          // so there is no question of simultaneous access.  The only worry would be resizing the ring while we modify the old ping-pong, but that is
+          // done under the same mutex that this is.  For peace of mind, we take the lock anyway.  It is possible that multiple compactions' results have been
+          // coalesced into this one edit, but this is normally a few dozen files at most (exception for opening huge compaction, but that's sui generis)
+          //
+          // Only the first file in a batch is marked non-deletable, but we don't know how many batches or subcompactions there are, so we have to check each file.
+          for(size_t filex=vlog_edits[ringno].valid_files[startendx];filex<=vlog_edits[ringno].valid_files[startendx+1];++filex){
+            // If the file is nondeletable, mark it empty.  A file may have started nondeletable but then had a reference added; don't disturb the counts in that case.
+            size_t fdringx = rings_[ringno]->Ringx(rings_[ringno]->fd_ring[arrayx],filex);
+            if(rings_[ringno]->fd_ring[arrayx][fdringx].refcount_deletion<0){
+              rings_[ringno]->fd_ring[arrayx][fdringx].refcount_deletion = rings_[ringno]->fd_ring[arrayx][fdringx].refcount_manifest = 0;
+            }
+          }
+      }
+      rings_[ringno]->ReleaseLock();
+    }
+  }
+
+
+
 
 }   // namespace rocksdb
 

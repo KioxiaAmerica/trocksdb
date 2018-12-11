@@ -3032,11 +3032,12 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
     // The VLog changes include deleting files that have passed out of the new Version.  These files are
     // detected here.  These changes must be put into both the current database and the manifest.  We do this
     // by folding them into the last edit_batch entry and also the current CF.
-    if(column_family_data!=nullptr) {  // if the column doesn't exist yet, don't collect stats on it.  Do if it is being dropped, though
+    if(column_family_data!=nullptr && column_family_data->vlog()) {  // if the column doesn't exist yet, don't collect stats on it.  Do if it is being dropped, though
       std::vector<VLogRingRestartInfo> vlog_deletions;
       DetectVLogDeletions(column_family_data,&vlog_deletions);    // compute the deletions
       Coalesce(batch_edits.back()->vlog_additions,vlog_deletions,true);  // apply them to the current edits
       Coalesce(accum_vlog_edits,vlog_deletions,true);  // add deletions into accumulated edits
+      column_family_data->vlog()->MarkVlogFilesDeletable(accum_vlog_edits);  // We have installed the SSTs; now allow VLogfile to be deleted
       Coalesce(column_family_data->vloginfo(),accum_vlog_edits,false);   // apply accum edits, including deletions, to database.  false means 'don't include the delete', used for the CF version
 #if DEBLEVEL&0x1000
       {printf("VlogInfo before writing manifest: ");

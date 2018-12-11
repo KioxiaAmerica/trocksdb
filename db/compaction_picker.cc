@@ -1493,38 +1493,56 @@ bool LevelCompactionBuilder::PickFileToCompact() {
       vstorage_->LevelFiles(start_level_);   // files at the current level
 
 #ifdef INDIRECT_VALUE_SUPPORTSCAF  // actually this is OK whether you have indirect values or not.  It allows multiple L0 compactions
+
   // If a compaction from L0 is running, usually there is no reason to bother trying to start another, since the keys usually overlap.
   // The exception is sequential load, when each new L0 file has keys beyond the range of all previous L0 files.
   // We want to detect this case as quickly as possible.  The point is that if a set of L0 files does not overlap any L0 file currently in compaction,
   // it is safe to compact the lot.  It could be that the L0 files overlap some L1 file that overlaps (and thus is part of) a current
   // L0 compaction, but we will detect that in the usual way, when we look for output-level files that are in compaction.
+  if (start_level_ == 0 &&
+      !compaction_picker_->level0_compactions_in_progress()->empty()) {
+    // We will not start a second compaction until there are enough files to do so.  That means that we can't think about it until
+    // the number of L0 files is twice that amount - one for the compaction under way and one for the new one.  This will usually fail quickly,
+    if(level_files.size()<2*mutable_cf_options_.level0_file_num_compaction_trigger)return false;
+    // Go through the files for level 0, to find the index of the first file that is being compacted and the index of the first file NOT being compacted.
+    // We scan through the files from back to front since any files not in the current compaction will normally have been added at the end
+    // If there is no file not being compacted, return failure.
+    int64_t compactx, noncompactx;  // index to a file being compacted, and one that is not
+    for(noncompactx = level_files.size()-1;noncompactx>=0;--noncompactx)if(!level_files[noncompactx]->being_compacted)break;
+    if(noncompactx<0)return false;  // if there is no file not being compacted, we can stop looking
+    for(compactx = 0;compactx<(int64_t)level_files.size();++compactx)if(level_files[compactx]->being_compacted)break;
 
-  // Go through the files for level 0, to find the index of the first file that is being compacted and the index of the first file NOT being compacted.
-  // We scan through the files from back to front since any files not in the current compaction will normally have been added at the end
-  // If there is no file not being compacted, return failure.
-  int compactx, noncompactx;  // index to a file being compacted, and one that is not
-  for(noncompactx = level_files.size()-1;noncompactx>=0;--noncompactx)if(!level_files[noncompactx].being_compacted)break;
-  if(noncompactx<0)return false;  // if there is no file not being compacted, we can stop looking
-  for(compactx = 0;compactx<level_files.size();++compactx)if(level_files[compactx].being_compacted)break;
+    if(compactx<(int64_t)level_files.size()){
+      // There is a file being compacted.  We have to make sure the non-compacting files do not overlap the keys of the compacting files.
+      // We will check only for the ascending-key case, i. e. highest compacting key less than smallest non-compacting key
+      const InternalKeyComparator *icmp = compaction_picker_->GetComparator();  // the user's comparator
 
-  if(compactx<level_files.size()){
-    // There is a file being compacted.  We have to make sure the non-compacting files do not overlap the keys of the compacting files.
-    // We will check only for the ascending-key case, i. e. highest compacting key less than smallest non-compacting key
+      // To give an early exit, compare the keys for the first 2 files and avoid further searching if there is overlap
+      if(icmp->Compare(level_files[compactx]->largest,level_files[noncompactx]->smallest)<0)return false;  // if overlap. we can't process it
+      // No overlap in the first compare.  There's a pretty good chance that this is a sequential write.  Compare the rest of the files
+      // Find the smallest key among the noncompacting files, and the largest key among the compacting
+      int64_t minx = noncompactx, noncompactn = 1;  // loop sets minx to index of noncompacting file with smallest smallest key; n iis number of noncompacted files
+      for(--noncompactx;noncompactx>=0;--noncompactx){
+        if(!level_files[noncompactx]->being_compacted){
+          ++noncompactn;
+          if(icmp->Compare(level_files[noncompactx]->smallest,level_files[minx]->smallest)<0)minx=noncompactx;
+        }
+      }
+      // If there aren't enough noncompacted files to start a compaction, abort
+      if(noncompactn<mutable_cf_options_.level0_file_num_compaction_trigger)return false;
 
-    // To give an early exit, compare the keys for the first 2 files and avoid searching if there is overlap
- if (compaction_picker_->GetComparator ->Compare(f->smallest, f->largest));
-// const InternalKeyComparator icmp;
-    
-    // set initial values for 'best keys'
-    // loop till we have examined all files
-
-      // advance to next file for the compacting and noncompacting; if there is another file, udpate the best key for its type
-
+      int64_t maxx = compactx;  // loop sets minx to index of compacting file with largest largest key
+      for(++compactx;compactx<(int64_t)level_files.size();++compactx){
+        if(level_files[compactx]->being_compacted&&icmp->Compare(level_files[compactx]->largest,level_files[maxx]->largest)>0)maxx=compactx;
+      }
       // abort if there is overlap
+      if(icmp->Compare(level_files[maxx]->largest,level_files[minx]->smallest)<0)return false;  // if overlap. we can't process it
+    }
 
     // no overlap, OK to continue with the compaction picking.  We will pick one of the uncompacted files and then expand
     // the selection with anything that overlaps it.  Eventually we will throw in all the other files L0 too, known to be safe since they don't
     // overlap any existing compaction.
+  }
 #else
   // level 0 files are overlapping. So we cannot pick more
   // than one concurrent compactions at this level. This

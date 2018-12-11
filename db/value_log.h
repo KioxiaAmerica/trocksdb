@@ -281,14 +281,15 @@ public:
   // deleted; then it is known that nothing in the current execution refers to the file.  The manifest count is decremented as soon as the last referring
   // SST is marked to be removed from the manifest.  Once that SST is out of the manifest, the VLog file is not needed when the database is reopened.
   // We take the VLog file out of the manifest at the same time we remove its last reference.
-  uint32_t refcount_deletion;   // Number of SSTs that hold a reference to this file, including old ones
-  uint32_t refcount_manifest;   // Number of current SSTs that hold a reference to this file
+  int32_t refcount_deletion;   // Number of SSTs that hold an earliest-reference to this file, including old ones
+  int32_t refcount_manifest;   // Number of current SSTs that hold an earliest- reference to this file
   std::unique_ptr<RandomAccessFile> filepointer;  // the open file
   VLogRingRefFileLen length;  // length of the file, needed for fragmentation bookkeeping
 
   VLogRingFile(std::unique_ptr<RandomAccessFile>& fptr,  // the file 
-    VLogRingRefFileLen len   // its length
-  ) : queue(nullptr), refcount_deletion(0), refcount_manifest(0), filepointer(std::move(fptr)), length(len) {}
+    VLogRingRefFileLen len,   // its length
+    int nondeletable   // 1 if this should be initialized with refcounts=-1, indicating that the entry cannot be deleted, else 0
+  ) : queue(nullptr), refcount_deletion(nondeletable?-1:0), refcount_manifest(nondeletable?-1:0), filepointer(std::move(fptr)), length(len) {}
   VLogRingFile() :   // used to initialize empty slot
     queue(nullptr), refcount_deletion(0), refcount_manifest(0), filepointer(nullptr), length(0) {}
   VLogRingFile(VLogRingFile& v, int /*dummy*/) :  // used to create faux copy constructor to evade no-copy rules
@@ -531,6 +532,9 @@ VLogRing(
   VLogRing(VLogRing const&) = delete;
   VLogRing& operator=(VLogRing const&) = delete;
 
+// Verifies that all files that have a reference in the database were actually opened
+Status VLogRing::VerifyFilesPresent();
+
 #if DEBLEVEL&0x400
   ~VLogRing() { printf("Destroying VLogRing %p\n",this); }
 #endif
@@ -656,6 +660,7 @@ void UpdateDeadband(size_t nfileswritten, int64_t arsizetrigger) {
   if(arsizetrigger!=armagictestingvalue){
     deletion_deadband = nfileswritten + (size_t)std::round(deletion_deadband * (1.0 - 1.0/(15*10)));  // estimate 15 compactions, 10x margin of safety, for filter gain of 150
   }else{deletion_deadband = 10;}  // If user turns on test mode, set small deadband so deletions can happen early
+  deletion_deadband=10;  // scaf should work with no deadband
 }
 };
 
@@ -807,6 +812,12 @@ public:
   void VLogSstDelete(
     FileMetaData& expiringsst   // the SST that is about to be destroyed
   );
+
+  // Mark the VLog files that we have created as fully initialized, including being deletable when they have no referencess.
+  // This must be called after the new SSTs have been installed into the VLogRingFiles
+  void MarkVlogFilesDeletable(
+    std::vector<VLogRingRestartInfo> vlog_edits);
+
 
 };
 
