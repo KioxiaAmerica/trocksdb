@@ -533,7 +533,7 @@ VLogRing(
   VLogRing& operator=(VLogRing const&) = delete;
 
 // Verifies that all files that have a reference in the database were actually opened
-Status VLogRing::VerifyFilesPresent();
+Status VerifyFilesPresent();
 
 #if DEBLEVEL&0x400
   ~VLogRing() { printf("Destroying VLogRing %p\n",this); }
