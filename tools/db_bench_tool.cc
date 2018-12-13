@@ -1115,9 +1115,11 @@ DEFINE_int32(active_recycling_sst_maxct,15,"AR SST max: maximum number of SSTs t
 
 DEFINE_int32(active_recycling_vlogfile_freed_min,7,"AR VLogFile min # freed: minimum number of VLogFiles to free per AR pass");
 
-DEFINE_int64(active_recycling_size_trigger,{1LL < 30},"Fragmentation Trigger : start Active Recycling if the VLog is at least this big, and the fragmentation trigger is met. Default: 1GB");
+DEFINE_int64(active_recycling_size_trigger,{1LL << 30}, //1GB
+		"Fragmentation Trigger : start Active Recycling if the VLog is at least this big, and the fragmentation trigger is met. Default: 1GB");
 
-DEFINE_uint64(vlogfile_max_size,{40 * (1LL < 20)},"Max VLog Filesize : recommended limit in bytes for a Vlog file");
+DEFINE_uint64(vlogfile_max_size,{40 * (1LL << 20)}, //40MB
+		"Max VLog Filesize : recommended limit in bytes for a Vlog file");
 
 DEFINE_int32(compaction_picker_age_importance,100,"Age over Size preference: use during compaction picking.  When 0, the age of the VLogFiles referred to by the SST is ignored, and size is the criterion.  The larger this number,"
              "the more age matters.  A value of 100 makes age matter much more than size");
@@ -3290,10 +3292,8 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     options.vlogfile_max_size = std::vector<uint64_t>({FLAGS_vlogfile_max_size});
     options.compaction_picker_age_importance = std::vector<int32_t>({FLAGS_compaction_picker_age_importance});
     options.ring_compression_style = std::vector<CompressionType>({FLAGS_ring_compression_style_e});
-    options.compression = kNoCompression;
-#else
-    options.compression = FLAGS_compression_type_e;
 #endif //INDIRECT_VALUE_SUPPORT
+    options.compression = FLAGS_compression_type_e;
     options.WAL_ttl_seconds = FLAGS_wal_ttl_seconds;
     options.WAL_size_limit_MB = FLAGS_wal_size_limit_MB;
     options.max_total_wal_size = FLAGS_max_total_wal_size;
