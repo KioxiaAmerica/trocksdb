@@ -71,7 +71,7 @@ const_params="
   --cache_numshardbits=6 \
   --compression_max_dict_bytes=$compression_max_dict_bytes \
   --compression_ratio=0.5 \
-  --compression_type=$compression_type \
+  --compression_type=none \
   --level_compaction_dynamic_level_bytes=true \
   --bytes_per_sync=$((8 * M)) \
   --cache_index_and_filter_blocks=0 \
@@ -109,10 +109,10 @@ const_params="
   --active_recycling_sst_minct=5 \
   --active_recycling_sst_maxct=15 \
   --active_recycling_vlogfile_freed_min=7 \
-  --active_recycling_size_trigger=$((1 * G))\
+  --active_recycling_size_trigger=$((1 * G)) \
   --vlogfile_max_size=$((50 * M)) \
   --compaction_picker_age_importance=100 \
-  --ring_compression_style=$compression_type \
+  --ring_compression_style=none \
   --vlog_direct_IO=0"
 #Indirect Options above
 
@@ -191,9 +191,9 @@ function run_bulkload {
   echo "Bulk loading $num_keys random keys"
   cmd="./db_bench --benchmarks=fillrandom \
        --use_existing_db=0 \
-       --disable_auto_compactions=0 \
+       --disable_auto_compactions=1 \
        --sync=0 \
-       $params_w \
+       $params_bulkload \
        --threads=1 \
        --memtablerep=vector \
        --disable_wal=1 \
@@ -202,16 +202,16 @@ function run_bulkload {
   echo $cmd | tee $output_dir/benchmark_bulkload_fillrandom.log
   eval $cmd
   summarize_result $output_dir/benchmark_bulkload_fillrandom.log bulkload fillrandom
-  #echo "Compacting..."
-  #cmd="./db_bench --benchmarks=compact \
-  #     --use_existing_db=1 \
-  #     --disable_auto_compactions=1 \
-  #     --sync=0 \
-  #     $params_w \
-  #     --threads=1 \
-  #     2>&1 | tee -a $output_dir/benchmark_bulkload_compact.log"
-  #echo $cmd | tee $output_dir/benchmark_bulkload_compact.log
-  #eval $cmd
+  echo "Compacting..."
+  cmd="./db_bench --benchmarks=compact \
+       --use_existing_db=1 \
+       --disable_auto_compactions=1 \
+       --sync=0 \
+       $params_w \
+       --threads=1 \
+       2>&1 | tee -a $output_dir/benchmark_bulkload_compact.log"
+  echo $cmd | tee $output_dir/benchmark_bulkload_compact.log
+  eval $cmd
 }
 
 #
