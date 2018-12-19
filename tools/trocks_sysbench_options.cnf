@@ -77,7 +77,7 @@ rocksdb_max_open_files=-1
 rocksdb_max_background_jobs=8
 rocksdb_max_total_wal_size=4G
 rocksdb_block_size=16384
-rocksdb_block_cache_size=16g
+rocksdb_block_cache_size=32g
 rocksdb_table_cache_numshardbits=6
 
 # rate limiter
