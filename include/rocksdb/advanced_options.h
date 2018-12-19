@@ -58,7 +58,10 @@ enum CompactionPri : char {
   // and its size is the smallest. It in many cases can optimize write
   // amplification.
   kMinOverlappingRatio = 0x3,
-  kReservedInternal = 0x7f,  // this code reserved for internal use
+  // Reverse file order.  Used  only for L0, where initial order is by age
+  kReverseOrder = 0x4,
+  // Indirect values use an internal sort ordering based on age of the earliest reference
+  kReservedInternal = 0x5,  // this code reserved for internal use
 };
 
 struct CompactionOptionsFIFO {

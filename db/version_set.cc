@@ -1966,7 +1966,11 @@ printf("files by level:"); for (int level = 0; level < num_levels(); level++)pri
     // see if the current CF has VLogs, and get the scope of the result ring if so
     int ring; VLogRingRefFileno file0; VLogRingRefFileno nfiles; int32_t age_importance;
     GetVLogReshapingParms(level, ring, file0, nfiles, age_importance);
-    if(file0)compaction_pri = kReservedInternal;  // if there are VLogs, override the compaction and always use oldest VLog entry
+    // if there are VLogs, override the compaction and always use oldest VLog entry, except for L0: then keep the files in original order, i. e.
+    // oldest first.  This is good for non-VLog systems too, because there's not much reason to choose one file over another and sorting is just
+    // a waste of time.  Moreover, sorting interferes with detecting sequential loads: we want to pick the oldest file so that when we compare all
+    // the others against it we find that all the others have later keys: then we can grab them all for an overlapped compaction
+    compaction_pri = (level==0)?kReverseOrder:file0?kReservedInternal:compaction_pri;
 #endif
     switch (compaction_pri) {
 #ifdef INDIRECT_VALUE_SUPPORT
@@ -2008,6 +2012,12 @@ printf("\n");
       case kMinOverlappingRatio:
         SortFileByOverlappingRatio(*internal_comparator_, files_[level],
                                    files_[level + 1], &temp);
+        break;
+      case kReverseOrder:
+        // Start with the oldest file, which in L0 is the last one.  Could use kOldestSmallestSeqFirst, but why sort?
+        for (size_t i = 0; i < files.size(); i++) {
+          temp[i].index = files.size()-1-i;  // descending vector.  file numbers not used
+        }
         break;
       default:
         assert(false);
