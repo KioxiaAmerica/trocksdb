@@ -186,7 +186,6 @@ printf("\n");
     uint64_t& vlog_bytes_remapped,  // bytes copied from one VLog file to its successor
     uint64_t& vlog_files_created     // # vlog files created
   ) {
-// scaf must handle the case where there was no diskref & thus no diskdatalen
     result.clear();  // init result to empty (i. e. no changes)
     if(!use_indirects_) return;  // return null value if no indirects
     // return with no stats if there was a write error.  The compaction should terminate

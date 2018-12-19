@@ -287,7 +287,9 @@ static void ListVLogFileSizes(DBVLogTest *db, std::vector<uint64_t>& vlogfilesiz
   }
 }
 
+#if 1  // remove if no long functions enabled
 static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
+#endif
 
 #if 1  // turn on for sequential write test with multiple L0 compactions
 TEST_F(DBVLogTest, SequentialWriteTest) {
@@ -449,7 +451,7 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   int32_t value_size = 800;  // 10 KB
   int32_t key_size = 18;
   int32_t value_size_var = 20;
-  int32_t batch_size = 2000; // if you make this smaller you'd better reduce num_levels accordingly 00
+  int32_t batch_size = 20000; // if you make this smaller you'd better reduce num_levels accordingly 00
 
   Options options = CurrentOptions();
 
@@ -461,14 +463,14 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   options.max_bytes_for_level_base = bytesperkvinsst*kvsl1;  // size of all SSTs for those kvs
   uint64_t L1filecount=10;  // desired # files in full L1
   uint64_t sstkvcount = kvsl1/L1filecount;  // # kvs in a single file
-  double  nfilesperl0flush=3.5;   // when we get this many files, flush the memtable
+  double  nfilesperl0flush=2.5;   // when we get this many files, flush the memtable
   options.target_file_size_base=bytesperkvinsst*sstkvcount;
   options.write_buffer_size = (uint64_t)(nfilesperl0flush*bytesperkvinmemtable*sstkvcount);
-  options.level0_file_num_compaction_trigger = 3;
-  options.level0_slowdown_writes_trigger = 9;
-  options.level0_stop_writes_trigger = 11;
+  options.level0_file_num_compaction_trigger = 2;
+  options.level0_slowdown_writes_trigger = 2;
+  options.level0_stop_writes_trigger = 4;
   options.max_background_compactions = 3;
-  options.stats_dump_period_sec = 10;
+  options.stats_dump_period_sec = 30;
 
   options.vlogring_activation_level = std::vector<int32_t>({0});
   options.min_indirect_val_size = std::vector<size_t>({0});
@@ -484,7 +486,7 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
   options.vlogfile_max_size = std::vector<uint64_t>({sstkvcount*(value_size+10)});  // amount of value in 1 sst, allowing for CRC & header
 
-  options.vlog_direct_IO = true;
+  options.vlog_direct_IO = false;
 
   printf("Starting: max_bytes_for_level_base=%zd target_file_size_base=%zd write_buffer_size=%zd vlogfile_max_size=%zd\n",options.max_bytes_for_level_base, options.target_file_size_base,options.write_buffer_size,options.vlogfile_max_size[0]);
   DestroyAndReopen(options);
@@ -507,6 +509,7 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
         ColumnFamilyData *cfd=(ColumnFamilyData*)pickerinfo[6];
         if(cfd!=nullptr){  // to reduce typeout, type only if coming out of L1 or higher
           int doprint = pickerinfo[0]>0;  // true if we type out
+          doprint = 0;  // suppress print normally
           if(pickerinfo[7]){ // Active recycle
             ++numARs;  // inc count of ARs
             if(doprint)printf("PickCompaction: AR L%zd->%zd , #input SSTs=%zd, ring files=[%zd,%zd] SSTs={",pickerinfo[0],pickerinfo[5],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
@@ -1474,7 +1477,7 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
     // Verify total file size is pretty close to right.  Filesize gets rounded up to multiple of 4096
     const int64_t bufferalignment = 4096;
     int64_t onefilesize = ((value_size+5) + (bufferalignment-1)) & -bufferalignment;
-onefilesize = vlogfilesizes[0];
+    onefilesize = vlogfilesizes[0];
     int64_t totalsize=0;  // place to build file stats
     for(size_t i=0;i<vlogfilesizes.size();++i){
      totalsize += vlogfilesizes[i];
@@ -1496,11 +1499,6 @@ onefilesize = vlogfilesizes[0];
     for(size_t i=0;i<vlogfilesizes.size();++i){
      newtotalsize += vlogfilesizes[i];
     }
-printf("Head and tail of filesizes:");  // scaf
-for(int i = 0;i<5;++i)printf(" %zd",vlogfilesizes[i]);
-printf(" /");
-for(int i = 0;i<5;++i)printf(" %zd",vlogfilesizes[vlogfilesizes.size()-5+i]);
-printf("\n"); // scaf
  
     // expected increase is 4% of the size.  Each filesize is rounded up
     int64_t expincr = (int64_t) (onefilesize * nkeys * 0.04);

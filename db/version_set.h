@@ -149,7 +149,7 @@ class VersionStorageInfo {
     // Then, reshape the curve by using biasedx as an exponent.  The base is chosen to make a certain range fraction of the filespace
     // correspond to a doubling of the effective filesize.  If age_importance is 10, this is a doubling for every 1/10 of the database.  0 means no effect
     const double base = exp((std::log(2.0)*0.01)*age_importance);  // 1/age_importance of the log size corresponds to factor of 2 in effective size.  convert from pct to frac
-    const double bias = 0.3;  // end of the tail is at 0.3    scaf use option
+    const double bias = 0.3;  // end of the tail is at 0.3
     return f->compensated_file_size * std::pow(base , bias-((double)(std::max((int64_t)0,(int64_t)avgparent.fileno()-(int64_t)file0))/(double)nfiles));  // effective size.  fileno may be obsolete and low, so clamp it to file0
   }
 

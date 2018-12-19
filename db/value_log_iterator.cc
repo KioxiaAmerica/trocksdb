@@ -133,8 +133,14 @@ printf("Creating iterator for level=%d, earliest_passthrough=",level);
                                                                                  : compaction->mutable_cf_options()->fraction_remapped_during_compaction)[outputringno]
                                                     * head);  // calc file# before which we remap.  fraction is expressed as percentage
         // scaf bug this creates one passthrough for all rings during AR, whilst they might have different thresholds
-    // For Active Recycling, since the aim is to free old files, we make sure we remap everything in the files we are going to delete.  More than that is a tuning parameter.
-    if(recyciter!=nullptr)earliest_passthrough = std::max(earliest_passthrough,compaction->lastfileno()+4);   // AR   scaf constant, which is max # data files per compaction
+    // For Active Recycling, since the aim is to free old files, we make sure we remap everything in the files we are going to delete.  But we should remap a little
+    // more than that: the same SSTs that write to the oldest VLog files probably wrote to a sequence of VLog files, and it would be a shame to recycle them only to have to
+    // come and do it again to pick up the other half of the files.  So, How much more?  Good question.  We would like to know how many VLog files were written by the
+    // compaction that created them.  Alas, there is no way to know that, nor even to make a good guess.  So, we hope that the user has responsibly sized the files so that
+    // there aren't many more VLog files than SSTs, and we pick a number that is more than the number of files we expect in a compaction.  It is OK to err on the high side,
+    // because once an SST has been compacted it probably won't be revisited for a while, and thus there will be a large gap between the batch of oldest files referred to
+    // in an SST and the second-oldest batch.
+    if(recyciter!=nullptr)earliest_passthrough = std::max(earliest_passthrough,compaction->lastfileno()+30);   // AR   scaf constant, which is max # VLog files per compaction, conservatively high
 #if DEBLEVEL&4
     for(int i=0;i<earliest_passthrough.size();++i)printf("%lld ",earliest_passthrough[i]);
 printf("\n");
@@ -158,16 +164,6 @@ printf("\n");
     compactionblocksize = std::min(maxcompactionblocksize,(size_t)(compactionblocksizefudge * maxcompbytes * (1 + sstsizemult)));
     // If something was specified funny, make sure the compaction block is big enough to allow progress
     compactionblocksize = std::max(mincompactionblocksize,compactionblocksize);
-
-#if 0 // obsolete scaf
-if(0==std::min(maxcompactionblocksize,(size_t)(compactionblocksizefudge * compaction->max_compaction_bytes() * (1 + (double)compaction->mutable_cf_options()->vlogfile_max_size[outputringno] / (double)compaction->mutable_cf_options()->max_file_size[compaction->output_level()])))){
-size_t a,d; double b,c;
-a = std::min(maxcompactionblocksize,d = (size_t)(b = compactionblocksizefudge * compaction->max_compaction_bytes() * (c = 1 + (double)compaction->mutable_cf_options()->vlogfile_max_size[outputringno] / (double)compaction->mutable_cf_options()->max_file_size[compaction->output_level()])));
-printf("a=%zd,d=%zd,b=%f,c=%f,compaction->max_compaction_bytes()=%zd,compaction->mutable_cf_options()->vlogfile_max_size[outputringno]=%zd,compaction->mutable_cf_options()->max_file_size[compaction->output_level()]=%zd\n",
-a,d,b,c,compaction->max_compaction_bytes(),compaction->mutable_cf_options()->vlogfile_max_size[outputringno],compaction->mutable_cf_options()->max_file_size[compaction->output_level()]);
-*(int*)0=0;  // scaf crash
-}
-#endif
 
     // Get the minimum mapped size for the output level we are writing into
     minindirectlen = (size_t)compaction->mutable_cf_options()->min_indirect_val_size[outputringno];

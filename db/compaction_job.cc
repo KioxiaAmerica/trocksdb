@@ -1043,10 +1043,8 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
 
 #ifdef INDIRECT_VALUE_SUPPORT
     // If we are Active Recycling, we close exactly when the input file runs out of records.  The override code indicates this:
-    // 0=no override, proceed normally, closing based oon size; 1=override, close now; -1=override, don't close
+    // 0=no override, proceed normally, closing based on size; 1=override, close now; -1=override, don't close
     int overrideclose = value_iter->OverrideClose();
-// scaf we will have to be more subtle... if a file is closed because of ShouldStopBefore, we need to change the overrideclose result to avoid runts
-// scaf we need to subsume the logic for ShouldStopBefore into the OverrideClose calc
 #else
 #define overrideclose 0
 #endif

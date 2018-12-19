@@ -1651,7 +1651,6 @@ bool LevelCompactionBuilder::PickFileToCompact() {
 
   // store where to start the iteration in the next call to PickCompaction
   vstorage_->SetNextCompactionIndex(start_level_, cmp_idx);
-if(start_level_==0&&start_level_inputs_.size() > 0)printf("L0 compaction picked starting with file %zd of %zd files\n",level_files.size()-1-cmp_idx,level_files.size()); // scaf
   return start_level_inputs_.size() > 0;
 }
 

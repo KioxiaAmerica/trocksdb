@@ -40,8 +40,10 @@ class VLogRing;
 // A Compaction encapsulates information about a compaction.
 class Compaction {
  public:
-static int compactionnoshared; // scaf debug
-int compactionno;  // scaf debug
+#if DEBLEVEL&0x4000
+  static int compactionnoshared; // scaf debug
+  int compactionno;  // scaf debug
+#endif
   Compaction(VersionStorageInfo* input_version,
              const ImmutableCFOptions& immutable_cf_options,
              const MutableCFOptions& mutable_cf_options,
@@ -347,7 +349,7 @@ int compactionno;  // scaf debug
 
 #ifdef INDIRECT_VALUE_SUPPORT
   VLogRing *vlogring_;   // for Active Recycling, points to the VLogRing that is being recycled.  This is nonnull ONLY for Active Recycling and is used as the flag
-    // for that state.  scaf?
+    // for that state.
   size_t ringno_;   // the ring number that is being Active Recycled
   VLogRingRefFileno lastfileno_;  // the last file in the recycled prefix
 #endif
