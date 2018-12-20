@@ -541,7 +541,7 @@ Status VerifyFilesPresent();
 
   // return true iff the number of files in the VLog is bigger (by more than a trifle) than the deletion deadband.  This means that if we mark files for
   // deletion, they can be deleted right away.
-  bool NewFilesAreDeletable(int64_t arsizetrigger) {
+  bool NewFilesAreDeletable(int64_t /*arsizetrigger*/) {
    VLogRingRefFileno t = atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // read tail first.  We must ensure that head-tail never goes negative
    VLogRingRefFileno h = atomics.fd_ring_head_fileno.load(std::memory_order_acquire);
 // obsolete    return (h+1) > t+1.1*(arsizetrigger==armagictestingvalue?10:deletion_deadband);  // 1.1 is just a margin of safety, in case other compactions will reduce the deadband.  If we are in magic testing mode, use 10 for deadband

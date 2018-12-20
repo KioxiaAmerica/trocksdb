@@ -295,7 +295,7 @@ static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(le
 TEST_F(DBVLogTest, SequentialWriteTest) {
  // Generate Puts as fast as we can, to overrun the compactor and  force multiple parallel L0 compactions
   const int32_t value_ref_size = 16;  // length of indirect reference
-  const int32_t vlogoverhead = 5;  // # bytes added for header & CRC
+//  const int32_t vlogoverhead = 5;  // # bytes added for header & CRC //-Werror=unused-variable
 // obsolete   int32_t value_size = 18;  // 10 KB
 // obsolete   int32_t key_size = 10 * 1024 - value_size;
   int32_t value_size = 30;  // 10 KB
