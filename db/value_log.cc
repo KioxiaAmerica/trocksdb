@@ -324,7 +324,7 @@ VLogRing::VLogRing(
     cfd_(cfd),
     immdbopts_(immdbopts),
     envopts_(file_options),
-    deletion_deadband(1000),   // init to big value
+// obsolete     deletion_deadband(1000),   // init to big value
     initialstatus(Status{})
 {
 #if DEBLEVEL&1
@@ -1609,7 +1609,7 @@ extern void DetectVLogDeletions(ColumnFamilyData *cfd,   // CF to work on
           // Get slot number for the first file
           size_t slotx = vlog->rings_[i]->Ringx(*currentring, currentoldest);
           // Look at files. Accumulate stats of frag/size that will be removed.  End pointing to the file AFTER the last deletable file
-          while(currentoldest+vlog->rings_[i]->deletion_deadband<headfile && (*currentring)[slotx].refcount_manifest==0){  // avoiding unsigned overflow
+          while(/* obsolete currentoldest+vlog->rings_[i]->*/deletion_deadband<headfile && (*currentring)[slotx].refcount_manifest==0){  // avoiding unsigned overflow
             ringchanges.size -= (*currentring)[slotx].length;
             if(++slotx == (*currentring).size())slotx=0;  // advance ring, wrapping if needed
             ++currentoldest;

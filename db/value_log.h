@@ -124,7 +124,7 @@ static const VLogRingRefFileno high_value = ((VLogRingRefFileno)-1)>>1;  // bigg
 static const float expansion_fraction = (float)0.25;  // fraction of valid files to leave for expansion when sizing the VLog
 static const int expansion_minimum = 10;  // minimum number of expansion files   // scaf 100
 static const float ARdesired_Vlog_files_per_SST = (float)0.20;  // For picking AR, we take another SST as long as we are getting this many VLog files per SST processed
-static const int64_t armagictestingvalue = 0x63a6b38ad8014e36;  // if active_recycling_size_trigger is set to this value, it is treated as 0 and deadband is set to 10 (for testing)
+// obsolete static const int64_t armagictestingvalue = 0x63a6b38ad8014e36;  // if active_recycling_size_trigger is set to this value, it is treated as 0 and deadband is set to 10 (for testing)
 static const size_t mincompactionblocksize = 1LL<<26;  // allow at least this much memory per compaction block
 static const size_t maxcompactionblocksize = 1LL<<29;  // block large compactions into blocks no bigger than this (max 2 per compaction)
 static const double compactionblocksizefudge = 1.4;  // expand the nominal block size by this amount, subject to the overall limit
@@ -133,6 +133,9 @@ static const size_t compactionblockavgkeylen = 24;  // estimated bytes per key
 
 static const int max_simultaneous_deletions = 1000;  // maximum number of files we can delete in one go.  The limitation is that we have to reserve
    // space for them before we acquire the lock
+// The deletion deadband is the number of files at the leading end of the VLog that are protected from deletion.  This is a holdover from an earlier implementation,
+// but it makes testing easier so we leave it.  the database will not be deleted down to smaller than this
+static const size_t deletion_deadband = 10;
 
 static const int kVLogCompressionVersionFormat = 2;  // compressed-data format we use.  This is an internal RocksDB number and might change if compression formats change
 
@@ -493,12 +496,6 @@ private:
   ColumnFamilyData *cfd_;  // The data for this CF
   const ImmutableDBOptions *immdbopts_;  // Env for this database
   EnvOptions envopts_;  // Options to use for files in this VLog
-  // The deletion deadband is the number of files at the leading end of the VLog that are protected from deletion.  The problem is that files added to the
-  // VLog are unreferenced (and unprotected by earlier references) until the Version has started being created.  If the tail pointer gets to such a file while
-  // it is still unprotected, it will be deleted prematurely.  Keeping track of which files should be released at the end of each compaction is a pain,
-  // so we simply don't delete files that are within a few compactions of the end.  The deadband is a worst-case estimate of the number of VLog files
-  // that could be created (in all threads) between the time a compaction starts and the time its Version is ratified
-  size_t deletion_deadband;  //   init to large value, then settle down based on compaction results
 
   // Acquire write lock on the VLogRing.  Won't happen often, and only for a short time
 // scaf  should use timed_mutex, provided that generates PAUSE instr
@@ -547,7 +544,8 @@ Status VerifyFilesPresent();
   bool NewFilesAreDeletable(int64_t arsizetrigger) {
    VLogRingRefFileno t = atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // read tail first.  We must ensure that head-tail never goes negative
    VLogRingRefFileno h = atomics.fd_ring_head_fileno.load(std::memory_order_acquire);
-   return (h+1) > t+1.1*(arsizetrigger==armagictestingvalue?10:deletion_deadband);  // 1.1 is just a margin of safety, in case other compactions will reduce the deadband.  If we are in magic testing mode, use 10 for deadband
+// obsolete    return (h+1) > t+1.1*(arsizetrigger==armagictestingvalue?10:deletion_deadband);  // 1.1 is just a margin of safety, in case other compactions will reduce the deadband.  If we are in magic testing mode, use 10 for deadband
+   return (h+1) > t+1.1*deletion_deadband;  // 1.1 is just a margin of safety, in case other compactions will reduce the deadband.
   }
 
   // return a file number near the head of the ring, to use if no other reference is available
@@ -650,6 +648,7 @@ void VLogRingFindLaggingSsts(
 )
 ;
 
+#if 0 // obsolete 
 // Update the deadzone for the ring.  The deadzone should be big enough to ensure that a newly-added file has been added to the current version before it gets
 // out of the deadzone.  Thus, the deadzone should be big enough to hold all the files created by a set of concurrent compactions, times some factor of safety.
 // Alas, we do not have access to the mutable_db_options here, where the max number of background jobs is kept.  So we will take a guess, and apply a factor of safety,
@@ -662,6 +661,7 @@ void UpdateDeadband(size_t nfileswritten, int64_t arsizetrigger) {
   }else{deletion_deadband = 10;}  // If user turns on test mode, set small deadband so deletions can happen early
   deletion_deadband=10;  // scaf should work with no deadband
 }
+#endif
 };
 
 //

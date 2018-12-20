@@ -152,7 +152,8 @@ TEST_F(CompactionPickerTest, Single) {
   ASSERT_TRUE(compaction.get() == nullptr);
 }
 
-TEST_F(CompactionPickerTest, Level0Trigger) {
+// Level 0 picking, with 2 overlapping files
+TEST_F(CompactionPickerTest, Level0Trigger1) {
   NewVersionStorage(6, kCompactionStyleLevel);
   mutable_cf_options_.level0_file_num_compaction_trigger = 2;
   Add(0, 1U, "150", "200");
@@ -167,6 +168,106 @@ TEST_F(CompactionPickerTest, Level0Trigger) {
   ASSERT_EQ(1U, compaction->input(0, 0)->fd.GetNumber());
   ASSERT_EQ(2U, compaction->input(0, 1)->fd.GetNumber());
 }
+
+// Level 0 picking, with 2 nonoverlapping files
+TEST_F(CompactionPickerTest, Level0Trigger2) {
+  NewVersionStorage(6, kCompactionStyleLevel);
+  mutable_cf_options_.level0_file_num_compaction_trigger = 2;
+  Add(0, 1U, "150", "200",1);  // first file in order
+  Add(0, 2U, "201", "250",2);  // second
+
+  UpdateVersionStorageInfo();
+
+  std::unique_ptr<Compaction> compaction(level_compaction_picker.PickCompaction(
+      cf_name_, mutable_cf_options_, vstorage_.get(), &log_buffer_));
+  ASSERT_TRUE(compaction.get() != nullptr);
+  ASSERT_EQ(1U, compaction->num_input_files(0));
+  ASSERT_EQ(2U, compaction->input(0, 0)->fd.GetNumber());  // last file is chosen first
+}
+
+#ifdef INDIRECT_VALUE_SUPPORT
+// These tests check for ascending-key support, which could well be enabled even without value logging
+// Level 0 picking, with 2 nonoverlapping files; ignore file length
+TEST_F(CompactionPickerTest, Level0Trigger3) {
+  NewVersionStorage(6, kCompactionStyleLevel);
+  mutable_cf_options_.level0_file_num_compaction_trigger = 2;
+  Add(0, 1U, "150", "200",2);  // first file in order
+  Add(0, 2U, "201", "250",1);  // second
+
+  UpdateVersionStorageInfo();
+
+  std::unique_ptr<Compaction> compaction(level_compaction_picker.PickCompaction(
+      cf_name_, mutable_cf_options_, vstorage_.get(), &log_buffer_));
+  ASSERT_TRUE(compaction.get() != nullptr);
+  ASSERT_EQ(1U, compaction->num_input_files(0));
+  ASSERT_EQ(2U, compaction->input(0, 0)->fd.GetNumber());  // last file is chosen first
+}
+
+// Level 0 picking, with 2 nonoverlapping files; take both files
+TEST_F(CompactionPickerTest, Level0Trigger4) {
+  NewVersionStorage(6, kCompactionStyleLevel);
+  mutable_cf_options_.level0_file_num_compaction_trigger = 2;
+  Add(0, 1U, "300", "400",2);  // first file in order
+  Add(0, 2U, "201", "250",1);  // second
+
+  UpdateVersionStorageInfo();
+
+  std::unique_ptr<Compaction> compaction(level_compaction_picker.PickCompaction(
+      cf_name_, mutable_cf_options_, vstorage_.get(), &log_buffer_));
+  ASSERT_TRUE(compaction.get() != nullptr);
+  ASSERT_EQ(2U, compaction->num_input_files(0));
+  ASSERT_EQ(1U, compaction->input(0, 0)->fd.GetNumber());  // last file is chosen first, but overlaps are kept in order
+  ASSERT_EQ(2U, compaction->input(0, 1)->fd.GetNumber());
+}
+
+// Level 0 picking, overlapped compactions, unable to start because of key overlap with ongoing compaction
+TEST_F(CompactionPickerTest, Level0Trigger5) {
+  NewVersionStorage(6, kCompactionStyleLevel);
+  mutable_cf_options_.level0_file_num_compaction_trigger = 2;
+  Add(0, 1U, "300", "400",2);  // first file in order
+  files_.back()->being_compacted=true;
+  Add(0, 2U, "201", "250",1);  // second
+  files_.back()->being_compacted=true;
+  level_compaction_picker.level0_compactions_in_progress()->insert(nullptr);  // this is used as signal to look for overlapped compaction
+  // new files come in during compaction
+  Add(0, 3U, "400", "450",2);
+  Add(0, 4U, "500", "550",1);
+
+  UpdateVersionStorageInfo();
+
+  std::unique_ptr<Compaction> compaction(level_compaction_picker.PickCompaction(
+      cf_name_, mutable_cf_options_, vstorage_.get(), &log_buffer_));
+  ASSERT_TRUE(compaction.get() == nullptr);
+
+}
+
+// Level 0 picking, overlapped compactions, start second compaction
+TEST_F(CompactionPickerTest, Level0Trigger6) {
+  NewVersionStorage(6, kCompactionStyleLevel);
+  mutable_cf_options_.level0_file_num_compaction_trigger = 2;
+  Add(0, 1U, "300", "400",2);  // first file in order
+  files_.back()->being_compacted=true;
+  Add(0, 2U, "201", "250",1);  // second
+  files_.back()->being_compacted=true;
+  level_compaction_picker.level0_compactions_in_progress()->insert(nullptr);  // this is used as signal to look for overlapped compaction
+  // new files come in during compaction
+  Add(0, 3U, "401", "450",2);
+  Add(0, 4U, "500", "550",1);
+
+  UpdateVersionStorageInfo();
+
+  std::unique_ptr<Compaction> compaction(level_compaction_picker.PickCompaction(
+      cf_name_, mutable_cf_options_, vstorage_.get(), &log_buffer_));
+  ASSERT_TRUE(compaction.get() != nullptr);
+  ASSERT_EQ(2U, compaction->num_input_files(0));
+  ASSERT_EQ(3U, compaction->input(0, 0)->fd.GetNumber());  // last file is chosen first, but overlaps are kept in order
+  ASSERT_EQ(4U, compaction->input(0, 1)->fd.GetNumber());
+
+}
+
+
+
+#endif
 
 TEST_F(CompactionPickerTest, Level1Trigger) {
   NewVersionStorage(6, kCompactionStyleLevel);

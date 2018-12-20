@@ -436,7 +436,7 @@ void IndirectIterator::ReadAndResolveInputBlock() {
 #endif
   // add the new batch into the file-related stats we keep
   nfileswritten += fileendoffsets.size();
-  outputring->UpdateDeadband(fileendoffsets.size(),compaction_->mutable_cf_options()->active_recycling_size_trigger[outputringno]);
+// obsolete   outputring->UpdateDeadband(fileendoffsets.size(),compaction_->mutable_cf_options()->active_recycling_size_trigger[outputringno]);
   if(nfileswritten) {  // start file# of 0 means delete, so don't add an entry if there are no files added
     // for huge compactions, coalesce adjacent runs.  Not necessary, supposedly
     if(createdfilelist.size() && createdfilelist.back()==firstdiskref.Fileno()-1) {

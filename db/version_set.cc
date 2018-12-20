@@ -1970,9 +1970,9 @@ printf("files by level:"); for (int level = 0; level < num_levels(); level++)pri
     // oldest first.  This is good for non-VLog systems too, because there's not much reason to choose one file over another and sorting is just
     // a waste of time.  Moreover, sorting interferes with detecting sequential loads: we want to pick the oldest file so that when we compare all
     // the others against it we find that all the others have later keys: then we can grab them all for an overlapped compaction
-    compaction_pri = (level==0)?kReverseOrder:file0?kReservedInternal:compaction_pri;
+    CompactionPri compaction_pri_to_use = (level==0)?kReverseOrder:file0?kReservedInternal:compaction_pri;
 #endif
-    switch (compaction_pri) {
+    switch (compaction_pri_to_use) {
 #ifdef INDIRECT_VALUE_SUPPORT
      case kReservedInternal:  // means 'VLog in use'
         // if there are rings for this level, include the file numbers that will be freed in the computation of which file to compact

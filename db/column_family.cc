@@ -1159,7 +1159,7 @@ void ColumnFamilyData::CheckForActiveRecycle(std::vector<CompactionInputFiles>& 
     // 'large enough' means bigger than the user-specified limit, and also with more files than the deadband, so that any files we ask to delete will
     // actually be deleted
     ;
-    if((vlog_info[i].size<compoptions.active_recycling_size_trigger[i] && compoptions.active_recycling_size_trigger[i]!=armagictestingvalue)   // VLog not big enough; if size_trigger is the testing value, always allow AR
+    if((vlog_info[i].size<compoptions.active_recycling_size_trigger[i] /* obsolete && compoptions.active_recycling_size_trigger[i]!=armagictestingvalue */)   // VLog not big enough; if size_trigger is the testing value, always allow AR
        || !vlog_->rings()[i]->NewFilesAreDeletable(compoptions.active_recycling_size_trigger[i])    // not enough VLog files
        || vlog_info[i].fragfrac<=0.01*compoptions.fragmentation_active_recycling_trigger[i])continue;  // Not enough fragmentation  convert pct to frac
     // AR found - fetch the files to be recycled and return them
