@@ -1658,17 +1658,17 @@ bool LevelCompactionBuilder::PickIntraL0Compaction() {
   start_level_inputs_.clear();
   const std::vector<FileMetaData*>& level_files =
       vstorage_->LevelFiles(0 /* level */);
-  size_t nl0compact = 0;
-#ifdef INDIRECT_VALUE_SUPPORT  // this is not a bad idea for all systems
-  // See how many files there are that are already being compacted.  We wait till there are enough of them
-  for(auto f : level_files)nl0compact += !f->being_compacted;
-#endif
-  if (level_files.size()-nl0compact <
+  if (level_files.size() <
           static_cast<size_t>(
               mutable_cf_options_.level0_file_num_compaction_trigger + 2) ||
       level_files[0]->being_compacted) {
     // If L0 isn't accumulating much files beyond the regular trigger, don't
     // resort to L0->L0 compaction yet.  Or, if file 0, where we would start an intraL0, is being compacted, don't bother
+    // To be able to compact with so few files would require that L0->L1 is blocked by a compaction out of L1, which is ceretainly possible.
+    // The thing to worry about is the other side, during ascending load, where L0 has a lot of files that are being compacted in parallel.
+    // In that case, this test will always pass, but we never want an L0->L0 compaction.  Fortunately, we get here only when the compaction
+    // score is >= 1.0, which means there must be at least compaction_trigger files that are not compacting.  If they have ascending keys, we will
+    // have had a chance to take them, so if we are here we know we are not bulk-loading.
     return false;
   }
   return FindIntraL0Compaction(level_files, kMinFilesForIntraL0Compaction,

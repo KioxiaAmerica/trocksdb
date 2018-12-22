@@ -798,6 +798,9 @@ class DBTestBase : public testing::Test {
     return std::string(buf);
   }
 
+  // For new files, we have to create keys in reverse order to avoid engaging ascending-write code
+  static std::string KeyNewFile(int i) { return Key(99999-i); }
+
   // like Key, but give a big Key suitable for keeping constant kv size regardless of indirects
   // The kv is Invariant under Indirection: it makes the keys long and the values 16 bytes, so that an indirect reference has the same length as a direct value
   std::string KeyInvInd(int i, size_t valuelen, bool vlogging) {
@@ -815,9 +818,9 @@ class DBTestBase : public testing::Test {
     }
     return retstg;
   }
-  // This version used for generatng new files.  The tests are exquisitely tuned to the file sizes, so we just copy what was done
+  // This version used for generating new files.  The tests are exquisitely tuned to the file sizes, so we just copy what was done
   // key_idx is the key#, i is the index of that key within the file it is in.  For sequentially-generated files, i==key_idx%KNumKeysByGenerateNewFile
-  std::string KeyInvIndNewFile(int key_idx, int i, bool vlogging) { return KeyInvInd(key_idx, (i==99) ? 1 : 999, vlogging) ; }
+  std::string KeyInvIndNewFile(int key_idx, int i, bool vlogging) { return KeyInvInd(99999-key_idx, (i==99) ? 1 : 999, vlogging) ; }  // key# descending to match creation of file
   
   // like Key, but give a big Key suitable for keeping constant kv size regardless of indirects
   std::string KeyInvInd(const std::string& k, size_t valuelen, bool vlogging) {

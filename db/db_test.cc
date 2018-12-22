@@ -4959,7 +4959,7 @@ TEST_F(DBTest, L0L1L2AndUpHitCounter) {
 
   int numkeys = 20000;
   for (int i = 0; i < numkeys; i++) {
-    ASSERT_OK(Put(1, Key(i), "val"));
+    ASSERT_OK(Put(1, Key(numkeys-i-1), "val"));  // write keys descending to avoid code for sequential load.  L0 files will compact one at a time
   }
   ASSERT_EQ(0, TestGetTickerCount(options, GET_HIT_L0));
   ASSERT_EQ(0, TestGetTickerCount(options, GET_HIT_L1));

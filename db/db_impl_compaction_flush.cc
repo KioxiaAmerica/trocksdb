@@ -1239,6 +1239,7 @@ void DBImpl::MaybeScheduleFlushOrCompaction() {
   while (bg_compaction_scheduled_ < bg_job_limits.max_compactions &&
          unscheduled_compactions_ > 0) {
     CompactionArg* ca = new CompactionArg;
+printf("ScheduleBGWorkCompaction\n"); // scaf intra
     ca->db = this;
     ca->prepicked_compaction = nullptr;
     bg_compaction_scheduled_++;
@@ -1324,6 +1325,7 @@ void DBImpl::SchedulePendingFlush(ColumnFamilyData* cfd,
 void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
   if (!cfd->queued_for_compaction() && cfd->NeedsCompaction()) {
     AddToCompactionQueue(cfd);
+printf("unsched compactions SchedulePendingCompaction\n"); // scaf intra
     ++unscheduled_compactions_;
   }
 }
@@ -1703,6 +1705,7 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
       TEST_SYNC_POINT("DBImpl::BackgroundCompaction()::Conflict");
 
       // Stay in the compaction queue.
+printf("unsched compactions HasExclusiveManualCompaction\n"); // scaf intra
       unscheduled_compactions_++;
 
       return Status::OK();
@@ -1749,6 +1752,7 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
               ->ComputeCompactionScore(*(c->immutable_cf_options()),
                                        *(c->mutable_cf_options()));
           AddToCompactionQueue(cfd);
+printf("unsched compactions no room\n"); // scaf intra
           ++unscheduled_compactions_;
 
           c.reset();
@@ -1774,6 +1778,7 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
           if (cfd->NeedsCompaction()) {
             // Yes, we need more compactions!
             AddToCompactionQueue(cfd);
+printf("unsched compactions SchedulePendingCompaction\n"); // scaf intra
             ++unscheduled_compactions_;
             MaybeScheduleFlushOrCompaction();
           }
