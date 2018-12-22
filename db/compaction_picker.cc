@@ -1539,14 +1539,14 @@ bool LevelCompactionBuilder::PickFileToCompact() {
     // GetOverlappingL0Files, throwing in all the L0 files.  That means that for us to need to start another compaction, there must be
     // at least twice as many files in L0 as needed to trigger a compaction.  This test will turn away all normal cases except when we are
     // unable to keep up with Puts.
-    if(level_files.size()<2*mutable_cf_options_.level0_file_num_compaction_trigger)return false;
+    if(level_files.size()<2*mutable_cf_options_.level0_file_num_compaction_trigger){TEST_SYNC_POINT("LevelCompactionPicker::PickCompactionBySize:0"); return false;}
 
     // Go through the files for level 0, to find the index of the first file that is being compacted and the index of the first file NOT being compacted.
     // We scan through the files from back to front since any files not in the current compaction will normally have been added at the end
     // If there is no file not being compacted, return failure.
     int64_t compactx, noncompactx;  // index to a file being compacted, and one that is not
     for(noncompactx = level_files.size()-1;noncompactx>=0;--noncompactx)if(!level_files[noncompactx]->being_compacted)break;
-    if(noncompactx+1<mutable_cf_options_.level0_file_num_compaction_trigger)return false;  // if there can't be enough non-compacting to start a compaction, stop looking
+    if(noncompactx+1<mutable_cf_options_.level0_file_num_compaction_trigger){TEST_SYNC_POINT("LevelCompactionPicker::PickCompactionBySize:0"); return false;}  // if there can't be enough non-compacting to start a compaction, stop looking
     for(compactx = 0;compactx<(int64_t)level_files.size();++compactx)if(level_files[compactx]->being_compacted)break;
 
     if(compactx<(int64_t)level_files.size()){
@@ -1556,7 +1556,7 @@ bool LevelCompactionBuilder::PickFileToCompact() {
       const InternalKeyComparator *icmp = compaction_picker_->GetComparator();  // the user's comparator
 
       // To give an early exit, compare the keys for the first 2 files and avoid further searching if there is overlap
-      if(icmp->Compare(level_files[compactx]->largest,level_files[noncompactx]->smallest)>=0)return false;  // if overlap. we can't process it
+      if(icmp->Compare(level_files[compactx]->largest,level_files[noncompactx]->smallest)>=0){TEST_SYNC_POINT("LevelCompactionPicker::PickCompactionBySize:0"); return false;}  // if overlap. we can't process it
       // No overlap in the first compare.  There's a very good chance that this is a sequential write.  Compare the rest of the files
       // Find the smallest key among the noncompacting files, and the largest key among the compacting
       int64_t minx = noncompactx, noncompactn = 1;  // loop sets minx to index of noncompacting file with smallest smallest key; n iis number of noncompacted files
@@ -1567,14 +1567,14 @@ bool LevelCompactionBuilder::PickFileToCompact() {
         }
       }
       // If there aren't enough noncompacted files to start a compaction, abort
-      if(noncompactn<mutable_cf_options_.level0_file_num_compaction_trigger)return false;
+      if(noncompactn<mutable_cf_options_.level0_file_num_compaction_trigger){TEST_SYNC_POINT("LevelCompactionPicker::PickCompactionBySize:0"); return false;}
 
       int64_t maxx = compactx;  // loop sets maxx to index of compacting file with largest largest key
       for(++compactx;compactx<(int64_t)level_files.size();++compactx){
         if(level_files[compactx]->being_compacted&&icmp->Compare(level_files[compactx]->largest,level_files[maxx]->largest)>0)maxx=compactx;
       }
       // abort if there is overlap
-      if(icmp->Compare(level_files[maxx]->largest,level_files[minx]->smallest)>=0)return false;  // if overlap. we can't process it
+      if(icmp->Compare(level_files[maxx]->largest,level_files[minx]->smallest)>=0){TEST_SYNC_POINT("LevelCompactionPicker::PickCompactionBySize:0"); return false;}  // if overlap. we can't process it
     }
 
     // no overlap, OK to continue with the compaction picking.  We will pick the earliest uncompacted file and then expand

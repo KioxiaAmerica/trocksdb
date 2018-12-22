@@ -255,7 +255,7 @@ const SstFileMetaData* PickFileRandomly(
   return nullptr;
 }
 }  // anonymous namespace
-#if 0 // scaf
+
 #ifndef ROCKSDB_VALGRIND_RUN
 // All the TEST_P tests run once with sub_compactions disabled (i.e.
 // options.max_subcompactions = 1) and once with it enabled
@@ -3140,7 +3140,7 @@ TEST_P(DBCompactionTestWithParam, ForceBottommostLevelCompaction) {
 
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
 }
-#endif // scaf
+
 TEST_P(DBCompactionTestWithParam, IntraL0Compaction) {
   Options options = CurrentOptions();
   options.compression = kNoCompression;
@@ -3270,7 +3270,7 @@ TEST_P(DBCompactionTestWithParam, IntraL0CompactionDoesNotObsoleteDeletions) {
   ASSERT_TRUE(db_->Get(roptions, Key(0), &result).IsNotFound());
 }
 
-#if 0 // scaf
+
 
 TEST_P(DBCompactionTestWithParam, FullCompactionInBottomPriThreadPool) {
   const int kNumFilesTrigger = 3;
@@ -3923,7 +3923,7 @@ TEST_F(DBCompactionTest, CompactFilesOutputRangeConflict) {
 
   bg_thread.join();
 }
-#endif // scaf
+
 #ifdef INDIRECT_VALUE_SUPPORT
 INSTANTIATE_TEST_CASE_P(DBCompactionTestWithParam, DBCompactionTestWithParam,  // params are max_subcompactions_, exclusive_manual_compaction_, num_vlog_rings_
                         ::testing::Values(std::make_tuple(1, true,0),

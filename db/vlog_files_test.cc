@@ -287,7 +287,7 @@ static void ListVLogFileSizes(DBVLogTest *db, std::vector<uint64_t>& vlogfilesiz
   }
 }
 
-#if 1  // remove if no long functions enabled
+#if 0  // remove if no long functions enabled
 static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
 #endif
 
