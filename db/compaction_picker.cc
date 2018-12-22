@@ -1539,7 +1539,7 @@ bool LevelCompactionBuilder::PickFileToCompact() {
     // GetOverlappingL0Files, throwing in all the L0 files.  That means that for us to need to start another compaction, there must be
     // at least twice as many files in L0 as needed to trigger a compaction.  This test will turn away all normal cases except when we are
     // unable to keep up with Puts.
-    if(level_files.size()<2*mutable_cf_options_.level0_file_num_compaction_trigger){TEST_SYNC_POINT("LevelCompactionPicker::PickCompactionBySize:0"); return false;}
+    if(level_files.size()<(size_t)(2*mutable_cf_options_.level0_file_num_compaction_trigger)){TEST_SYNC_POINT("LevelCompactionPicker::PickCompactionBySize:0"); return false;}
 
     // Go through the files for level 0, to find the index of the first file that is being compacted and the index of the first file NOT being compacted.
     // We scan through the files from back to front since any files not in the current compaction will normally have been added at the end
