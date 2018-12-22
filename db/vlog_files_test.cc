@@ -287,11 +287,11 @@ static void ListVLogFileSizes(DBVLogTest *db, std::vector<uint64_t>& vlogfilesiz
   }
 }
 
-#if 0  // remove if no long functions enabled
+#if 1  // remove if no long functions enabled
 static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
 #endif
 
-#if 0  // turn on for sequential write test with multiple L0 compactions
+#if 1  // turn on for sequential write test with multiple L0 compactions
 TEST_F(DBVLogTest, SequentialWriteTest) {
  // Generate Puts as fast as we can, to overrun the compactor and  force multiple parallel L0 compactions
   const int32_t value_ref_size = 16;  // length of indirect reference
@@ -443,7 +443,7 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
 }
 #endif
 
-#if 0  // turn on for long r/w test.  This is the TRocks random-load test, and verifies that compaction picking picks oldest references
+#if 1  // turn on for long r/w test.  This is the TRocks random-load test, and verifies that compaction picking picks oldest references
 TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   const int32_t value_ref_size = 16;  // length of indirect reference
 // obsolete   int32_t value_size = 18;  // 10 KB
@@ -630,7 +630,7 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
   ASSERT_LT((double)numARs/(double)(numARs+numcompactions),0.20);  // the number is empirical.  Make sure ARs aren't much more than 15% of compactions
 }
 #endif
-#if 0  // turn on for long-compaction test
+#if 1  // turn on for long-compaction test
 TEST_F(DBVLogTest, HugeCompactionTest) {
  // To create a huge compaction, we change the default database shape by
  // 1. making the VLog files 1/10 the normal size
@@ -913,7 +913,7 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
   printf("...verified after compaction.\n");
 }
 #endif
-#if 0  // turn on for VLog space-accounting test
+#if 1  // turn on for VLog space-accounting test
 TEST_F(DBVLogTest, SpaceAccountingTest) {
   const int32_t value_ref_size = 16;  // length of indirect reference
   const int32_t vlogoverhead = 5;  // # bytes added for header & CRC
