@@ -330,7 +330,7 @@ TEST_F(DBVLogTest, SequentialWriteTest) {
   options.fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
   options.fragmentation_active_recycling_klaxon = std::vector<int32_t>({50});
   options.active_recycling_size_trigger = std::vector<int64_t>({(int64_t)(0.8*batch_size*value_size)});   // start AR when the DB is almost full  scaf should be 0.8
-// obsolete options.active_recycling_size_trigger = std::vector<int64_t>({armagictestingvalue});  // scaf
+  options.active_recycling_size_trigger = std::vector<int64_t>({0});
   options.active_recycling_sst_minct = std::vector<int32_t>({5});
   options.active_recycling_sst_maxct = std::vector<int32_t>({15});
   options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
@@ -674,7 +674,7 @@ TEST_F(DBVLogTest, HugeCompactionTest) {
   options.fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
   options.fragmentation_active_recycling_klaxon = std::vector<int32_t>({50});
   options.active_recycling_size_trigger = std::vector<int64_t>({(int64_t)(0.8*batch_size*value_size)});   // start AR when the DB is almost full  scaf should be 0.8
-// obsolete options.active_recycling_size_trigger = std::vector<int64_t>({armagictestingvalue});  // scaf
+  options.active_recycling_size_trigger = std::vector<int64_t>({0});
   options.active_recycling_sst_minct = std::vector<int32_t>({5});
   options.active_recycling_sst_maxct = std::vector<int32_t>({15});
   options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
@@ -953,7 +953,7 @@ TEST_F(DBVLogTest, SpaceAccountingTest) {
   options.fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
   options.fragmentation_active_recycling_klaxon = std::vector<int32_t>({50});
   options.active_recycling_size_trigger = std::vector<int64_t>({(int64_t)(0.8*batch_size*value_size)});   // start AR when the DB is almost full  scaf should be 0.8
-// obsolete options.active_recycling_size_trigger = std::vector<int64_t>({armagictestingvalue});  // scaf
+  options.active_recycling_size_trigger = std::vector<int64_t>({0});
   options.active_recycling_sst_minct = std::vector<int32_t>({5});
   options.active_recycling_sst_maxct = std::vector<int32_t>({15});
   options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
@@ -1551,7 +1551,7 @@ void DBVLogTest::SetUpForActiveRecycleTest() {
   // turn off remapping
   options.fraction_remapped_during_compaction = std::vector<int32_t>({mappct});
   options.fragmentation_active_recycling_trigger = std::vector<int32_t>({10});
-// obsolete  options.active_recycling_size_trigger = std::vector<int64_t>({armagictestingvalue});
+  options.active_recycling_size_trigger = std::vector<int64_t>({0});
 
   DestroyAndReopen(options);
   // write 100 files in key order, flushing each to give it a VLog file
@@ -1630,7 +1630,7 @@ TEST_F(DBVLogTest, ActiveRecycleTriggerTest1) {
   // Verify that we don't pick a compaction with a 20% size requirement
   mutable_cf_options_.fragmentation_active_recycling_trigger = std::vector<int32_t>({20});
   mutable_cf_options_.min_indirect_val_size = std::vector<size_t>({0});
-// obsolete   mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({armagictestingvalue});
+  mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({0});
   mutable_cf_options_.active_recycling_sst_minct = std::vector<int32_t>({5});
   mutable_cf_options_.active_recycling_sst_maxct = std::vector<int32_t>({15});
   mutable_cf_options_.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
@@ -1642,7 +1642,7 @@ TEST_F(DBVLogTest, ActiveRecycleTriggerTest1) {
 
   // verify that we do pick a compaction at a 10% size requirement
   mutable_cf_options_.fragmentation_active_recycling_trigger = std::vector<int32_t>({10});
-// obsolete   mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({armagictestingvalue});
+  mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({0});
   mutable_cf_options_.active_recycling_sst_minct = std::vector<int32_t>({5});
   mutable_cf_options_.active_recycling_sst_maxct = std::vector<int32_t>({15});
   mutable_cf_options_.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
@@ -1664,7 +1664,7 @@ TEST_F(DBVLogTest, ActiveRecycleTriggerTest2) {
 
   // testing minct.  Set vlogfile_freed_min to 0, then verify responsiveness to min.  freed_min=0 is a debug mode that doesn't look for SSTs past the minimum
   mutable_cf_options_.fragmentation_active_recycling_trigger = std::vector<int32_t>({10});
-// obsolete   mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({armagictestingvalue});
+  mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({0});
   mutable_cf_options_.active_recycling_sst_minct = std::vector<int32_t>({3});
   mutable_cf_options_.active_recycling_sst_maxct = std::vector<int32_t>({5});
   mutable_cf_options_.active_recycling_vlogfile_freed_min = std::vector<int32_t>({0});
@@ -1686,7 +1686,7 @@ TEST_F(DBVLogTest, ActiveRecycleTriggerTest3) {
 
   // testing minct.  Set vlogfile_freed_min to 0, then verify responsiveness to min.  freed_min=0 is a debug mode that doesn't look for SSTs past the minimum
   mutable_cf_options_.fragmentation_active_recycling_trigger = std::vector<int32_t>({10});
-// obsolete   mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({armagictestingvalue});
+  mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({0});
   mutable_cf_options_.active_recycling_sst_minct = std::vector<int32_t>({4});
   mutable_cf_options_.active_recycling_sst_maxct = std::vector<int32_t>({5});
   mutable_cf_options_.active_recycling_vlogfile_freed_min = std::vector<int32_t>({0});
@@ -1707,7 +1707,7 @@ TEST_F(DBVLogTest, ActiveRecycleTriggerTest4) {
 
   // testing maxct.  Move vlogfile_freed_min off of 0, then verify responsiveness to maxct.
   mutable_cf_options_.fragmentation_active_recycling_trigger = std::vector<int32_t>({10});
-// obsolete   mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({armagictestingvalue});
+  mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({0});
   mutable_cf_options_.active_recycling_sst_minct = std::vector<int32_t>({3});
   mutable_cf_options_.active_recycling_sst_maxct = std::vector<int32_t>({4});
   mutable_cf_options_.active_recycling_vlogfile_freed_min = std::vector<int32_t>({1});
@@ -1728,7 +1728,7 @@ TEST_F(DBVLogTest, ActiveRecycleTriggerTest5) {
 
   // testing maxct.  Move vlogfile_freed_min off of 0, then verify responsiveness to maxct.
   mutable_cf_options_.fragmentation_active_recycling_trigger = std::vector<int32_t>({10});
-// obsolete   mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({armagictestingvalue});
+  mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({0});
   mutable_cf_options_.active_recycling_sst_minct = std::vector<int32_t>({3});
   mutable_cf_options_.active_recycling_sst_maxct = std::vector<int32_t>({5});
   mutable_cf_options_.active_recycling_vlogfile_freed_min = std::vector<int32_t>({1});
@@ -1749,7 +1749,7 @@ TEST_F(DBVLogTest, ActiveRecycleTriggerTest6) {
 
   // testing freed_min.  set sst_minct to 0 (debugging mode), then verify responsiveness to freed_min.
   mutable_cf_options_.fragmentation_active_recycling_trigger = std::vector<int32_t>({10});
-// obsolete   mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({armagictestingvalue});
+  mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({0});
   mutable_cf_options_.active_recycling_sst_minct = std::vector<int32_t>({0});
   mutable_cf_options_.active_recycling_sst_maxct = std::vector<int32_t>({5});
   mutable_cf_options_.active_recycling_vlogfile_freed_min = std::vector<int32_t>({2});
@@ -1770,7 +1770,7 @@ TEST_F(DBVLogTest, ActiveRecycleTriggerTest7) {
 
   // testing freed_min.  set sst_minct to 0 (debugging mode), then verify responsiveness to freed_min.
   mutable_cf_options_.fragmentation_active_recycling_trigger = std::vector<int32_t>({10});
-// obsolete   mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({armagictestingvalue});
+  mutable_cf_options_.active_recycling_size_trigger = std::vector<int64_t>({0});
   mutable_cf_options_.active_recycling_sst_minct = std::vector<int32_t>({0});
   mutable_cf_options_.active_recycling_sst_maxct = std::vector<int32_t>({5});
   mutable_cf_options_.active_recycling_vlogfile_freed_min = std::vector<int32_t>({3});
