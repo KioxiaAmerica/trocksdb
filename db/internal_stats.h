@@ -86,8 +86,23 @@ enum class RingStatType {
   NUM_FILES,
   SIZE_BYTES,
   FRAGMENTATION,
+  NUM_VALUESREAD,
+  READALPHA,
+  READBETA,
+  COMPALPHA,
+  COMPBETA,
   TOTAL  // total number of types
 };
+enum class VLogStatType {
+  INVALID = 0,
+  NUM_VALUESREAD,
+  READALPHA,
+  READBETA,
+  COMPALPHA,
+  COMPBETA,
+  TOTAL  // total number of types
+};
+
 #endif //INDIRECT_VALUE_SUPPORT
 
 struct LevelStat {
@@ -440,7 +455,8 @@ class InternalStats {
       CompactionStats* compaction_stats_sum);
 #ifdef INDIRECT_VALUE_SUPPORT
   void DumpCFMapStatsRing(
-      std::map<int, std::map<RingStatType, double>>* level_stats);
+      std::map<int, std::map<RingStatType, double>>* level_stats,
+      std::map<VLogStatType, double> *vlog_stats);
 #endif //INDIRECT_VALUE_SUPPORT
   void DumpCFMapStatsIOStalls(std::map<std::string, std::string>* cf_stats);
   void DumpCFStats(std::string* value);

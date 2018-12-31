@@ -179,8 +179,15 @@ void PrepareRingStats(std::map<RingStatType, double>* ring_stats,
   (*ring_stats)[RingStatType::SIZE_BYTES] = static_cast<double>(file_size);
   (*ring_stats)[RingStatType::FRAGMENTATION] = fragmentation;
 }
+void PrepareVLogStats(std::map<VLogStatType, double>* vlog_stats,
+                       double nreads, double readalpha, double readbeta, double compalpha, double compbeta) {
+  (*vlog_stats)[VLogStatType::NUM_VALUESREAD] = nreads;
+  (*vlog_stats)[VLogStatType::READALPHA] = readalpha;
+  (*vlog_stats)[VLogStatType::READBETA] = readbeta;
+  (*vlog_stats)[VLogStatType::COMPALPHA] = compalpha;
+  (*vlog_stats)[VLogStatType::COMPBETA] = compbeta;
+}
 #endif
-
 
 void PrintLevelStats(char* buf, size_t len, const std::string& name,
                      const std::map<LevelStatType, double>& stat_value) {
@@ -1261,7 +1268,8 @@ void InternalStats::DumpCFMapStats(
 
 #ifdef INDIRECT_VALUE_SUPPORT
 void InternalStats::DumpCFMapStatsRing(
-    std::map<int, std::map<RingStatType, double>>* rings_stats) {
+    std::map<int, std::map<RingStatType, double>>* rings_stats,  // stats for each ring
+    std::map<VLogStatType, double>* vlog_stats) {
   double total_files = 0;
   int64_t total_file_size = 0;
   double total_frag = 0;
@@ -1285,6 +1293,10 @@ void InternalStats::DumpCFMapStatsRing(
   std::map<RingStatType, double> sum_stats;
   PrepareRingStats(&sum_stats, total_files, total_file_size, total_frag/static_cast<double>(total_rings));
   (*rings_stats)[-1] = sum_stats;  //  -1 is for the Sum level
+  double nreads, readalpha, readbeta, compalpha, compbeta;
+  cfd_->vlog()->VLogCalcStats(nreads, readalpha, readbeta, compalpha, compbeta);
+  PrepareVLogStats(vlog_stats, nreads, readalpha, readbeta, compalpha, compbeta);
+
 }
 #endif //INDIRECT_VALUE_SUPPORT
 
@@ -1487,7 +1499,8 @@ void InternalStats::DumpCFStatsNoFileHistogram(std::string* value) {
   value->append(buf);
   // Print stats for each ring
   std::map<int, std::map<RingStatType, double>> rings_stats;
-  DumpCFMapStatsRing(&rings_stats);
+  std::map<VLogStatType, double> vlog_stats;
+  DumpCFMapStatsRing(&rings_stats,&vlog_stats);
   std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
   for(uint32_t i = 0;i<vli.size();++i) {  // for each ring...
     if (rings_stats.find(i) != rings_stats.end()) {
@@ -1497,6 +1510,13 @@ void InternalStats::DumpCFStatsNoFileHistogram(std::string* value) {
   }
   // Print sum of ring stats
   PrintRingStats(buf, sizeof(buf), "Sum", rings_stats[-1]);
+  value->append(buf);
+  // Write out latency information
+  double nreads, readalpha, readbeta, compalpha, compbeta;
+  cfd_->vlog()->VLogCalcStats(nreads, readalpha, readbeta, compalpha, compbeta);
+  snprintf(buf, sizeof(buf), "VLog Read Latency over %.0f reads: %5.1f usec plus %6.3f usec/1000 bytes",vlog_stats[VLogStatType::NUM_VALUESREAD],vlog_stats[VLogStatType::READALPHA],vlog_stats[VLogStatType::READBETA]*1000);
+  value->append(buf);
+  snprintf(buf, sizeof(buf), "VLog Decompress Latency over %.0f reads: %5.1f usec plus %6.3f usec/1000 bytes",vlog_stats[VLogStatType::NUM_VALUESREAD],vlog_stats[VLogStatType::COMPALPHA],vlog_stats[VLogStatType::COMPBETA]*1000);
   value->append(buf);
 #endif //INDIRECT_VALUE_SUPPORT
   cf_stats_snapshot_.seconds_up = seconds_up;

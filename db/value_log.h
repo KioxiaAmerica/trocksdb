@@ -692,6 +692,10 @@ private:
   std::vector<FileMetaData *> waiting_sst_queues;  // queue headers when SSTs are queued awaiting init.  One per possible ring
   const ImmutableDBOptions *immdbopts_;  // options at time of creation
 
+  // statistics for Get(), read and decompress times.  We store AtA and Aty for computing a linear model of each
+  uint64_t statslenata00 = 0, statslenata01 = 0; uint64_t statslenata11[2] = {0,0};  // the data, {1,len} the 11 element is stored as low 32 bits and bits 32-95
+  uint64_t statsreadata0 = 0, statsreadata1 = 0, statscompata0 = 0, statscompata1 = 0;  //  the time spent reading and compressing
+
 public:
 
   VLog(){}  // used during testing for creating dummy VLog that is never used
@@ -752,6 +756,20 @@ public:
   // extract the ring# from the reference
   // Call VLogRingGet in the selected ring
 ;
+
+  // Calculate the statistics for VLog read and compression.  Each is a model a+bx, where result is in microsec and x is length in bytes
+  void VLogCalcStats(double& nreads, double& readalpha, double& readbeta, double& compalpha, double& compbeta) {
+    // Use Cramer's rule.  Do everything in double precision.  We accumulated the values in high-precision integers
+    nreads = (double)statslenata00;  // number of reads performed
+    double statslenatad = ((double)statslenata11[0]+(double)statslenata11[1]*4294967296.0);
+    double denom = (double)statslenata00 * statslenatad - (double)statslenata01 * (double)statslenata01;
+    if(denom>0) {
+      readalpha = ((double)statsreadata0 * statslenatad - (double)statslenata01 * (double)statsreadata1) / denom;
+      readbeta = ((double)statslenata00 * (double)statsreadata1 - (double)statslenata01 * (double)statsreadata0) / denom;
+      compalpha = ((double)statscompata0 * statslenatad - (double)statslenata01 * (double)statscompata1) / denom;
+      compbeta = ((double)statslenata00 * (double)statscompata1 - (double)statslenata01 * (double)statscompata0) / denom;
+    }else readalpha = readbeta = compalpha = compbeta = 0.0;
+  }
 
   // Given the level of an output file, return the ring number, if any, to write to (-1 if no ring)
   int VLogRingNoForLevelOutput(int level) { uint32_t i; for(i=0; i<starting_level_for_ring_.size() && level>=starting_level_for_ring_[i];++i); return int(i)-1;}  // advance if output can go into ring; back up to last such

@@ -1474,11 +1474,15 @@ Status VLog::VLogGet(
     return s = Status::Corruption("indirect reference is too short.");
   }
 
+  uint64_t starttime = immdbopts_->env->NowMicros();
+
   // Vector to the appropriate ring to do the read
   std::string ringresult;  // place where ring value will be read
   size_t dataoffset;   // offset in ringresult where the data starts (0 except for direct I/O)
   if(!(s = rings_[ref.Ringno()]->VLogRingGet(ref,ringresult,dataoffset)).ok())
     return s;  // read the data; if error reading, return the error.  Was logged in the ring
+
+  uint64_t readtime = immdbopts_->env->NowMicros(); uint64_t readdur = readtime - starttime;
 
   // check the CRC
   // CRC the type/data and compare the CRC to the value in the record
@@ -1512,6 +1516,15 @@ Status VLog::VLogGet(
     }
     result.assign(contents.data.data(),contents.data.size());  // move data to user's buffer
   }
+
+  uint64_t comptime = immdbopts_->env->NowMicros(); uint64_t compdur = comptime - readtime;
+
+  // Store the durations and lengths for statistics.  We are going to calculate a linear model a + b*length for each statistic.  Thus, we store
+  // AtA for the lengths and Aty for each statistic.  Each can be calculated incrementally as a sum of outer products
+  statslenata00 += 1; statslenata01 += ref.Len(); statslenata11[0] += ref.Len()*ref.Len();
+  statslenata11[1] += statslenata11[0]>>32; statslenata11[0] &= 0xffffffff;   // propagate low half to high half as needed
+  statsreadata0 += readdur;  statsreadata1 += readdur*ref.Len();  // add to ata for read time
+  statscompata0 += compdur;  statscompata1 += compdur*ref.Len();  // add to ata for comp time
 
   return s;
 
