@@ -1293,10 +1293,12 @@ void InternalStats::DumpCFMapStatsRing(
   std::map<RingStatType, double> sum_stats;
   PrepareRingStats(&sum_stats, total_files, total_file_size, total_frag/static_cast<double>(total_rings));
   (*rings_stats)[-1] = sum_stats;  //  -1 is for the Sum level
-  double nreads, readalpha, readbeta, compalpha, compbeta;
-  cfd_->vlog()->VLogCalcStats(nreads, readalpha, readbeta, compalpha, compbeta);
-  PrepareVLogStats(vlog_stats, nreads, readalpha, readbeta, compalpha, compbeta);
-
+  // Get the stats that apply to the entire VLog
+  if(cfd_->vlog()!=nullptr){
+    double nreads, readalpha, readbeta, compalpha, compbeta;
+    cfd_->vlog()->VLogCalcStats(nreads, readalpha, readbeta, compalpha, compbeta);
+    PrepareVLogStats(vlog_stats, nreads, readalpha, readbeta, compalpha, compbeta);
+  }
 }
 #endif //INDIRECT_VALUE_SUPPORT
 
@@ -1511,13 +1513,13 @@ void InternalStats::DumpCFStatsNoFileHistogram(std::string* value) {
   // Print sum of ring stats
   PrintRingStats(buf, sizeof(buf), "Sum", rings_stats[-1]);
   value->append(buf);
-  // Write out latency information
-  double nreads, readalpha, readbeta, compalpha, compbeta;
-  cfd_->vlog()->VLogCalcStats(nreads, readalpha, readbeta, compalpha, compbeta);
-  snprintf(buf, sizeof(buf), "VLog Read Latency over %.0f reads: %5.1f usec plus %6.3f usec/1000 bytes",vlog_stats[VLogStatType::NUM_VALUESREAD],vlog_stats[VLogStatType::READALPHA],vlog_stats[VLogStatType::READBETA]*1000);
-  value->append(buf);
-  snprintf(buf, sizeof(buf), "VLog Decompress Latency over %.0f reads: %5.1f usec plus %6.3f usec/1000 bytes",vlog_stats[VLogStatType::NUM_VALUESREAD],vlog_stats[VLogStatType::COMPALPHA],vlog_stats[VLogStatType::COMPBETA]*1000);
-  value->append(buf);
+  if(cfd_->vlog()!=nullptr){
+    // Write out latency information, if there are rings
+    snprintf(buf, sizeof(buf), "VLog Read Latency over %.0f reads: %5.1f usec plus %6.3f usec/1000 bytes",vlog_stats[VLogStatType::NUM_VALUESREAD],vlog_stats[VLogStatType::READALPHA],vlog_stats[VLogStatType::READBETA]*1000);
+    value->append(buf);
+    snprintf(buf, sizeof(buf), "VLog Decompress Latency over %.0f reads: %5.1f usec plus %6.3f usec/1000 bytes",vlog_stats[VLogStatType::NUM_VALUESREAD],vlog_stats[VLogStatType::COMPALPHA],vlog_stats[VLogStatType::COMPBETA]*1000);
+    value->append(buf);
+  }
 #endif //INDIRECT_VALUE_SUPPORT
   cf_stats_snapshot_.seconds_up = seconds_up;
   cf_stats_snapshot_.ingest_bytes_flush = flush_ingest;
