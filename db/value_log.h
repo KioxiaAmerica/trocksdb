@@ -694,7 +694,7 @@ private:
 
   // statistics for Get(), read and decompress times.  We store AtA and Aty for computing a linear model of each
   uint64_t statslenata00 = 0, statslenata01 = 0; uint64_t statslenata11[2] = {0,0};  // the data, {1,len} the 11 element is stored as low 32 bits and bits 32-95
-  uint64_t statsreadata0 = 0, statsreadata1 = 0, statscompata0 = 0, statscompata1 = 0;  //  the time spent reading and compressing
+  uint64_t statsreadata0 = 0, statsreadata1[2] = {0,0}, statscompata0 = 0, statscompata1[2] = {0,0};  //  the time spent reading and compressing
 
 public:
 
@@ -758,16 +758,23 @@ public:
 ;
 
   // Calculate the statistics for VLog read and compression.  Each is a model a+bx, where result is in microsec and x is length in bytes
-  void VLogCalcStats(double& nreads, double& readalpha, double& readbeta, double& compalpha, double& compbeta) {
+  void VLogCalcStats(double& nreads, double& avglen, double& readavg, double& readalpha, double& readbeta, double& compavg, double& compalpha, double& compbeta) {
     // Use Cramer's rule.  Do everything in double precision.  We accumulated the values in high-precision integers
     nreads = (double)statslenata00;  // number of reads performed
-    double statslenatad = ((double)statslenata11[0]+(double)statslenata11[1]*4294967296.0);
+    double statslenatad = (double)statslenata11[0]+(double)statslenata11[1]*4294967296.0;
+    double statsreadd = (double)statsreadata1[0]+(double)statsreadata1[1]*4294967296.0;
+    double statscompd = (double)statscompata1[0]+(double)statscompata1[1]*4294967296.0;
     double denom = (double)statslenata00 * statslenatad - (double)statslenata01 * (double)statslenata01;
+    if(nreads>0){
+      avglen = (double)statslenata01/nreads;   // total len/# reads
+      readavg = (double)statsreadata0/nreads;  // total time/# reads
+      compavg = (double)statscompata0/nreads;  // total time/# reads
+    } else avglen = readavg = compavg = 0.0;  // if no reads, no meaningful stats
     if(denom>0) {
-      readalpha = ((double)statsreadata0 * statslenatad - (double)statslenata01 * (double)statsreadata1) / denom;
-      readbeta = ((double)statslenata00 * (double)statsreadata1 - (double)statslenata01 * (double)statsreadata0) / denom;
-      compalpha = ((double)statscompata0 * statslenatad - (double)statslenata01 * (double)statscompata1) / denom;
-      compbeta = ((double)statslenata00 * (double)statscompata1 - (double)statslenata01 * (double)statscompata0) / denom;
+      readalpha = ((double)statsreadata0 * statslenatad - (double)statslenata01 * statsreadd) / denom;
+      readbeta = ((double)statslenata00 * statsreadd - (double)statslenata01 * (double)statsreadata0) / denom;
+      compalpha = ((double)statscompata0 * statslenatad - (double)statslenata01 * statscompd) / denom;
+      compbeta = ((double)statslenata00 * statscompd - (double)statslenata01 * (double)statscompata0) / denom;
     }else readalpha = readbeta = compalpha = compbeta = 0.0;
   }
 

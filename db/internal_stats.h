@@ -96,8 +96,11 @@ enum class RingStatType {
 enum class VLogStatType {
   INVALID = 0,
   NUM_VALUESREAD,
+  AVGRDLEN,
+  READAVG,
   READALPHA,
   READBETA,
+  COMPAVG,
   COMPALPHA,
   COMPBETA,
   TOTAL  // total number of types

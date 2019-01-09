@@ -180,10 +180,13 @@ void PrepareRingStats(std::map<RingStatType, double>* ring_stats,
   (*ring_stats)[RingStatType::FRAGMENTATION] = fragmentation;
 }
 void PrepareVLogStats(std::map<VLogStatType, double>* vlog_stats,
-                       double nreads, double readalpha, double readbeta, double compalpha, double compbeta) {
+                       double nreads, double avglen, double readavg, double readalpha, double readbeta, double compavg, double compalpha, double compbeta) {
   (*vlog_stats)[VLogStatType::NUM_VALUESREAD] = nreads;
+  (*vlog_stats)[VLogStatType::AVGRDLEN] = avglen;
+  (*vlog_stats)[VLogStatType::READAVG] = readavg;
   (*vlog_stats)[VLogStatType::READALPHA] = readalpha;
   (*vlog_stats)[VLogStatType::READBETA] = readbeta;
+  (*vlog_stats)[VLogStatType::COMPAVG] = compavg;
   (*vlog_stats)[VLogStatType::COMPALPHA] = compalpha;
   (*vlog_stats)[VLogStatType::COMPBETA] = compbeta;
 }
@@ -1295,9 +1298,9 @@ void InternalStats::DumpCFMapStatsRing(
   (*rings_stats)[-1] = sum_stats;  //  -1 is for the Sum level
   // Get the stats that apply to the entire VLog
   if(cfd_->vlog()!=nullptr){
-    double nreads, readalpha, readbeta, compalpha, compbeta;
-    cfd_->vlog()->VLogCalcStats(nreads, readalpha, readbeta, compalpha, compbeta);
-    PrepareVLogStats(vlog_stats, nreads, readalpha, readbeta, compalpha, compbeta);
+    double nreads, avglen, readavg, readalpha, readbeta, compavg, compalpha, compbeta;
+    cfd_->vlog()->VLogCalcStats(nreads, avglen, readavg, readalpha, readbeta, compavg, compalpha, compbeta);
+    PrepareVLogStats(vlog_stats, nreads, avglen, readavg, readalpha, readbeta, compavg, compalpha, compbeta);
   }
 }
 #endif //INDIRECT_VALUE_SUPPORT
@@ -1515,9 +1518,11 @@ void InternalStats::DumpCFStatsNoFileHistogram(std::string* value) {
   value->append(buf);
   if(cfd_->vlog()!=nullptr){
     // Write out latency information, if there are rings
-    snprintf(buf, sizeof(buf), "VLog Read Latency over %.0f reads: %5.1f usec plus %6.3f usec/1000 bytes",vlog_stats[VLogStatType::NUM_VALUESREAD],vlog_stats[VLogStatType::READALPHA],vlog_stats[VLogStatType::READBETA]*1000);
+    snprintf(buf, sizeof(buf), "VLog Read Latency over %.0f reads with average length %.0f: %7.3f usec (a+bx model: %7.3f usec plus %6.3f usec/1000 bytes)\n",
+      vlog_stats[VLogStatType::NUM_VALUESREAD],vlog_stats[VLogStatType::AVGRDLEN],vlog_stats[VLogStatType::READAVG],vlog_stats[VLogStatType::READALPHA],vlog_stats[VLogStatType::READBETA]*1000);
     value->append(buf);
-    snprintf(buf, sizeof(buf), "VLog Decompress Latency over %.0f reads: %5.1f usec plus %6.3f usec/1000 bytes",vlog_stats[VLogStatType::NUM_VALUESREAD],vlog_stats[VLogStatType::COMPALPHA],vlog_stats[VLogStatType::COMPBETA]*1000);
+    snprintf(buf, sizeof(buf), "VLog Decompress Latency over %.0f reads with average length %.0f: %7.3f usec (a+bx model: %7.3f usec plus %6.3f usec/1000 bytes)\n",
+      vlog_stats[VLogStatType::NUM_VALUESREAD],vlog_stats[VLogStatType::AVGRDLEN],vlog_stats[VLogStatType::COMPAVG],vlog_stats[VLogStatType::COMPALPHA],vlog_stats[VLogStatType::COMPBETA]*1000);
     value->append(buf);
   }
 #endif //INDIRECT_VALUE_SUPPORT
