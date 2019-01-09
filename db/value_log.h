@@ -759,23 +759,30 @@ public:
 
   // Calculate the statistics for VLog read and compression.  Each is a model a+bx, where result is in microsec and x is length in bytes
   void VLogCalcStats(double& nreads, double& avglen, double& readavg, double& readalpha, double& readbeta, double& compavg, double& compalpha, double& compbeta) {
-    // Use Cramer's rule.  Do everything in double precision.  We accumulated the values in high-precision integers
+    readalpha = readbeta = compalpha = compbeta = 0.0;  // set return in case no model
+    // Do everything in double precision.  We accumulated the values in high-precision integers.  First convert to double
     nreads = (double)statslenata00;  // number of reads performed
-    double statslenatad = (double)statslenata11[0]+(double)statslenata11[1]*4294967296.0;
-    double statsreadd = (double)statsreadata1[0]+(double)statsreadata1[1]*4294967296.0;
-    double statscompd = (double)statscompata1[0]+(double)statscompata1[1]*4294967296.0;
-    double denom = (double)statslenata00 * statslenatad - (double)statslenata01 * (double)statslenata01;
+    double statslenatad = (double)statslenata11[0]+(double)statslenata11[1]*4294967296.0;  // sum of length^2
+    double statsreadd = (double)statsreadata1[0]+(double)statsreadata1[1]*4294967296.0;  // sum of length*readdur
+    double statscompd = (double)statscompata1[0]+(double)statscompata1[1]*4294967296.0;  // sum of length*compdur
     if(nreads>0){
       avglen = (double)statslenata01/nreads;   // total len/# reads
       readavg = (double)statsreadata0/nreads;  // total time/# reads
       compavg = (double)statscompata0/nreads;  // total time/# reads
+      // Calculate the variance of the length-of-read.
+      // If the stddev is not more than the uncertainty in the read length (say, 4096 bytes), skip the a+bx model
+      double lenvariance = (statslenatad - ((double)statslenata01 * (double)statslenata01)) / nreads;  // sum(len^2) - sum(len)^2 
+      if(lenvariance > 4096*4096){  // if stddev is big enough...
+        // Use Cramer's rule.  If AtA is singular, no model
+        double denom = (double)statslenata00 * statslenatad - (double)statslenata01 * (double)statslenata01;
+        if(denom>0) {
+          readalpha = ((double)statsreadata0 * statslenatad - (double)statslenata01 * statsreadd) / denom;
+          readbeta = ((double)statslenata00 * statsreadd - (double)statslenata01 * (double)statsreadata0) / denom;
+          compalpha = ((double)statscompata0 * statslenatad - (double)statslenata01 * statscompd) / denom;
+          compbeta = ((double)statslenata00 * statscompd - (double)statslenata01 * (double)statscompata0) / denom;
+        }
+      }
     } else avglen = readavg = compavg = 0.0;  // if no reads, no meaningful stats
-    if(denom>0) {
-      readalpha = ((double)statsreadata0 * statslenatad - (double)statslenata01 * statsreadd) / denom;
-      readbeta = ((double)statslenata00 * statsreadd - (double)statslenata01 * (double)statsreadata0) / denom;
-      compalpha = ((double)statscompata0 * statslenatad - (double)statslenata01 * statscompd) / denom;
-      compbeta = ((double)statslenata00 * statscompd - (double)statslenata01 * (double)statscompata0) / denom;
-    }else readalpha = readbeta = compalpha = compbeta = 0.0;
   }
 
   // Given the level of an output file, return the ring number, if any, to write to (-1 if no ring)

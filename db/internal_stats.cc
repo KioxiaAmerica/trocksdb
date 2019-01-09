@@ -1518,12 +1518,22 @@ void InternalStats::DumpCFStatsNoFileHistogram(std::string* value) {
   value->append(buf);
   if(cfd_->vlog()!=nullptr){
     // Write out latency information, if there are rings
-    snprintf(buf, sizeof(buf), "VLog Read Latency over %.0f reads with average length %.0f: %7.3f usec (a+bx model: %7.3f usec plus %6.3f usec/1000 bytes)\n",
-      vlog_stats[VLogStatType::NUM_VALUESREAD],vlog_stats[VLogStatType::AVGRDLEN],vlog_stats[VLogStatType::READAVG],vlog_stats[VLogStatType::READALPHA],vlog_stats[VLogStatType::READBETA]*1000);
+    snprintf(buf, sizeof(buf), "VLog Read Latency over %.0f reads with average length %.0f: %7.3f usec",
+      vlog_stats[VLogStatType::NUM_VALUESREAD],vlog_stats[VLogStatType::AVGRDLEN],vlog_stats[VLogStatType::READAVG]);
     value->append(buf);
-    snprintf(buf, sizeof(buf), "VLog Decompress Latency over %.0f reads with average length %.0f: %7.3f usec (a+bx model: %7.3f usec plus %6.3f usec/1000 bytes)\n",
-      vlog_stats[VLogStatType::NUM_VALUESREAD],vlog_stats[VLogStatType::AVGRDLEN],vlog_stats[VLogStatType::COMPAVG],vlog_stats[VLogStatType::COMPALPHA],vlog_stats[VLogStatType::COMPBETA]*1000);
+    if(vlog_stats[VLogStatType::READALPHA]!=0.0){  // append a+bx model only if it is valid
+      snprintf(buf, sizeof(buf), " (a+bx model: %7.3f usec plus %6.3f usec/1000 bytes)",vlog_stats[VLogStatType::READALPHA],vlog_stats[VLogStatType::READBETA]*1000);
+      value->append(buf);
+    }
+    value->append("\n");
+    snprintf(buf, sizeof(buf), "VLog Decompress Latency over %.0f reads with average length %.0f: %7.3f usec",   // repeat for compression latency
+      vlog_stats[VLogStatType::NUM_VALUESREAD],vlog_stats[VLogStatType::AVGRDLEN],vlog_stats[VLogStatType::COMPAVG]);
     value->append(buf);
+    if(vlog_stats[VLogStatType::COMPALPHA]!=0.0){
+      snprintf(buf, sizeof(buf), " (a+bx model: %7.3f usec plus %6.3f usec/1000 bytes)",vlog_stats[VLogStatType::COMPALPHA],vlog_stats[VLogStatType::COMPBETA]*1000);
+      value->append(buf);
+    }
+    value->append("\n");
   }
 #endif //INDIRECT_VALUE_SUPPORT
   cf_stats_snapshot_.seconds_up = seconds_up;

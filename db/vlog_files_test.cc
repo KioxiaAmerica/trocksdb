@@ -291,7 +291,7 @@ static void ListVLogFileSizes(DBVLogTest *db, std::vector<uint64_t>& vlogfilesiz
 static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
 #endif
 
-#if 0  // turn on for sequential write test with multiple L0 compactions
+#if 1  // turn on for sequential write test with multiple L0 compactions
 TEST_F(DBVLogTest, SequentialWriteTest) {
  // Generate Puts as fast as we can, to overrun the compactor and  force multiple parallel L0 compactions
   const int32_t value_ref_size = 16;  // length of indirect reference
