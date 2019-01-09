@@ -1971,6 +1971,8 @@ printf("files by level:"); for (int level = 0; level < num_levels(); level++)pri
     // a waste of time.  Moreover, sorting interferes with detecting sequential loads: we want to pick the oldest file so that when we compare all
     // the others against it we find that all the others have later keys: then we can grab them all for an overlapped compaction
     CompactionPri compaction_pri_to_use = (level==0)?kReverseOrder:file0?kReservedInternal:compaction_pri;
+#else
+    CompactionPri compaction_pri_to_use = compaction_pri;
 #endif
     switch (compaction_pri_to_use) {
 #ifdef INDIRECT_VALUE_SUPPORT

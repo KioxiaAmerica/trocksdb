@@ -1,6 +1,6 @@
 # MySQL config file for small systems.
 #
-# Config Version 1.2
+# Config Version 1.5
 #
 # This is for a system with little memory (<= 64M) where MySQL is only used
 # from time to time and it's important that the mysqld daemon
@@ -81,8 +81,8 @@ rocksdb_block_cache_size=32g
 rocksdb_table_cache_numshardbits=6
 
 # rate limiter
-rocksdb_bytes_per_sync=16m
-rocksdb_wal_bytes_per_sync=4m
+rocksdb_bytes_per_sync=8m
+rocksdb_wal_bytes_per_sync=8m
 #rocksdb_rate_limiter_bytes_per_sec=104857600 #100MB/s
 #
 # # triggering compaction if there are many sequential deletes
@@ -90,7 +90,7 @@ rocksdb_compaction_sequential_deletes_count_sd=1
 rocksdb_compaction_sequential_deletes=199999
 rocksdb_compaction_sequential_deletes_window=200000
 
-rocksdb_default_cf_options="write_buffer_size=256m;target_file_size_base=32m;max_bytes_for_level_base=512m;max_write_buffer_number=4;level0_file_num_compaction_trigger=4;level0_slowdown_writes_trigger=20;level0_stop_writes_trigger=30;max_write_buffer_number=4;block_based_table_factory={cache_index_and_filter_blocks=1;filter_policy=bloomfilter:10:false;whole_key_filtering=0};level_compaction_dynamic_level_bytes=true;optimize_filters_for_hits=true;memtable_prefix_bloom_size_ratio=0.05;prefix_extractor=capped:12;compaction_pri=kMinOverlappingRatio;compression=kNoCompression;bottommost_compression=kNoCompression;compression_opts=-14:4:0"
+rocksdb_default_cf_options="write_buffer_size=32m;target_file_size_base=4m;max_bytes_for_level_base=128m;max_write_buffer_number=4;level0_file_num_compaction_trigger=4;level0_slowdown_writes_trigger=8;level0_stop_writes_trigger=20;max_write_buffer_number=4;block_based_table_factory={cache_index_and_filter_blocks=1;filter_policy=bloomfilter:10:false;whole_key_filtering=0};level_compaction_dynamic_level_bytes=true;optimize_filters_for_hits=true;memtable_prefix_bloom_size_ratio=0.05;prefix_extractor=capped:12;compaction_pri=kMinOverlappingRatio;compression=kNoCompression;bottommost_compression=kNoCompression;compression_opts=-14:4:0"
 
 rocksdb_max_subcompactions=4
 rocksdb_compaction_readahead_size=16m
