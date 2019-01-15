@@ -1496,6 +1496,7 @@ Status VLog::VLogGet(
     }
     crcint>>=8;  // move to next byte
   }
+  uint64_t comptime = immdbopts_->env->NowMicros(); uint64_t compdur = comptime - readtime;
 
    // extract the compression type and decompress the data
   unsigned char ctype = ringresult[dataoffset];
@@ -1517,16 +1518,17 @@ Status VLog::VLogGet(
     result.assign(contents.data.data(),contents.data.size());  // move data to user's buffer
   }
 
-  uint64_t comptime = immdbopts_->env->NowMicros(); uint64_t compdur = comptime - readtime;
 
   // Store the durations and lengths for statistics.  We are going to calculate a linear model a + b*length for each statistic.  Thus, we store
   // AtA for the lengths and Aty for each statistic.  Each can be calculated incrementally as a sum of outer products
-  statslenata00 += 1; statslenata01 += ref.Len(); statslenata11[0] += ref.Len()*ref.Len();
-  statslenata11[1] += statslenata11[0]>>32; statslenata11[0] &= 0xffffffff;   // propagate low half to high half as needed
-  statsreadata0 += readdur;  statsreadata1[0] += readdur*ref.Len();  // add to ata for read time
-  statsreadata1[1] += statsreadata1[0]>>32; statsreadata1[0] &= 0xffffffff;   // propagate low half to high half as needed
-  statscompata0 += compdur;  statscompata1[0] += compdur*ref.Len();  // add to ata for comp time
-  statscompata1[1] += statscompata1[0]>>32; statscompata1[0] &= 0xffffffff;   // propagate low half to high half as needed
+  AcquireLock();  // lock before modifying shared stats.  Eccch!  All that trouble avoiding locks on the ring, and now this.
+    statslenata00 += 1; statslenata01 += ref.Len(); statslenata11[0] += ref.Len()*ref.Len();
+    statslenata11[1] += statslenata11[0]>>32; statslenata11[0] &= 0xffffffff;   // propagate low half to high half as needed
+    statsreadata0 += readdur;  statsreadata1[0] += readdur*ref.Len();  // add to ata for read time
+    statsreadata1[1] += statsreadata1[0]>>32; statsreadata1[0] &= 0xffffffff;   // propagate low half to high half as needed
+    statscompata0 += compdur;  statscompata1[0] += compdur*ref.Len();  // add to ata for comp time
+    statscompata1[1] += statscompata1[0]>>32; statscompata1[0] &= 0xffffffff;   // propagate low half to high half as needed
+  ReleaseLock();
 
   return s;
 

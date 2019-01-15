@@ -119,7 +119,7 @@ TEST_F(DBSSTTest, SSTsWithLdbSuffixHandling) {
 
   Reopen(options);
   for (int k = 0; k < key_id; ++k) {
-    ASSERT_NE("NOT_FOUND", Get(Key(k)));
+    ASSERT_NE("NOT_FOUND", Get(KeyNewFile(k)));
   }
   Destroy(options);
 }
