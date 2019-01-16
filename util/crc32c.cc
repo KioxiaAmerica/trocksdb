@@ -678,7 +678,7 @@ __attribute__((__no_sanitize_undefined__))
 uint32_t crc32c_3way(uint32_t crc, const char* buf, size_t len) {
   uint64_t crc0, crc1, crc2;
 
-size_t scaflen = len;
+#ifdef INDIRECT_VALUE_SUPPORT  // this is of general value, to save cache space and dispatch instructions faster
   crc0 = crc ^ 0xffffffffu;
   const unsigned char* ubuf = (const unsigned char*)buf;  // $%##!^ type checking
   // if there is even one 8-byte aligned section, align to 8-byte boundary
@@ -697,6 +697,10 @@ size_t scaflen = len;
   for(;ntriplets;ntriplets-=blocksize){
     // calculate block size and starting block addresses
     blocksize=((ntriplets-1)&127)+1; uint64_t *block1=block0+blocksize, *block2=block1+blocksize;
+    // The multiplier gives the polynomials that correspond to a delay of blocksize and of 2*blocksize
+    // This load will very likely miss in cache, so we start it before the loop
+    const auto multiplier =
+      *(reinterpret_cast<const __m128i*>(clmul_constants) + blocksize - 1);
 
     // loop through all the words of the block except the last, accumulating the CRCs
     crc1 = crc2 = 0;  // init zero checksum for the later blocks.  crc0 has the checksum of previous words
@@ -704,10 +708,24 @@ size_t scaflen = len;
 
     // finish the block by handling the first 2 words as a doublet, then combining the CRCs along with the last word of the third block.
     // combining adjusts the polynomials of the first 2 blocks to account for the delay to the third block.
-    CRCdupletpp(crc, block); ++block2; // finish CRC of blocks 0 & 1; advance block2 to one past the block, to match spec for CombineCRC
+    CRCdupletpp(crc, block); // finish CRC of blocks 0 & 1
 
-    // Combining the CRCs 
-    crc0 = CombineCRC(blocksize, crc0, crc1, crc2, block2);  // finish CRC of block2 and join CRCs together
+    // Combining the CRCs.  This takes around 13 clocks.  It would be possible to start CRCs for the next block while the multiplications are
+    // going on, or to run off a few more crc2 cyles, but then we would have to move crc0 and 1 forward more and we would need to extend the
+    // delay-polynomial table, and we don't know how it was built.  The initialization for the next loop will finish while this is going on.
+    // Apply the 2*blocksize polynomial to crc0
+    const auto crc0_xmm = _mm_set_epi64x(0, crc0);
+    const auto res0 = _mm_clmulepi64_si128(crc0_xmm, multiplier, 0x00);
+    // Apply the blocksize polynomial to crc1
+    const auto crc1_xmm = _mm_set_epi64x(0, crc1);
+    const auto res1 = _mm_clmulepi64_si128(crc1_xmm, multiplier, 0x10);
+    // Combine the (lower parts of the) two, now moved to the same delay as *block2
+    const auto res = _mm_xor_si128(res0, res1);
+    crc0 = _mm_cvtsi128_si64(res);
+    // Bring in *block2, so that it includes crc0 and crc1
+    crc0 = crc0 ^ *block2++;
+    // fold *block2, and the two previous blocks, into crc2; move that to the output crc0
+    crc0 = _mm_crc32_u64(crc2, crc0);
     block0 = block2;  // point block0 to start of next block
   }
 
@@ -719,10 +737,7 @@ size_t scaflen = len;
   // append the CRC for any trailing bytes
   ubuf = (const unsigned char*)block0;  // $%##!^ type checking
   align_to_8(len&7, crc0, ubuf);
-uint64_t scafcrc0 = crc0;
-len=scaflen;
-
-
+#else
   uint64_t count;
   crc0 = crc ^ 0xffffffffu;
   const unsigned char* next = (const unsigned char*)buf;
@@ -1246,13 +1261,10 @@ len=scaflen;
       case 0:;
     }
   }
-  {
-    align_to_8(len, crc0, next);
-if(scafcrc0!=crc0)
-printf("CRC mismatch!\n");
+  align_to_8(len, crc0, next);
+#endif
 
-    return (uint32_t)crc0 ^ 0xffffffffu;
-  }
+  return (uint32_t)crc0 ^ 0xffffffffu;
 }
 
 #endif //HAVE_SSE42 && HAVE_PCLMUL
