@@ -527,12 +527,22 @@ std::string IsFastCrc32Supported() {
   crc##1 = _mm_crc32_u64(crc##1, *(buf##1 + offset)); \
   crc##2 = _mm_crc32_u64(crc##2, *(buf##2 + offset));
 
+#define CRCtripletpp(crc, buf)                  \
+ { crc##0 = _mm_crc32_u64(crc##0, *buf##0++); \
+  crc##1 = _mm_crc32_u64(crc##1, *buf##1++); \
+  crc##2 = _mm_crc32_u64(crc##2, *buf##2++);}
+
 #define CRCduplet(crc, buf, offset)                   \
   crc##0 = _mm_crc32_u64(crc##0, *(buf##0 + offset)); \
   crc##1 = _mm_crc32_u64(crc##1, *(buf##1 + offset));
+#define CRCdupletpp(crc, buf)                   \
+  {crc##0 = _mm_crc32_u64(crc##0, *buf##0); \
+  crc##1 = _mm_crc32_u64(crc##1, *buf##1);}
 
 #define CRCsinglet(crc, buf, offset)                    \
   crc = _mm_crc32_u64(crc, *(uint64_t*)(buf + offset));
+#define CRCsingletpp(crc, buf)                    \
+  crc = _mm_crc32_u64(crc, *buf);
 
 
 // Numbers taken directly from intel whitepaper.
@@ -634,7 +644,9 @@ inline void align_to_8(
 
 //
 // CombineCRC performs pclmulqdq multiplication of 2 partial CRC's and a well
-// chosen constant and xor's these with the remaining CRC.
+// chosen constant and xor's these with the remaining CRC.  This compines 3 CRCs that were computed on sequential blocks
+// each of size block_size into one CRC for the combined blocks.  CRC0 is delayed by block_size, then CRC0 and CRC1 are delayed, then
+// CRC2 is XORed in (after one more input word is read and CRCd to it - note this input word is at next2[-1]!)
 //
 inline uint64_t CombineCRC(
     size_t block_size,
@@ -664,12 +676,56 @@ __attribute__((__no_sanitize_undefined__))
 #endif
 #endif
 uint32_t crc32c_3way(uint32_t crc, const char* buf, size_t len) {
-  const unsigned char* next = (const unsigned char*)buf;
-  uint64_t count;
   uint64_t crc0, crc1, crc2;
+
+size_t scaflen = len;
   crc0 = crc ^ 0xffffffffu;
+  const unsigned char* ubuf = (const unsigned char*)buf;  // $%##!^ type checking
+  // if there is even one 8-byte aligned section, align to 8-byte boundary
+  if((((uintptr_t)ubuf+7)&-8) < (((uintptr_t)ubuf+len)&-8)){
+   uint64_t bytes_to_crc = -(intptr_t)ubuf & 7;  // see how many there are to do
+   align_to_8(bytes_to_crc, crc0, ubuf);  // crc0 and ubuf are updated
+   len -= bytes_to_crc;  // remove the aligned bytes from len too
+  }
+
+  // do all 24-byte triplets.  The triplets each take 1 word from each of 3 blocks.
+  // Calculate #triplets, then loop through them in blocks of at most 128 triplets (that's the max size we can join together)
+  uint64_t ntriplets = len/24;
+  len -= ntriplets*24;  // remove the length we are about to process
+  int64_t blocksize;  // number of triplets in the current block
+  uint64_t *block0 = (uint64_t *)ubuf;  // starting pointer to the first block
+  for(;ntriplets;ntriplets-=blocksize){
+    // calculate block size and starting block addresses
+    blocksize=((ntriplets-1)&127)+1; uint64_t *block1=block0+blocksize, *block2=block1+blocksize;
+
+    // loop through all the words of the block except the last, accumulating the CRCs
+    crc1 = crc2 = 0;  // init zero checksum for the later blocks.  crc0 has the checksum of previous words
+    for(int64_t i=blocksize-2; i>=0; --i)CRCtripletpp(crc, block);
+
+    // finish the block by handling the first 2 words as a doublet, then combining the CRCs along with the last word of the third block.
+    // combining adjusts the polynomials of the first 2 blocks to account for the delay to the third block.
+    CRCdupletpp(crc, block); ++block2; // finish CRC of blocks 0 & 1; advance block2 to one past the block, to match spec for CombineCRC
+
+    // Combining the CRCs 
+    crc0 = CombineCRC(blocksize, crc0, crc1, crc2, block2);  // finish CRC of block2 and join CRCs together
+    block0 = block2;  // point block0 to start of next block
+  }
+
+  // crc0 has the CRC, block0 points to the next input (it might not be aligned)
+  // there are at most 2 full qwords left.  process them
+  if(len>=8)CRCsingletpp(crc0, block0++);
+  if(len>=16)CRCsingletpp(crc0, block0++);
+  
+  // append the CRC for any trailing bytes
+  ubuf = (const unsigned char*)block0;  // $%##!^ type checking
+  align_to_8(len&7, crc0, ubuf);
+uint64_t scafcrc0 = crc0;
+len=scaflen;
 
 
+  uint64_t count;
+  crc0 = crc ^ 0xffffffffu;
+  const unsigned char* next = (const unsigned char*)buf;
   if (len >= 8) {
     // if len > 216 then align and use triplets
     if (len > 216) {
@@ -1192,6 +1248,9 @@ uint32_t crc32c_3way(uint32_t crc, const char* buf, size_t len) {
   }
   {
     align_to_8(len, crc0, next);
+if(scafcrc0!=crc0)
+printf("CRC mismatch!\n");
+
     return (uint32_t)crc0 ^ 0xffffffffu;
   }
 }
