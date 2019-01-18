@@ -115,7 +115,6 @@ TEST(CRC, StandardResults) {
         expected.length - partialLength);
     EXPECT_EQ(~expected.crc32c, result);
   }
-for(size_t ii=0;ii<100000;++ii)Value(buffer,ii);  // scaf
 }
 
 TEST(CRC, Values) {

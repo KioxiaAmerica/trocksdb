@@ -535,9 +535,6 @@ std::string IsFastCrc32Supported() {
 #define CRCduplet(crc, buf, offset)                   \
   crc##0 = _mm_crc32_u64(crc##0, *(buf##0 + offset)); \
   crc##1 = _mm_crc32_u64(crc##1, *(buf##1 + offset));
-#define CRCdupletpp(crc, buf)                   \
-  {crc##0 = _mm_crc32_u64(crc##0, *buf##0); \
-  crc##1 = _mm_crc32_u64(crc##1, *buf##1);}
 
 #define CRCsinglet(crc, buf, offset)                    \
   crc = _mm_crc32_u64(crc, *(uint64_t*)(buf + offset));
@@ -548,6 +545,40 @@ std::string IsFastCrc32Supported() {
 // Numbers taken directly from intel whitepaper.
 // clang-format off
 const uint64_t clmul_constants[] = {
+#ifdef INDIRECT_VALUE_SUPPORT
+0x0f20c0dfe, 0x0f20c0dfe, 0x1384aa63a, 0x0ba4fc28e, 0x01c291d04, 0x1384aa63a, 0x0740eef02, 0x1d82c63da, 
+0x0083a6eec, 0x01c291d04, 0x1c1733996, 0x09e4addf8, 0x02ad91c30, 0x0740eef02, 0x06992cea2, 0x039d3b296, 
+0x07e908048, 0x0083a6eec, 0x11ed1f9d8, 0x102f9b8a2, 0x0f1d0f55e, 0x1c1733996, 0x0a87ab8a8, 0x14237f5e6, 
+0x08462d800, 0x02ad91c30, 0x071d111a8, 0x00d3b6092, 0x0ffd852c6, 0x06992cea2, 0x0dcb17aa4, 0x0c96cfdc0, 
+0x0f37c5aee, 0x07e908048, 0x06051d5a2, 0x18266e456, 0x11d5ca20e, 0x11ed1f9d8, 0x021f3d99c, 0x0daece73e, 
+0x08f158014, 0x0f1d0f55e, 0x1a5e82106, 0x0ab7aff2a, 0x188815ab2, 0x0a87ab8a8, 0x105405f3e, 0x1248ea574, 
+0x0e9adf796, 0x08462d800, 0x096638b34, 0x083348832, 0x1e50585a0, 0x071d111a8, 0x19f1c69dc, 0x12c743124, 
+0x12913343e, 0x0ffd852c6, 0x088f25a3a, 0x0b9e02b86, 0x04e36f0b0, 0x0dcb17aa4, 0x0bd6f81f8, 0x018b33a4e, 
+0x19425cbba, 0x0f37c5aee, 0x18db37e8a, 0x1b331e26a, 0x04c144932, 0x06051d5a2, 0x052148f02, 0x17d35ba46, 
+0x0a3c6f37a, 0x11d5ca20e, 0x1d22c238e, 0x1bf2e8b8a, 0x063ded06a, 0x021f3d99c, 0x04d56973c, 0x1a3e0968a, 
+0x19385bf2e, 0x08f158014, 0x0e417f38a, 0x0ce7f39f4, 0x14e727980, 0x1a5e82106, 0x0d104b8fc, 0x061d82e56, 
+0x05b397730, 0x188815ab2, 0x0e78eb416, 0x0d270f1a2, 0x1641378f0, 0x105405f3e, 0x08d96551c, 0x1c3f5f66c, 
+0x00bf80dd2, 0x0e9adf796, 0x18dcddd1c, 0x12ed0daac, 0x06a45d2b2, 0x096638b34, 0x1dd3e10e8, 0x065863b64, 
+0x0de87806c, 0x1e50585a0, 0x014338754, 0x11eef4f8e, 0x15e3e77ee, 0x19f1c69dc, 0x0dd07448e, 0x1ee54f54c, 
+0x1d8048348, 0x12913343e, 0x0a3e3e02c, 0x0b3e32c28, 0x0d73c7bea, 0x088f25a3a, 0x185137662, 0x0064f7f26, 
+0x18a08b5bc, 0x04e36f0b0, 0x1da758ae0, 0x0dd7e3b0c, 0x169cf9eb0, 0x0bd6f81f8, 0x0fe314258, 0x0f285651c, 
+0x00d8373a0, 0x19425cbba, 0x019e3635e, 0x010746f3c, 0x029f268b4, 0x18db37e8a, 0x01dc0632a, 0x1c24afea4, 
+0x01614f396, 0x04c144932, 0x19bc5e522, 0x0271d9844, 0x06bebd73c, 0x052148f02, 0x063ae91e6, 0x08e766a0c, 
+0x0f8c9da7a, 0x0a3c6f37a, 0x191b66f30, 0x093a5f730, 0x1eb6e6546, 0x1d22c238e, 0x196946b36, 0x06cb08e5c, 
+0x1c928d748, 0x063ded06a, 0x1a72eaf80, 0x06b749fb2, 0x01cad4452, 0x04d56973c, 0x1717e50f0, 0x1167f94f2, 
+0x1c0b3085a, 0x19385bf2e, 0x1a47a55d8, 0x0cec3662e, 0x128db71b8, 0x0e417f38a, 0x13c91f250, 0x19329634a, 
+0x079113270, 0x14e727980, 0x1b96d0ef2, 0x0e6fc4e6a, 0x18d074af6, 0x0d104b8fc, 0x06e4cb630, 0x08227bb8a, 
+0x071971d5c, 0x05b397730, 0x0f33b8bc6, 0x0b0cd4768, 0x09fb3bbc0, 0x0e78eb416, 0x16b1e5dd2, 0x13c2b89c4, 
+0x0ce2df768, 0x1641378f0, 0x1e0d63936, 0x0d7a4825c, 0x0be60a91a, 0x08d96551c, 0x118167ce4, 0x10f5ff2ba, 
+0x08ec52396, 0x00bf80dd2, 0x10b9a1de0, 0x00167d312, 0x0475846a4, 0x18dcddd1c, 0x0b2a3dfa6, 0x0f6076544, 
+0x0dc1a160c, 0x06a45d2b2, 0x079afdf1c, 0x026f6a60a, 0x007ac6e46, 0x1dd3e10e8, 0x1101424a2, 0x1a2adb74e, 
+0x11e00522c, 0x0de87806c, 0x149dabbaa, 0x19d34af3a, 0x1e54e58d8, 0x014338754, 0x179c71828, 0x049c3cc9c, 
+0x10313fe0c, 0x15e3e77ee, 0x0f7317cf0, 0x068bce87a, 0x1645a92fa, 0x0dd07448e, 0x0de8a97f8, 0x1524fa6c6, 
+0x18d1a62b4, 0x1d8048348, 0x0d4520e9e, 0x16cba8aca, 0x109b55d24, 0x0a3e3e02c, 0x13d018c02, 0x042d98888, 
+0x177278a2a, 0x0d73c7bea, 0x1316f4754, 0x1329d9f7e, 0x1c67b0ae8, 0x185137662, 0x0dafaea7c, 0x1b1c69528, 
+0x073db4c04, 0x18a08b5bc, 0x072675ce8, 0x02178513a, 0x13b2e8972, 0x1da758ae0, 0x1ed2bd6e6, 0x0e0ac139e, 
+0x1caa78c1e, 0x169cf9eb0, 0x16e326c36, 0x0170076fa, 0x0ae1175c2, 0x0fe314258, 0x0f7506984, 0x141a1a2e2, 
+#else
     0x14cd00bd6, 0x105ec76f0, 0x0ba4fc28e, 0x14cd00bd6,
     0x1d82c63da, 0x0f20c0dfe, 0x09e4addf8, 0x0ba4fc28e,
     0x039d3b296, 0x1384aa63a, 0x102f9b8a2, 0x1d82c63da,
@@ -612,7 +643,7 @@ const uint64_t clmul_constants[] = {
     0x0b25b29f2, 0x18a08b5bc, 0x19fb2a8b0, 0x02178513a,
     0x1a08fe6ac, 0x1da758ae0, 0x045cddf4e, 0x0e0ac139e,
     0x1a91647f2, 0x169cf9eb0, 0x1a0f717c4, 0x0170076fa,
-    0x0dfd94fb2, 0x0fe314258,
+#endif
 };
 
 // Compute the crc32c value for buffer smaller than 8
@@ -679,7 +710,6 @@ __attribute__((__no_sanitize_undefined__))
 uint32_t crc32c_3way(uint32_t crc, const char* buf, size_t len) {
   uint64_t crc0, crc1, crc2;
 
-size_t scaflen=len;
 #ifdef INDIRECT_VALUE_SUPPORT  // this is of general value, to save cache space and dispatch instructions faster
   // This cache-friendly version by Henry H. Rich, January 2019
   crc0 = crc ^ 0xffffffffu;
@@ -691,57 +721,54 @@ size_t scaflen=len;
    len -= bytes_to_crc;  // remove the aligned bytes from len too
   }
 
-  // do all 24-byte triplets.  The triplets each take 1 word from each of 3 blocks.
-  // Calculate #triplets, then loop through them in blocks of at most 128 triplets (that's the max size we can join together)
+  // do all 24-byte triplets.  The triplets each take 1 word from each of 3 blocks, to produce 3 block CRCs in parallel
+  // Calculate #triplets, then loop through them in blocks of at most 128 triplets (that's the max size of our delay table)
   uint64_t ntriplets = len/24;
   len -= ntriplets*24;  // remove the length we are about to process
   int64_t blocksize;  // number of triplets in the current block
   uint64_t *block0 = (uint64_t *)ubuf;  // starting pointer to the first block
-  for(;ntriplets>1;ntriplets-=(blocksize+1)){ 
+  for(;ntriplets>0;ntriplets-=(blocksize+1)){ 
     // calculate block size and starting block addresses.  We run blocksize+1 triplets
-    blocksize=((ntriplets-1)&127); uint64_t *block1=block0+blocksize+1, *block2=block1+blocksize+1;
-    // The multiplier gives the polynomials that correspond to a delay of blocksize and of 2*blocksize
+    // The last triplet is entirely in block2, which is thus one triplet longer than block0 and block1
+    blocksize=((ntriplets-1)&127); uint64_t *block1=block0+blocksize, *block2=block1+blocksize;
+    // The multiplier gives the polynomials that correspond to a delay of blocksize+3 and of 2*blocksize+3
     // This load will very likely miss in cache, so we start it before the loop
     const auto multiplier =
       *(reinterpret_cast<const __m128i*>(clmul_constants) + blocksize);
     // loop through all the words of the block except the last, accumulating the CRCs
     crc1 = crc2 = 0;  // init zero checksum for the later blocks.  crc0 has the checksum of previous words
-    for(int64_t i=blocksize; i>0; --i)CRCtripletpp(crc, block);
+    for(int64_t i=blocksize; i>0; --i)CRCtripletpp(crc, block);  // run all triplets but the last
 
-    // finish the block by handling the first 2 words as a doublet, then combining the CRCs along with the last word of the third block.
-    // combining adjusts the polynomials of the first 2 blocks to account for the delay to the third block.
-    CRCdupletpp(crc, block); // finish CRC of blocks 0 & 1
-
-    // Combining the CRCs.  This takes around 13 clocks.  It would be possible to start CRCs for the next block while the multiplications are
-    // going on, or to run off a few more crc2 cyles, but then we would have to move crc0 and 1 forward more and we would need to extend the
-    // delay-polynomial table, and we don't know how it was built.  The initialization for the next loop will finish while this is going on.
-    // Apply the 2*blocksize polynomial to crc0
+    // Combine the CRCs.  This takes around 9 clocks (2019).  During that time, we squeeze off one more triplet, entirely in block2, while we are
+    // advancing block0 and block1 to match it using polynomial multiplication.  The last of the block2 triplet is in the final combination.
+    // Apply the 2*blocksize+3 polynomial to crc0
     const auto crc0_xmm = _mm_set_epi64x(0, crc0);
     const auto res0 = _mm_clmulepi64_si128(crc0_xmm, multiplier, 0x00);
-    // Apply the blocksize polynomial to crc1
+    // Apply the blocksize+3 polynomial to crc1
     const auto crc1_xmm = _mm_set_epi64x(0, crc1);
+    CRCsingletpp(crc2,block2++);
     const auto res1 = _mm_clmulepi64_si128(crc1_xmm, multiplier, 0x10);
-    // Combine the (lower parts of the) two, now moved to the same delay as *block2
+    CRCsingletpp(crc2,block2++);
+    // Combine the (lower parts of the) two, now moved to the same delay as *block2.
     const auto res = _mm_xor_si128(res0, res1);
     crc0 = _mm_cvtsi128_si64(res);
-    // Bring in *block2, so that it includes crc0 and crc1
+    // res contains crc0^crc1, shifted to the same delay as *block2.  Combine that with *block2
     crc0 = crc0 ^ *block2++;
+    // crc0/1 are 64 bits long, with the correct value mod the CRC polynomial.
+    // By running them through the CRC instruction we bring them down to 32 bits.
     // fold *block2, and the two previous blocks, into crc2; move that to the output crc0
     crc0 = _mm_crc32_u64(crc2, crc0);
-    block0 = block2;  // point block0 to start of next block
+    block0 = block2;  // point block0 to start of next block for loop
   }
-  len += ntriplets*24;  // add back in the length of any triplets we did NOT process
 
   // crc0 has the CRC, block0 points to the next input (it might not be aligned)
-  // there are at most 5 full qwords left.  process them
+  // there are at most 2 full qwords left.  process them
   while(len>=8){CRCsingletpp(crc0, block0++); len-=8;}
   
   // append the CRC for any trailing bytes
   ubuf = (const unsigned char*)block0;  // $%##!^ type checking
-  align_to_8(len&7, crc0, ubuf);
-uint64_t scafcrc=crc0; // scaf
-len=scaflen; // scaf
-// scaf #else
+  align_to_8(len, crc0, ubuf);
+#else
   uint64_t count;
   crc0 = crc ^ 0xffffffffu;
   const unsigned char* next = (const unsigned char*)buf;
@@ -1266,8 +1293,6 @@ len=scaflen; // scaf
     }
   }
   align_to_8(len, crc0, next);
-if(crc0!=scafcrc)
-printf("crc mismatch!\n");
 #endif
 
   return (uint32_t)crc0 ^ 0xffffffffu;
