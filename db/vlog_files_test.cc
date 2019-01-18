@@ -776,6 +776,7 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
   compact_options.change_level = true;
   compact_options.target_level = 1;
   ASSERT_OK(db_->CompactRange(compact_options, nullptr, nullptr));
+  ASSERT_EQ(Get(LongKey(0,key_size)), values[0]);
   // 2 files in L2
 //  ASSERT_EQ("0,0,2", FilesPerLevel(0));
 

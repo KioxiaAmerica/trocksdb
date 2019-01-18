@@ -1486,15 +1486,10 @@ Status VLog::VLogGet(
 
   // check the CRC
   // CRC the type/data and compare the CRC to the value in the record
-  uint32_t crcint = crc32c::Value(ringresult.data()+dataoffset,ref.Len()-4);  // take CRC of the header byte/data
-  // this code uses a byte-oriented format for transportability.  This code must match the IndirectIterator that writes the data file
-  for(int i = 0;i<4;++i){
-    if(ringresult[dataoffset+ref.Len()-4+i]!=(char)crcint) {
-      ROCKS_LOG_ERROR(immdbopts_->info_log,
-        "CRC error reading from file number %zd in ring %d",ref.Fileno(),ref.Ringno());
-      return s = Status::Corruption("indirect reference CRC mismatch.");
-    }
-    crcint>>=8;  // move to next byte
+  if(crc32c::Value(ringresult.data()+dataoffset,ref.Len())!=0xffffffff){  // take CRC of the header byte/data.  Should come out to 0 before complement
+    ROCKS_LOG_ERROR(immdbopts_->info_log,
+      "CRC error reading from file number %zd in ring %d",ref.Fileno(),ref.Ringno());
+    return s = Status::Corruption("indirect reference CRC mismatch.");
   }
   uint64_t comptime = immdbopts_->env->NowMicros(); uint64_t compdur = comptime - readtime;
 

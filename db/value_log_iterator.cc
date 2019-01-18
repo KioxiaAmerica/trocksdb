@@ -285,10 +285,11 @@ void IndirectIterator::ReadAndResolveInputBlock() {
       iitimevec[3] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 3 - after copy
 #endif
       // CRC the type/data and move the CRC to the output record
-      uint32_t crcint = crc32c::Value((char *)diskdata.data()+ctypeindex,diskdata.size()-ctypeindex);  // take CRC
-     // Append the CRC to the type/data, giving final record format of type/data/CRC.  We don't use a structure for this for fear
-      // of compiler/architecture variations.  Instead, we treat everything as bytes.  We put the CRC out littlendian here
-      for(int i = 0;i<4;++i){diskdata.push_back((char)crcint); crcint>>=8;}
+      uint32_t crcint = ~crc32c::Value((char *)diskdata.data()+ctypeindex,diskdata.size()-ctypeindex);  // take CRC, including the added 0s; complement to remove ffff format
+      for(int iii = 4;iii>0;--iii)diskdata.push_back((char)0); // insert space for the CRC
+      // Append the CRC to the type/data, giving final record format of type/data/CRC.  Write as an int32, possibly unaligned.  By using the processor's natural format we allow CRC instructions to work
+      *(uint32_t*)((char *)diskdata.data()+diskdata.size()-4) = crcint;
+// scaf      for(int i = 24;i>=0;i-=8){diskdata.push_back((char)(crcint>>i));}
 #ifdef IITIMING
       iitimevec[4] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 4 - after CRC
 #endif
