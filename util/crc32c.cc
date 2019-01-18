@@ -612,6 +612,7 @@ const uint64_t clmul_constants[] = {
     0x0b25b29f2, 0x18a08b5bc, 0x19fb2a8b0, 0x02178513a,
     0x1a08fe6ac, 0x1da758ae0, 0x045cddf4e, 0x0e0ac139e,
     0x1a91647f2, 0x169cf9eb0, 0x1a0f717c4, 0x0170076fa,
+    0x0dfd94fb2, 0x0fe314258,
 };
 
 // Compute the crc32c value for buffer smaller than 8
@@ -678,7 +679,9 @@ __attribute__((__no_sanitize_undefined__))
 uint32_t crc32c_3way(uint32_t crc, const char* buf, size_t len) {
   uint64_t crc0, crc1, crc2;
 
+size_t scaflen=len;
 #ifdef INDIRECT_VALUE_SUPPORT  // this is of general value, to save cache space and dispatch instructions faster
+  // This cache-friendly version by Henry H. Rich, January 2019
   crc0 = crc ^ 0xffffffffu;
   const unsigned char* ubuf = (const unsigned char*)buf;  // $%##!^ type checking
   // if there is even one 8-byte aligned section, align to 8-byte boundary
@@ -694,17 +697,16 @@ uint32_t crc32c_3way(uint32_t crc, const char* buf, size_t len) {
   len -= ntriplets*24;  // remove the length we are about to process
   int64_t blocksize;  // number of triplets in the current block
   uint64_t *block0 = (uint64_t *)ubuf;  // starting pointer to the first block
-  for(;ntriplets;ntriplets-=blocksize){
-    // calculate block size and starting block addresses
-    blocksize=((ntriplets-1)&127)+1; uint64_t *block1=block0+blocksize, *block2=block1+blocksize;
+  for(;ntriplets>1;ntriplets-=(blocksize+1)){ 
+    // calculate block size and starting block addresses.  We run blocksize+1 triplets
+    blocksize=((ntriplets-1)&127); uint64_t *block1=block0+blocksize+1, *block2=block1+blocksize+1;
     // The multiplier gives the polynomials that correspond to a delay of blocksize and of 2*blocksize
     // This load will very likely miss in cache, so we start it before the loop
     const auto multiplier =
-      *(reinterpret_cast<const __m128i*>(clmul_constants) + blocksize - 1);
-
+      *(reinterpret_cast<const __m128i*>(clmul_constants) + blocksize);
     // loop through all the words of the block except the last, accumulating the CRCs
     crc1 = crc2 = 0;  // init zero checksum for the later blocks.  crc0 has the checksum of previous words
-    for(int64_t i=blocksize-2; i>=0; --i)CRCtripletpp(crc, block);
+    for(int64_t i=blocksize; i>0; --i)CRCtripletpp(crc, block);
 
     // finish the block by handling the first 2 words as a doublet, then combining the CRCs along with the last word of the third block.
     // combining adjusts the polynomials of the first 2 blocks to account for the delay to the third block.
@@ -728,16 +730,18 @@ uint32_t crc32c_3way(uint32_t crc, const char* buf, size_t len) {
     crc0 = _mm_crc32_u64(crc2, crc0);
     block0 = block2;  // point block0 to start of next block
   }
+  len += ntriplets*24;  // add back in the length of any triplets we did NOT process
 
   // crc0 has the CRC, block0 points to the next input (it might not be aligned)
-  // there are at most 2 full qwords left.  process them
-  if(len>=8)CRCsingletpp(crc0, block0++);
-  if(len>=16)CRCsingletpp(crc0, block0++);
+  // there are at most 5 full qwords left.  process them
+  while(len>=8){CRCsingletpp(crc0, block0++); len-=8;}
   
   // append the CRC for any trailing bytes
   ubuf = (const unsigned char*)block0;  // $%##!^ type checking
   align_to_8(len&7, crc0, ubuf);
-#else
+uint64_t scafcrc=crc0; // scaf
+len=scaflen; // scaf
+// scaf #else
   uint64_t count;
   crc0 = crc ^ 0xffffffffu;
   const unsigned char* next = (const unsigned char*)buf;
@@ -1262,6 +1266,8 @@ uint32_t crc32c_3way(uint32_t crc, const char* buf, size_t len) {
     }
   }
   align_to_8(len, crc0, next);
+if(crc0!=scafcrc)
+printf("crc mismatch!\n");
 #endif
 
   return (uint32_t)crc0 ^ 0xffffffffu;
