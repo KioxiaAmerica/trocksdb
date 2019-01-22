@@ -172,7 +172,7 @@ InternalIterator* NewEmptyInternalIterator(Arena* arena) {
   if (arena == nullptr) {
     return NewEmptyInternalIterator();
   } else {
-    auto mem = arena->AllocateAligned(sizeof(EmptyIterator));
+    auto mem = arena->AllocateAligned(sizeof(EmptyInternalIterator));
     return new (mem) EmptyInternalIterator(Status::OK());
   }
 }
