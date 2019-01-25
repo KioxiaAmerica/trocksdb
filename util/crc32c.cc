@@ -542,10 +542,11 @@ std::string IsFastCrc32Supported() {
   crc = _mm_crc32_u64(crc, *buf);
 
 
-// Numbers taken directly from intel whitepaper.
 // clang-format off
 const uint64_t clmul_constants[] = {
 #ifdef INDIRECT_VALUE_SUPPORT
+// Each pair has 2 polynomials, corresponding to a delay of 2n+3 and n+3 8-byte words.
+// The polynomial for a delay of x 64-bit words is 2^(32+64*x) mod CRC, bit-reflected within the low 33 bits of the 64-bit word
 0x0f20c0dfe, 0x0f20c0dfe, 0x1384aa63a, 0x0ba4fc28e, 0x01c291d04, 0x1384aa63a, 0x0740eef02, 0x1d82c63da, 
 0x0083a6eec, 0x01c291d04, 0x1c1733996, 0x09e4addf8, 0x02ad91c30, 0x0740eef02, 0x06992cea2, 0x039d3b296, 
 0x07e908048, 0x0083a6eec, 0x11ed1f9d8, 0x102f9b8a2, 0x0f1d0f55e, 0x1c1733996, 0x0a87ab8a8, 0x14237f5e6, 
@@ -579,6 +580,7 @@ const uint64_t clmul_constants[] = {
 0x073db4c04, 0x18a08b5bc, 0x072675ce8, 0x02178513a, 0x13b2e8972, 0x1da758ae0, 0x1ed2bd6e6, 0x0e0ac139e, 
 0x1caa78c1e, 0x169cf9eb0, 0x16e326c36, 0x0170076fa, 0x0ae1175c2, 0x0fe314258, 0x0f7506984, 0x141a1a2e2, 
 #else
+// Numbers taken directly from intel whitepaper.
     0x14cd00bd6, 0x105ec76f0, 0x0ba4fc28e, 0x14cd00bd6,
     0x1d82c63da, 0x0f20c0dfe, 0x09e4addf8, 0x0ba4fc28e,
     0x039d3b296, 0x1384aa63a, 0x102f9b8a2, 0x1d82c63da,
