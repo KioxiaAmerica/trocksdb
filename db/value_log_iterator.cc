@@ -288,7 +288,9 @@ void IndirectIterator::ReadAndResolveInputBlock() {
       uint32_t crcint = ~crc32c::Value((char *)diskdata.data()+ctypeindex,diskdata.size()-ctypeindex);  // take CRC, including the added 0s; complement to remove ffff format
       for(int iii = 4;iii>0;--iii)diskdata.push_back((char)0); // insert space for the CRC
       // Append the CRC to the type/data, giving final record format of type/data/CRC.  Write as an int32, possibly unaligned.  By using the processor's natural format we allow CRC instructions to work
-      *(uint32_t*)((char *)diskdata.data()+diskdata.size()-4) = crcint;
+// UBSAN complains      *(uint32_t*)((char *)diskdata.data()+diskdata.size()-4) = crcint;
+      // To silence UBSAN, use memcpy.  But the CRC code itself is riddled with unaligned accesses
+      memcpy((char *)diskdata.data()+diskdata.size()-4,&crcint,4);   // preserve native processor order so that CRC will work on the combined
 // scaf      for(int i = 24;i>=0;i-=8){diskdata.push_back((char)(crcint>>i));}
 #ifdef IITIMING
       iitimevec[4] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 4 - after CRC

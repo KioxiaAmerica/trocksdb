@@ -507,7 +507,9 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
       "LevelCompactionBuilder::PickCompaction", [&](void* arg) {
         int64_t *pickerinfo = static_cast<int64_t *>(arg);
         ColumnFamilyData *cfd=(ColumnFamilyData*)pickerinfo[6];
-        if(cfd!=nullptr){  // to reduce typeout, type only if coming out of L1 or higher
+        if(numcompactions<0){  // if we are still counting in...
+          ++numcompactions;  // count in and nothing else
+        }else if(cfd!=nullptr){  // to reduce typeout, type only if coming out of L1 or higher
           int doprint = pickerinfo[0]>0;  // true if we type out
           doprint = 0;  // suppress print normally
           if(pickerinfo[7]){ // Active recycle
@@ -576,15 +578,14 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
     values[i] = vstg;
   }
 
-
-  for(int32_t k=0;k<2;++k) {
-    // Reinit stats variables so they get the last-pass data
-    numcompactions = 0;  // total number of non-AR compactions (coming from L1 or higher)
-    numARs = 0;  // number of ARs
-    numfinalcompactions = 0;  // compactions into last level
-    totalref0position = 0.0;  //  total of ref0 position as a % of ring size
+  // We want our statistics to show the steady-state status.  To do that, we set numcompactions negative so that we ignore the startup transient and
+  // take stats only after a delay.  We originally reset the stats inside the loop below, but that fails thread-safety since compactions are running
+  // at the same time
+  int64_t npasses=2;  // number of overall passes
+  numcompactions = -16000*(npasses-1);  // set number to ignore - all but the last pass
+  for(int32_t k=0;k<npasses;++k) {
     // Many files 4 [300 => 4300)
-    for (int32_t i = 0; i <= 3; i++) {  // scaf 5
+    for (int32_t i = 0; i <= 3; i++) {
       for (int32_t j = 300; j < batch_size+300; j++) {
 //      if (j == 2300) {
 //        ASSERT_OK(Flush());
