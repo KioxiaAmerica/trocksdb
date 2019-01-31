@@ -2646,22 +2646,19 @@ static void DoCompressionTest(CompressionType comp) {
   ASSERT_TRUE(Between(c.ApproximateOffsetOf("abc"),       0,      0));
   ASSERT_TRUE(Between(c.ApproximateOffsetOf("k01"),       0,      0));
   ASSERT_TRUE(Between(c.ApproximateOffsetOf("k02"),       0,      0));
-  ASSERT_TRUE(Between(c.ApproximateOffsetOf("k03"),    2000,   3000));
-  ASSERT_TRUE(Between(c.ApproximateOffsetOf("k04"),    2000,   3000));
-  ASSERT_TRUE(Between(c.ApproximateOffsetOf("xyz"),    4000,   6100));
+  ASSERT_TRUE(Between(c.ApproximateOffsetOf("k03"),    2000,   3500));
+  ASSERT_TRUE(Between(c.ApproximateOffsetOf("k04"),    2000,   3500));
+  ASSERT_TRUE(Between(c.ApproximateOffsetOf("xyz"),    4000,   6500));
   c.ResetTableReader();
 }
 
 TEST_F(GeneralTableTest, ApproximateOffsetOfCompressed) {
   std::vector<CompressionType> compression_state;
-  //TODO(rbrasga) DoCompressionTest() doesn't work with Snappy.
-  /*
   if (!Snappy_Supported()) {
     fprintf(stderr, "skipping snappy compression tests\n");
   } else {
     compression_state.push_back(kSnappyCompression);
   }
-  */
 
   if (!Zlib_Supported()) {
     fprintf(stderr, "skipping zlib compression tests\n");
