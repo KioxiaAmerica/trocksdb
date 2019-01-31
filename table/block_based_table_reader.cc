@@ -2208,7 +2208,7 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
         break;
       } else {
         BlockIter biter;
-        NewDataBlockIterator(rep_, read_options, iiter->value(), &biter, false,
+        NewDataBlockIterator(rep_, read_options, iiter->value(), &biter, false, true,
                              get_context);
 
         if (read_options.read_tier == kBlockCacheTier &&

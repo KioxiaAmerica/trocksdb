@@ -487,6 +487,7 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   options.vlogfile_max_size = std::vector<uint64_t>({sstkvcount*(value_size+10)});  // amount of value in 1 sst, allowing for CRC & header
 
   options.vlog_direct_IO = false;
+  options.statistics = CreateDBStatistics();
 
   printf("Starting: max_bytes_for_level_base=%zd target_file_size_base=%zd write_buffer_size=%zd vlogfile_max_size=%zd\n",options.max_bytes_for_level_base, options.target_file_size_base,options.write_buffer_size,options.vlogfile_max_size[0]);
   DestroyAndReopen(options);

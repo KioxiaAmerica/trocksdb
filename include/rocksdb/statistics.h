@@ -22,6 +22,7 @@ namespace rocksdb {
  *  1. Any ticker should be added before TICKER_ENUM_MAX.
  *  2. Add a readable string in TickersNameMap below for the newly added ticker.
  *  3. Add a corresponding enum value to TickerType.java in the java API
+ *  4. DO NOT push any BLOCK_xxx tickers past 63, or make any ticker used in get_context, go past index number 63
  */
 enum Tickers : uint32_t {
   // total block cache misses
@@ -70,6 +71,8 @@ enum Tickers : uint32_t {
   BLOCK_CACHE_BYTES_READ,
   // # of bytes written into cache.
   BLOCK_CACHE_BYTES_WRITE,
+
+// NOTE: the tickers above must be within the first 64 indexes, because they are represented in a bitmask
 
   // # of times bloom filter has avoided file reads, i.e., negatives.
   BLOOM_FILTER_USEFUL,

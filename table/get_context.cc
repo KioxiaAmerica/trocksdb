@@ -91,12 +91,47 @@ void GetContext::SaveValue(const Slice& value, SequenceNumber /*seq*/) {
   }
 }
 
+#ifdef INDIRECT_VALUE_SUPPORT  // This change is applicable to all systems
+// Going through all the stats takes time & creates many mispredicted branches.  To speed things up, we keep a bitmask indicating which stats have been
+// modified, and work only on the changes.  The straightforward way to do this would be to use CTTZ to get the bit number of the LSB of the mask, but nobody has defined
+// a CTTZ instruction, so we will instead use a de Bruijn sequence to get a unique number corresponding to each bit-position.  The stats-index values were converted
+// appropriately before they were put into the mask.
+// Given a stats index i, debruijn[i] is the bit number that needs to be set in modstatsmask to cause i to pop out of the debruijn calculation
+unsigned char GetContext::debruijn[64] = {
+0, 1, 36, 2, 57, 37, 22, 3, 61, 58, 50, 38, 32, 23, 17, 4,      
+62, 55, 59, 30, 53, 51, 45, 39, 33, 47, 27, 24, 18, 41, 12, 5,  
+63, 35, 56, 21, 60, 49, 31, 16, 54, 29, 52, 44, 46, 26, 40, 11, 
+34, 20, 48, 15, 28, 43, 25, 10, 19, 14, 42, 9, 13, 8, 7, 6};
+
+void GetContext::RecordCounters(Tickers ticker, size_t val) {
+  assert(ticker<64); // we insist that status indexes that come here be in range 0-64
+  modstatsmask |= 1LL<<debruijn[ticker];   // turn on the correct bit
+  tickers_value[ticker] += static_cast<uint64_t>(val);  // add in the stats for our local copy
+}
+void GetContext::TransferCounters(Statistics *stats){
+  // Loop as long as there is something to do
+  while(modstatsmask){
+    uint64_t lsb = modstatsmask&(1+~modstatsmask);  // isolate the LSB
+    uint32_t lsbbitno = (uint32_t)((uint64_t)(lsb*0x03f79c6d30baca89U)>>(64-6));  // get the original index value for it.  The number is a 64-bit de Bruijn sequence
+    RecordTick(stats, lsbbitno, tickers_value[lsbbitno]);  // add to that ticker
+    modstatsmask &= ~lsb;  // remove the processed bit
+  }
+}
+#else
 void GetContext::RecordCounters(Tickers ticker, size_t val) {
   if (ticker == Tickers::TICKER_ENUM_MAX) {
     return;
   }
   tickers_value[ticker] += static_cast<uint64_t>(val);
 }
+void GetContext::TransferCounters(Statistics *stats){
+  for (uint32_t t = 0; t < Tickers::TICKER_ENUM_MAX; t++) {
+    if (tickers_value[t] > 0) {
+      RecordTick(stats, t, tickers_value[t]);
+    }
+  }
+}
+#endif
 
 bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
                            const Slice& value, bool* matched,
