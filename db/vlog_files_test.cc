@@ -605,6 +605,12 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   int64_t numfinalcompactions = 0;  // compactions into last level
   double totalref0position = 0.0;  //  total of ref0 position as a % of ring size
 
+  // We want our statistics to show the steady-state status.  To do that, we set numcompactions negative so that we ignore the startup transient and
+  // take stats only after a delay.  We originally reset the stats inside the loop below, but that fails thread-safety since compactions are running
+  // at the same time
+  int64_t npasses=2;  // number of overall passes
+  numcompactions = -16000*(npasses-1);  // set number to ignore - all but the last pass
+
   SyncPoint::GetInstance()->SetCallBack(
       "CompactionJob::InstallCompactionResults", [&](void* arg) {
         uint64_t *compact_stats = static_cast<uint64_t *>(arg);
@@ -687,11 +693,6 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
     values[i] = vstg;
   }
 
-  // We want our statistics to show the steady-state status.  To do that, we set numcompactions negative so that we ignore the startup transient and
-  // take stats only after a delay.  We originally reset the stats inside the loop below, but that fails thread-safety since compactions are running
-  // at the same time
-  int64_t npasses=2;  // number of overall passes
-  numcompactions = -16000*(npasses-1);  // set number to ignore - all but the last pass
   for(int32_t k=0;k<npasses;++k) {
     // Many files 4 [300 => 4300)
     for (int32_t i = 0; i <= 3; i++) {
