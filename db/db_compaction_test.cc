@@ -574,7 +574,11 @@ TEST_P(DBCompactionTestWithParam, CompactionDeletionTriggerReopen) {
     dbfull()->TEST_WaitForCompact();
     db_size[2] = Size(Key(0), Key(kTestSize - 1));
     // this time we're expecting significant drop in size.
-    ASSERT_GT(db_size[0] / 3, db_size[2]);
+    double expreduction = 3.0;
+#ifdef INDIRECT_VALUE_SUPPORT
+    expreduction=num_vlog_rings_?2.5:3.0;  // with value logging, the size reduction is not as great, because values are only references
+#endif
+    ASSERT_GT(db_size[0] / expreduction, db_size[2]);
   }
 }
 
