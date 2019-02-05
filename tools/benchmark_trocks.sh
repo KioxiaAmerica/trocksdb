@@ -71,7 +71,7 @@ const_params="
   --cache_numshardbits=6 \
   --compression_max_dict_bytes=$compression_max_dict_bytes \
   --compression_ratio=0.5 \
-  --compression_type=none \
+  --compression_type=$compression_type \
   --level_compaction_dynamic_level_bytes=true \
   --bytes_per_sync=$((8 * M)) \
   --cache_index_and_filter_blocks=0 \
@@ -112,14 +112,14 @@ const_params="
   --active_recycling_size_trigger=$((1 * G)) \
   --vlogfile_max_size=$((50 * M)) \
   --compaction_picker_age_importance=100 \
-  --ring_compression_style=none \
+  --ring_compression_style=$compression_type \
   --vlog_direct_IO=0"
 #Indirect Options above
 
 l0_config="
   --level0_file_num_compaction_trigger=4 \
-  --level0_slowdown_writes_trigger=12 \
-  --level0_stop_writes_trigger=20"
+  --level0_slowdown_writes_trigger=52 \
+  --level0_stop_writes_trigger=64"
 
 if [ $duration -gt 0 ]; then
   const_params="$const_params --duration=$duration"
