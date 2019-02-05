@@ -118,6 +118,11 @@ const_params="
 
 l0_config="
   --level0_file_num_compaction_trigger=4 \
+  --level0_slowdown_writes_trigger=12 \
+  --level0_stop_writes_trigger=20"
+
+l0_config_b="
+  --level0_file_num_compaction_trigger=4 \
   --level0_slowdown_writes_trigger=52 \
   --level0_stop_writes_trigger=64"
 
@@ -127,6 +132,11 @@ fi
 
 params_w="$const_params \
           $l0_config \
+          --max_background_jobs=20 \
+          --max_write_buffer_number=8"
+
+params_wb="$const_params \
+          $l0_config_b \
           --max_background_jobs=20 \
           --max_write_buffer_number=8"
 
@@ -328,7 +338,7 @@ function run_fillseq {
   cmd="./db_bench --benchmarks=fillseq \
        --use_existing_db=0 \
        --sync=0 \
-       $params_w \
+       $params_wb \
        --min_level_to_compress=0 \
        --threads=1 \
        --memtablerep=vector \
