@@ -736,6 +736,7 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
     TryReopen(options);
     printf("reopened.\n");
   }
+  dbfull()->TEST_WaitForCompact();  // Prevent race condition accessing numcompactions
   printf("numcompactions=%zd, numARs=%zd, avg ref0 pos=%7.5f\n",numcompactions,numARs,totalref0position/numfinalcompactions);
   ASSERT_LT(totalref0position/numfinalcompactions,0.12);  // the number is empirical.  Make sure we are picking compactions from the oldest values first
   ASSERT_LT((double)numARs/(double)(numARs+numcompactions),0.20);  // the number is empirical.  Make sure ARs aren't much more than 15% of compactions

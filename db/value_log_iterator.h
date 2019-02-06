@@ -237,6 +237,7 @@ private:
   CompressionType compressiontype;  // selected compression type for the output ring
   size_t compactionblocksize;  // size of one of the 2 compaction blocks
   size_t minindirectlen;  // size of the largest value that will not be made indirect (0=everything except empty values is indirect)
+  size_t initdiskallo;  // number of bytes to allow for diskdata initially.  For first compaction, must hold all the values; for later compaction, just references to remapped values
 
   // ping-pong buffer numbers.  blocktofill is the block data is being written into (or will be written to on the next call to ReadAndResolveInputBlock()).
   // blocktoprocess is the block that will be written to disk next.

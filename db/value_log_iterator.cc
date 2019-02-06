@@ -107,10 +107,9 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
     if(recyciter!=nullptr)outputringno = compaction->ringno();   // AR
     else{
 
-      int level = compaction->output_level();  // output level for this run
-      outputringno = current_vlog->VLogRingNoForLevelOutput(level);  // get the ring number we will write output to
+      outputringno = current_vlog->VLogRingNoForLevelOutput(compaction->output_level());  // get the ring number we will write output to
 #if DEBLEVEL&4
-printf("Creating iterator for level=%d, earliest_passthrough=",level);
+printf("Creating iterator for level=%d, earliest_passthrough=",compaction->output_level());
 #endif
     }
     if(outputringno+1==0){use_indirects_ = false; return;}  // if no output ring, skip looking for indirects
@@ -165,8 +164,15 @@ printf("\n");
     // If something was specified funny, make sure the compaction block is big enough to allow progress
     compactionblocksize = std::max(mincompactionblocksize,compactionblocksize);
 
-    // Get the minimum mapped size for the output level we are writing into
+    // Get the length in bytes of the smallest value that we will make indirect for the output level we are writing into
     minindirectlen = (size_t)compaction->mutable_cf_options()->min_indirect_val_size[outputringno];
+
+    // Get the initial allocation for the disk-data buffer for a block.  This is related to the size of the files going into the compaction: for most compactions, it is the remapped references
+    // from the SSTs (remapped values are expanded to full size just before being written).  We allow for 30% of the indirect values to be remapped.
+    // to disk).  For the first compaction into a ring, the files are L0 files, aka write buffers that have not been split yet.  This is typically much bigger, depending on key size.
+    // We want the initial value to be fairly close to avoid repeated copying of very large buffers
+    initdiskallo = (size_t) ((compaction->output_level()<=1)?compaction->mutable_cf_options()->write_buffer_size*compaction->mutable_cf_options()->level0_file_num_compaction_trigger  // into L1 or (rare) L0, allow for the min # compactible write buffers
+                                                  :0.3*compaction->mutable_cf_options()->target_file_size_base*(compaction->mutable_cf_options()->max_bytes_for_level_multiplier+2));   // into other levels, allow for as many SSTs as a normal compaction will have
 
     // For AR, create the list of number of records in each input file.
     filecumreccnts.clear(); if(recyciter!=nullptr)filecumreccnts.resize((const_cast<Compaction *>(compaction))->inputs()->size());
@@ -200,7 +206,7 @@ void IndirectIterator::ReadAndResolveInputBlock() {
   CompressionContext compressioncontext{compressiontype};  // scaf need initial dict
 
   std::vector<VLogRingRefFileOffset> outputrcdend; outputrcdend.reserve(compactionblockinitkeyalloc); // each entry here is the running total of the bytecounts that will be sent to the SST from each kv
-  std::vector<NoInitChar> diskdata;  diskdata.reserve(50000000); // where we accumulate the data to write
+  std::vector<NoInitChar> diskdata;  diskdata.reserve(initdiskallo); // where we accumulate the data to write
 
   // Initialize the vectors we will write the data to, and make an initial reserve to reduce reallocation.  We increment them exponentially, and start with a rather large allocation to avoid extensions normally
   keys.clear(); keys.reserve(compactionblockinitkeyalloc*compactionblockavgkeylen);
@@ -252,8 +258,8 @@ void IndirectIterator::ReadAndResolveInputBlock() {
     //
     // For case 2, the value is copied to passthroughdata
     // For case 3, the value is compressed and CRCd and written to diskdata
-    // For case 1, the (compressed & CRCd) value is read from disk into diskdata and not modified
-    // For case 4, the value (16 bytes) is passed through
+    // For case 1, the value is put into diskdata and not modified; it will be replaced by the remapped data when the output buffer is built
+    // For case 4, the value (16 bytes) is passed through, copied to passthroughdata
     const Slice &key = c_iter_->key();  // read the key
     // Because the compaction_iterator builds all its return keys in the same buffer, we have to move the key
     // into an area that won't get overwritten.  To avoid lots of memory allocation we jam all the keys into one vector,
@@ -334,7 +340,7 @@ void IndirectIterator::ReadAndResolveInputBlock() {
           remappeddatalen += ref.Len();  // add to count of remapped bytes
 
           // move in the record length of the reference
-          diskrecl.push_back(bytesresvindiskdata += ref.Len());   // write running sum of record lengths, i. e. current total size of diskdata
+          diskrecl.push_back(bytesresvindiskdata += ref.Len());   // write running sum of record lengths, i. e. current total size of diskdata after remapped references are expanded
         } else {
           // indirect value, passed through (normal case).  Mark it as a passthrough, and install the file number in the
           // reference for the ring so it can contribute to the earliest-ref for this file
