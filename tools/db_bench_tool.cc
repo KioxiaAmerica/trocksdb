@@ -1997,7 +1997,11 @@ class Benchmark {
   inline bool CompressSlice(const CompressionContext& compression_ctx,
                             const Slice& input, std::string* compressed) {
     bool ok = true;
+#ifdef INDIRECT_VALUE_SUPPORT
+    switch (FLAGS_ring_compression_style_e) {
+#else
     switch (FLAGS_compression_type_e) {
+#endif
       case rocksdb::kSnappyCompression:
         ok = Snappy_Compress(compression_ctx, input.data(), input.size(),
                              compressed);
@@ -2065,7 +2069,11 @@ class Benchmark {
 #endif
     }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+    auto compression = CompressionTypeToString(FLAGS_ring_compression_style_e);
+#else
     auto compression = CompressionTypeToString(FLAGS_compression_type_e);
+#endif
     fprintf(stdout, "Compression: %s\n", compression.c_str());
 
     switch (FLAGS_rep_factory) {
@@ -2101,12 +2109,20 @@ class Benchmark {
     fprintf(stdout,
             "WARNING: Assertions are enabled; benchmarks unnecessarily slow\n");
 #endif
+#ifdef INDIRECT_VALUE_SUPPORT
+    if (FLAGS_ring_compression_style_e != rocksdb::kNoCompression) {
+#else
     if (FLAGS_compression_type_e != rocksdb::kNoCompression) {
+#endif
       // The test string should not be too small.
       const int len = FLAGS_block_size;
       std::string input_str(len, 'y');
       std::string compressed;
+#ifdef INDIRECT_VALUE_SUPPORT
+      CompressionContext compression_ctx(FLAGS_ring_compression_style_e,
+#else
       CompressionContext compression_ctx(FLAGS_compression_type_e,
+#endif
                                          Options().compression_opts);
       bool result =
           CompressSlice(compression_ctx, Slice(input_str), &compressed);
@@ -2901,7 +2917,11 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     int64_t produced = 0;
     bool ok = true;
     std::string compressed;
+#ifdef INDIRECT_VALUE_SUPPORT
+    CompressionContext compression_ctx(FLAGS_ring_compression_style_e,
+#else
     CompressionContext compression_ctx(FLAGS_compression_type_e,
+#endif
                                        Options().compression_opts);
 
     // Compress 1G
@@ -2929,8 +2949,13 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     Slice input = gen.Generate(FLAGS_block_size);
     std::string compressed;
 
+#ifdef INDIRECT_VALUE_SUPPORT
+    UncompressionContext uncompression_ctx(FLAGS_ring_compression_style_e);
+    CompressionContext compression_ctx(FLAGS_ring_compression_style_e,
+#else
     UncompressionContext uncompression_ctx(FLAGS_compression_type_e);
     CompressionContext compression_ctx(FLAGS_compression_type_e,
+#endif
                                        Options().compression_opts);
 
     bool ok = CompressSlice(compression_ctx, input, &compressed);
@@ -2938,7 +2963,11 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     int decompress_size;
     while (ok && bytes < 1024 * 1048576) {
       char *uncompressed = nullptr;
+#ifdef INDIRECT_VALUE_SUPPORT
+      switch (FLAGS_ring_compression_style_e) {
+#else
       switch (FLAGS_compression_type_e) {
+#endif
         case rocksdb::kSnappyCompression: {
           // get size and allocate here to make comparison fair
           size_t ulength = 0;
@@ -3879,7 +3908,11 @@ void VerifyDBFromDB(std::string& truth_db_name) {
       for (size_t i = 0; i < num_db; i++) {
         auto db = db_list[i];
         auto compactionOptions = CompactionOptions();
+#ifdef INDIRECT_VALUE_SUPPORT
+        compactionOptions.compression = FLAGS_ring_compression_style_e;
+#else
         compactionOptions.compression = FLAGS_compression_type_e;
+#endif
         auto options = db->GetOptions();
         MutableCFOptions mutable_cf_options(options);
         for (size_t j = 0; j < sorted_runs[i].size(); j++) {
@@ -3931,7 +3964,11 @@ void VerifyDBFromDB(std::string& truth_db_name) {
       for (size_t i = 0; i < num_db; i++) {
         auto db = db_list[i];
         auto compactionOptions = CompactionOptions();
+#ifdef INDIRECT_VALUE_SUPPORT
+        compactionOptions.compression = FLAGS_ring_compression_style_e;
+#else
         compactionOptions.compression = FLAGS_compression_type_e;
+#endif
         auto options = db->GetOptions();
         MutableCFOptions mutable_cf_options(options);
         for (size_t j = 0; j < sorted_runs[i].size(); j++) {
