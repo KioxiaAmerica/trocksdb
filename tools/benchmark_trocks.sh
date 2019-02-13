@@ -58,6 +58,14 @@ key_size=${KEY_SIZE:-20}
 value_size=${VALUE_SIZE:-400}
 block_size=${BLOCK_SIZE:-8192}
 
+# all trocks-enabled tests run with SST compression turned off unless
+# $SST_COMPRESSION is defined
+sst_compression=none
+if [ ! -z $SST_COMPRESSION ]; then
+  echo "Turning SST compression on for all tests"
+  sst_compression=$compression_type;
+fi
+
 const_params="
   --db=$DB_DIR \
   --wal_dir=$WAL_DIR \
@@ -71,7 +79,7 @@ const_params="
   --cache_numshardbits=6 \
   --compression_max_dict_bytes=$compression_max_dict_bytes \
   --compression_ratio=0.5 \
-  --compression_type=$compression_type \
+  --compression_type=$sst_compression \
   --level_compaction_dynamic_level_bytes=true \
   --bytes_per_sync=$((8 * M)) \
   --cache_index_and_filter_blocks=0 \
@@ -109,7 +117,7 @@ const_params="
   --active_recycling_sst_minct=5 \
   --active_recycling_sst_maxct=15 \
   --active_recycling_vlogfile_freed_min=7 \
-  --active_recycling_size_trigger=$((1 * G)) \
+  --active_recycling_size_trigger=$((100 * G)) \
   --vlogfile_max_size=$((50 * M)) \
   --compaction_picker_age_importance=100 \
   --ring_compression_style=$compression_type \
@@ -123,8 +131,8 @@ l0_config="
 
 l0_config_b="
   --level0_file_num_compaction_trigger=4 \
-  --level0_slowdown_writes_trigger=52 \
-  --level0_stop_writes_trigger=64"
+  --level0_slowdown_writes_trigger=24 \
+  --level0_stop_writes_trigger=40"
 
 if [ $duration -gt 0 ]; then
   const_params="$const_params --duration=$duration"
@@ -137,8 +145,10 @@ params_w="$const_params \
 
 params_wb="$const_params \
           $l0_config_b \
-          --max_background_jobs=20 \
-          --max_write_buffer_number=8"
+          --max_background_jobs=40 \
+          --subcompactions=2 \
+          --max_successive_merges=1000 \
+          --max_write_buffer_number=12"
 
 params_bulkload="$const_params \
                  --max_background_jobs=20 \
