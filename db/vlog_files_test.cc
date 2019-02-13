@@ -24,6 +24,7 @@
 #ifdef INDIRECT_VALUE_SUPPORT
 #include "db/value_log.h"
 #endif
+#include <regex>
 
 namespace rocksdb {
 
@@ -287,6 +288,23 @@ static void ListVLogFileSizes(DBVLogTest *db, std::vector<uint64_t>& vlogfilesiz
   }
 }
 
+// Riffle through the stats return string and extract the info for the Rings.  frag is reported as a fraction between 0 and 1
+static void DecodeRingStats(std::string stats, uint64_t& r0files, double& r0size, double& r0frag,
+   uint64_t& sumfiles, double& sumsize, double& sumfrag) {
+  std::smatch matchres;
+  std::regex r0info (".*Ring Stats.*\\n.*\\n.*\\n.*R0 *([0-9]*) *([0-9.]*) *([KMGT])B *([0-9.]*) *\\n");
+  ASSERT_EQ(regex_search(stats,matchres,r0info), true);
+  r0files = std::stoll(matchres[1].str());
+  r0size = std::stod(matchres[2].str()) * (double)(1LL<<(10 * (1 + std::string("KMGT").find(matchres[3].str()))));
+  r0frag =  std::stod(matchres[4].str()) / 100.0;
+  std::regex suminfo (".*Ring Stats.*\\n.*\\n.*\\n.*\\n.*Sum *([0-9]*) *([0-9.]*) *([KMGT])B *([0-9.]*) *\\n");
+  ASSERT_EQ(regex_search(stats,matchres,suminfo), true);
+  sumfiles = std::stoll(matchres[1].str());
+  sumsize = std::stod(matchres[2].str()) * (double)(1LL<<(10 * (1 + std::string("KMGT").find(matchres[3].str()))));
+  sumfrag =  std::stod(matchres[4].str()) / 100.0;
+}
+
+
 
 TEST_F(DBVLogTest, RemappingFractionTest) {
   Options options = CurrentOptions();
@@ -321,7 +339,7 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
   // Key of 100 bytes, kv of 16KB
   // Set filesize to 4MB
 
-
+  double statsfilesize=0;   // filesize inferred from the stats line (0 to avoid warning)
   printf("Stopping at %d:",40);
   for(int32_t mappct=20; mappct<=40; mappct+= 5){
     double mapfrac = mappct * 0.01;
@@ -347,6 +365,20 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
       compact_options.target_level = 1;
       ASSERT_OK(db_->CompactRange(compact_options, &keyslice, &keyslice));
       dbfull()->TEST_WaitForCompact();
+
+      // Read the VLog stats
+      std::string stats;
+      (db_->GetProperty("rocksdb.stats", &stats));
+      // Extract size/frag for Ring 0 and the total
+      uint64_t r0files, sumfiles; double r0size, r0frag, sumsize, sumfrag;
+      DecodeRingStats(stats, r0files, r0size, r0frag, sumfiles, sumsize, sumfrag);
+      // If this is the first file, remember the size
+      if(key==0)statsfilesize=r0size;
+      // The ring size should be the size of one file * the number of files
+      ASSERT_EQ(r0files, key+1);
+      ASSERT_GT(r0size*0.005,std::abs(r0size-(r0files*statsfilesize)));
+      // Fragmentation should be based on the size and actual value length
+      ASSERT_GT(0.001,std::abs(r0frag-((statsfilesize-(value_size+5))/statsfilesize)));
     }
     // Verify 100 SSTs and 100 VLog files
     ASSERT_EQ("0,100", FilesPerLevel(0));
@@ -355,16 +387,16 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
     ASSERT_EQ(100, vlogfilesizes.size());
     // Verify total file size is pretty close to right.  Filesize gets rounded up to alignment boundary
     int64_t onefilesize = vlogfilesizes[0];
+    // file size should match what we inferred from the stats
+    ASSERT_GT(10,std::abs(onefilesize-(int64_t)statsfilesize));
     // We really should verify what the alignment boundary is based on the EnvOptions in the VLog.  But we have no way to access that, and the files
     // we created long ago, and the boundary may be different depending on path, and may change between read/write... so we don't try to get them just right.
     // Instead we assume the length is right, and see what alignment was applied
     const int64_t bufferalignment = onefilesize&-onefilesize;
-printf("\nActual filesize: 0x%zx\n",onefilesize);  // scaf
     int64_t totalsize=0;  // place to build file stats
     for(size_t i=0;i<vlogfilesizes.size();++i){
      totalsize += vlogfilesizes[i];
     }
-printf("Before remapping compaction: totalsize=%zd, onefilesize=%zd, nkeys=%d\n",totalsize,onefilesize,nkeys);  // scaf
     ASSERT_GT(1000, std::abs(totalsize-onefilesize*nkeys));
     // compact n-5% to n+5%
     CompactRangeOptions remap_options;
@@ -382,19 +414,15 @@ printf("Before remapping compaction: totalsize=%zd, onefilesize=%zd, nkeys=%d\n"
     for(size_t i=0;i<vlogfilesizes.size();++i){
      newtotalsize += vlogfilesizes[i];
     }
-printf("After remapping compaction: newtotalsize=%zd\n",newtotalsize);  // scaf
  
     // expected increase is 4% of the size.  Each filesize is rounded up
     int64_t expincr = (int64_t) (onefilesize * nkeys * 0.04);
-printf("Expected file increase in bytes before alignment: 0x%zx\n", expincr);  // scaf
     expincr = (expincr + (bufferalignment-1)) & -bufferalignment;
-printf("Expected file increase in bytes after alignment: 0x%zx\n", expincr);  // scaf
-printf("Actual file increase in bytes after alignment: 0x%zx\n", newtotalsize-totalsize);  // scaf
     ASSERT_EQ(104, vlogfilesizes.size());
     ASSERT_GT(1000, (int64_t)std::abs(newtotalsize-(totalsize+expincr)));  // not a tight match, but if it works throughout the range it's OK
   }
-  printf("\n");
 }
+
 
 #if 1  // remove if no long functions enabled
 static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
