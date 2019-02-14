@@ -370,7 +370,7 @@ TEST_F(DBVLogTest, RemappingFractionTest) {
       std::string stats;
       (db_->GetProperty("rocksdb.stats", &stats));
       // Extract size/frag for Ring 0 and the total
-      uint64_t r0files, sumfiles; double r0size, r0frag, sumsize, sumfrag;
+      uint64_t r0files=0, sumfiles=0; double r0size=0, r0frag=0, sumsize=0, sumfrag=0;
       DecodeRingStats(stats, r0files, r0size, r0frag, sumfiles, sumsize, sumfrag);
       // If this is the first file, remember the size
       if(key==0)statsfilesize=r0size;
