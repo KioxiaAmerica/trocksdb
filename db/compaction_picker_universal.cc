@@ -849,7 +849,7 @@ Compaction* UniversalCompactionPicker::PickDeleteTriggeredCompaction(
 
     if (output_level != 0) {
       if (start_level == 0) {
-        if (!GetOverlappingL0Files(vstorage, &start_level_inputs, output_level,
+        if (0>GetOverlappingL0Files(vstorage, &start_level_inputs, output_level,
                                    nullptr)) {
           return nullptr;
         }

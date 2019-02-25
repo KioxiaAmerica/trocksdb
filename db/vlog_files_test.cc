@@ -306,123 +306,6 @@ static void DecodeRingStats(std::string stats, uint64_t& r0files, double& r0size
 
 
 
-TEST_F(DBVLogTest, RemappingFractionTest) {
-  Options options = CurrentOptions();
-  options.write_buffer_size = 100 * 1024 * 1024;  // 100MB write buffer: hold all keys
-  options.num_levels = 4;
-  options.level0_file_num_compaction_trigger = 3;
-  options.level0_slowdown_writes_trigger = 5;
-  options.level0_stop_writes_trigger = 11;
-  options.max_background_compactions = 3;
-  options.max_bytes_for_level_base = 100 * (1LL<<20);  // keep level1 big too
-  options.max_bytes_for_level_multiplier = 10;
-
-  //const int32_t key_size = 100;
-  const int32_t value_size = 16384;  // k+v=16KB
-  const int32_t nkeys = 100;  // number of files
-  options.target_file_size_base = 10LL<< 20;  // large value
-
-  options.vlogring_activation_level = std::vector<int32_t>({0});
-  options.min_indirect_val_size = std::vector<size_t>({0});
-  options.fraction_remapped_during_compaction = std::vector<int32_t>({50});
-  options.fraction_remapped_during_active_recycling = std::vector<int32_t>({25});
-  options.fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
-  options.fragmentation_active_recycling_klaxon = std::vector<int32_t>({50});
-  options.active_recycling_sst_minct = std::vector<int32_t>({5});
-  options.active_recycling_sst_maxct = std::vector<int32_t>({15});
-  options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
-  options.compaction_picker_age_importance = std::vector<int32_t>({100});
-  options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
-  options.vlogfile_max_size = std::vector<uint64_t>({value_size+500});  // one value per vlog file
-
-  Random rnd(301);
-  // Key of 100 bytes, kv of 16KB
-  // Set filesize to 4MB
-
-  double statsfilesize=0;   // filesize inferred from the stats line (0 to avoid warning)
-  printf("Stopping at %d:",40);
-  for(int32_t mappct=20; mappct<=40; mappct+= 5){
-    double mapfrac = mappct * 0.01;
-    printf(" %d",mappct);
-    // set remapping fraction to n
-    options.fraction_remapped_during_compaction = std::vector<int32_t>({mappct});
-    DestroyAndReopen(options);
-    // write 100 files in key order, flushing each to give it a VLog file
-    std::string val0string;
-    for(int key = 0;key<nkeys;++key){
-      std::string keystring = Key(key);
-      Slice keyslice = keystring;  // the key we will add
-      std::string valstring = RandomString(&rnd, value_size);
-      if(key==0)val0string = valstring;
-      Slice valslice = valstring;
-      ASSERT_OK(Put(keyslice, valslice));
-      ASSERT_EQ(valslice, Get(Key(key)));
-      // Flush into L0
-      ASSERT_OK(Flush());
-      // Compact into L1, which will write the VLog files.  At this point there is nothing to remap
-      CompactRangeOptions compact_options;
-      compact_options.change_level = true;
-      compact_options.target_level = 1;
-      ASSERT_OK(db_->CompactRange(compact_options, &keyslice, &keyslice));
-      dbfull()->TEST_WaitForCompact();
-
-      // Read the VLog stats
-      std::string stats;
-      (db_->GetProperty("rocksdb.stats", &stats));
-      // Extract size/frag for Ring 0 and the total
-      uint64_t r0files, sumfiles; double r0size, r0frag, sumsize, sumfrag;
-      DecodeRingStats(stats, r0files, r0size, r0frag, sumfiles, sumsize, sumfrag);
-      // If this is the first file, remember the size
-      if(key==0)statsfilesize=r0size;
-      // The ring size should be the size of one file * the number of files
-      ASSERT_EQ(r0files, key+1);
-      ASSERT_GT(r0size*0.005,std::abs(r0size-(r0files*statsfilesize)));
-      // Fragmentation should be based on the size and actual value length
-      ASSERT_GT(0.001,std::abs(r0frag-((statsfilesize-(value_size+5))/statsfilesize)));
-    }
-    // Verify 100 SSTs and 100 VLog files
-    ASSERT_EQ("0,100", FilesPerLevel(0));
-    std::vector<uint64_t> vlogfilesizes;  // sizes of all the VLog files
-    ListVLogFileSizes(this,vlogfilesizes);
-    ASSERT_EQ(100, vlogfilesizes.size());
-    // Verify total file size is pretty close to right.  Filesize gets rounded up to alignment boundary
-    int64_t onefilesize = vlogfilesizes[0];
-    // file size should match what we inferred from the stats
-    ASSERT_GT(10,std::abs(onefilesize-(int64_t)statsfilesize));
-    // We really should verify what the alignment boundary is based on the EnvOptions in the VLog.  But we have no way to access that, and the files
-    // we created long ago, and the boundary may be different depending on path, and may change between read/write... so we don't try to get them just right.
-    // Instead we assume the length is right, and see what alignment was applied
-    const int64_t bufferalignment = onefilesize&-onefilesize;
-    int64_t totalsize=0;  // place to build file stats
-    for(size_t i=0;i<vlogfilesizes.size();++i){
-     totalsize += vlogfilesizes[i];
-    }
-    ASSERT_GT(1000, std::abs(totalsize-onefilesize*nkeys));
-    // compact n-5% to n+5%
-    CompactRangeOptions remap_options;
-    remap_options.change_level = true;
-    remap_options.target_level = 1;
-    remap_options.bottommost_level_compaction = BottommostLevelCompaction::kForce;
-    std::string minkeystring(Key((int)(nkeys*(mapfrac-0.05)))), maxkeystring(Key((int)(nkeys*(mapfrac+0.05))));
-    Slice minkey(minkeystring), maxkey(maxkeystring);
-    ASSERT_OK(db_->CompactRange(remap_options, &minkey, &maxkey));
-    dbfull()->TEST_WaitForCompact();
-    // verify that the VLog file total has grown by 4%
-    vlogfilesizes.clear();  // reinit list of files
-    ListVLogFileSizes(this,vlogfilesizes);
-    int64_t newtotalsize=0;  // place to build file stats
-    for(size_t i=0;i<vlogfilesizes.size();++i){
-     newtotalsize += vlogfilesizes[i];
-    }
- 
-    // expected increase is 4% of the size.  Each filesize is rounded up
-    int64_t expincr = (int64_t) (onefilesize * nkeys * 0.04);
-    expincr = (expincr + (bufferalignment-1)) & -bufferalignment;
-    ASSERT_EQ(104, vlogfilesizes.size());
-    ASSERT_GT(1000, (int64_t)std::abs(newtotalsize-(totalsize+expincr)));  // not a tight match, but if it works throughout the range it's OK
-  }
-}
-
 
 #if 1  // remove if no long functions enabled
 static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
@@ -489,6 +372,7 @@ TEST_F(DBVLogTest, SequentialWriteTest) {
   int64_t numfinalcompactions = 0;  // compactions into last level
   double totalref0position = 0.0;  //  total of ref0 position as a % of ring size
 //  int64_t vlogtotalsize = 0;  // number of bytes in VLog, after removing fragmentation
+  const int64_t debugmode = 0;
 
   SyncPoint::GetInstance()->SetCallBack(
       "CompactionJob::InstallCompactionResults", [&](void* arg) {
@@ -505,20 +389,21 @@ TEST_F(DBVLogTest, SequentialWriteTest) {
         if(cfd!=nullptr){
           if(pickerinfo[7]){ // Active recycle
             ++numARs;  // inc count of ARs
-// obsolete            printf("PickCompaction: AR L%zd->%zd , #input SSTs=%zd, ring files=[%zd,%zd] SSTs={",pickerinfo[0],pickerinfo[5],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
-// obsolete             printreq = 1;
+            if(debugmode&1){printf("PickCompaction: AR L%zd->%zd , #input SSTs=%zd, ring files=[%zd,%zd] SSTs={",pickerinfo[0],pickerinfo[5],pickerinfo[2],pickerinfo[3],pickerinfo[4]); printreq = 1;}
           } else {  // normal compaction
             ++numcompactions;
             if(pickerinfo[5]==(options.num_levels-1)){
               // compaction into final level
-// obsolete               printf("PickCompaction: Level %zd->%zd, exp ref0=%zd, act ref0=%zd, ring files=[%zd,%zd] SSTs={",pickerinfo[0],pickerinfo[5],pickerinfo[1],pickerinfo[2],pickerinfo[3],pickerinfo[4]);
-// obsolete               printreq = 1;
+              if(debugmode&1){printf("PickCompaction: Level %zd->%zd, exp ref0=%zd, act ref0=%zd, ring files=[%zd,%zd] SSTs={",pickerinfo[0],pickerinfo[5],pickerinfo[1],pickerinfo[2],pickerinfo[3],pickerinfo[4]); printreq = 1;}
               if(pickerinfo[2]!=~0LL){  // don't count comps with no ref0.  They should not occur during the final data-collection pass
                 ++numfinalcompactions;  // inc # final compactions
                 totalref0position += (double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3]);  // add in fractional position of ref0 file
 if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3]) > 1.0  || (double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3]) < 0.0)
  printf("invalid ref0\n"); // scaf
               }
+            }else{
+              // compaction before final level
+              if(debugmode&2){printf("PickCompaction: Level %zd->%zd, exp ref0=%zd, act ref0=%zd, ring files=[%zd,%zd] SSTs={",pickerinfo[0],pickerinfo[5],pickerinfo[1],pickerinfo[2],pickerinfo[3],pickerinfo[4]); printreq = 1;}
             }
           }
           if(printreq){
@@ -1319,6 +1204,123 @@ if((double)(pickerinfo[2]-pickerinfo[3]) / (double)(pickerinfo[4]-pickerinfo[3])
   ASSERT_EQ(vlogtotalsize,restartinfo.size-restartinfo.frag);
 }
 #endif
+
+TEST_F(DBVLogTest, RemappingFractionTest) {
+  Options options = CurrentOptions();
+  options.write_buffer_size = 100 * 1024 * 1024;  // 100MB write buffer: hold all keys
+  options.num_levels = 4;
+  options.level0_file_num_compaction_trigger = 3;
+  options.level0_slowdown_writes_trigger = 5;
+  options.level0_stop_writes_trigger = 11;
+  options.max_background_compactions = 3;
+  options.max_bytes_for_level_base = 100 * (1LL<<20);  // keep level1 big too
+  options.max_bytes_for_level_multiplier = 10;
+
+  //const int32_t key_size = 100;
+  const int32_t value_size = 16384;  // k+v=16KB
+  const int32_t nkeys = 100;  // number of files
+  options.target_file_size_base = 10LL<< 20;  // large value
+
+  options.vlogring_activation_level = std::vector<int32_t>({0});
+  options.min_indirect_val_size = std::vector<size_t>({0});
+  options.fraction_remapped_during_compaction = std::vector<int32_t>({50});
+  options.fraction_remapped_during_active_recycling = std::vector<int32_t>({25});
+  options.fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
+  options.fragmentation_active_recycling_klaxon = std::vector<int32_t>({50});
+  options.active_recycling_sst_minct = std::vector<int32_t>({5});
+  options.active_recycling_sst_maxct = std::vector<int32_t>({15});
+  options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
+  options.compaction_picker_age_importance = std::vector<int32_t>({100});
+  options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
+  options.vlogfile_max_size = std::vector<uint64_t>({value_size+500});  // one value per vlog file
+
+  Random rnd(301);
+  // Key of 100 bytes, kv of 16KB
+  // Set filesize to 4MB
+
+  double statsfilesize=0;   // filesize inferred from the stats line (0 to avoid warning)
+  printf("Stopping at %d:",40);
+  for(int32_t mappct=20; mappct<=40; mappct+= 5){
+    double mapfrac = mappct * 0.01;
+    printf(" %d",mappct);
+    // set remapping fraction to n
+    options.fraction_remapped_during_compaction = std::vector<int32_t>({mappct});
+    DestroyAndReopen(options);
+    // write 100 files in key order, flushing each to give it a VLog file
+    std::string val0string;
+    for(int key = 0;key<nkeys;++key){
+      std::string keystring = Key(key);
+      Slice keyslice = keystring;  // the key we will add
+      std::string valstring = RandomString(&rnd, value_size);
+      if(key==0)val0string = valstring;
+      Slice valslice = valstring;
+      ASSERT_OK(Put(keyslice, valslice));
+      ASSERT_EQ(valslice, Get(Key(key)));
+      // Flush into L0
+      ASSERT_OK(Flush());
+      // Compact into L1, which will write the VLog files.  At this point there is nothing to remap
+      CompactRangeOptions compact_options;
+      compact_options.change_level = true;
+      compact_options.target_level = 1;
+      ASSERT_OK(db_->CompactRange(compact_options, &keyslice, &keyslice));
+      dbfull()->TEST_WaitForCompact();
+
+      // Read the VLog stats
+      std::string stats;
+      (db_->GetProperty("rocksdb.stats", &stats));
+      // Extract size/frag for Ring 0 and the total
+      uint64_t r0files, sumfiles; double r0size, r0frag, sumsize, sumfrag;
+      DecodeRingStats(stats, r0files, r0size, r0frag, sumfiles, sumsize, sumfrag);
+      // If this is the first file, remember the size
+      if(key==0)statsfilesize=r0size;
+      // The ring size should be the size of one file * the number of files
+      ASSERT_EQ(r0files, key+1);
+      ASSERT_GT(r0size*0.005,std::abs(r0size-(r0files*statsfilesize)));
+      // Fragmentation should be based on the size and actual value length
+      ASSERT_GT(0.001,std::abs(r0frag-((statsfilesize-(value_size+5))/statsfilesize)));
+    }
+    // Verify 100 SSTs and 100 VLog files
+    ASSERT_EQ("0,100", FilesPerLevel(0));
+    std::vector<uint64_t> vlogfilesizes;  // sizes of all the VLog files
+    ListVLogFileSizes(this,vlogfilesizes);
+    ASSERT_EQ(100, vlogfilesizes.size());
+    // Verify total file size is pretty close to right.  Filesize gets rounded up to alignment boundary
+    int64_t onefilesize = vlogfilesizes[0];
+    // file size should match what we inferred from the stats
+    ASSERT_GT(10,std::abs(onefilesize-(int64_t)statsfilesize));
+    // We really should verify what the alignment boundary is based on the EnvOptions in the VLog.  But we have no way to access that, and the files
+    // we created long ago, and the boundary may be different depending on path, and may change between read/write... so we don't try to get them just right.
+    // Instead we assume the length is right, and see what alignment was applied
+    const int64_t bufferalignment = onefilesize&-onefilesize;
+    int64_t totalsize=0;  // place to build file stats
+    for(size_t i=0;i<vlogfilesizes.size();++i){
+     totalsize += vlogfilesizes[i];
+    }
+    ASSERT_GT(1000, std::abs(totalsize-onefilesize*nkeys));
+    // compact n-5% to n+5%
+    CompactRangeOptions remap_options;
+    remap_options.change_level = true;
+    remap_options.target_level = 1;
+    remap_options.bottommost_level_compaction = BottommostLevelCompaction::kForce;
+    std::string minkeystring(Key((int)(nkeys*(mapfrac-0.05)))), maxkeystring(Key((int)(nkeys*(mapfrac+0.05))));
+    Slice minkey(minkeystring), maxkey(maxkeystring);
+    ASSERT_OK(db_->CompactRange(remap_options, &minkey, &maxkey));
+    dbfull()->TEST_WaitForCompact();
+    // verify that the VLog file total has grown by 4%
+    vlogfilesizes.clear();  // reinit list of files
+    ListVLogFileSizes(this,vlogfilesizes);
+    int64_t newtotalsize=0;  // place to build file stats
+    for(size_t i=0;i<vlogfilesizes.size();++i){
+     newtotalsize += vlogfilesizes[i];
+    }
+ 
+    // expected increase is 4% of the size.  Each filesize is rounded up
+    int64_t expincr = (int64_t) (onefilesize * nkeys * 0.04);
+    expincr = (expincr + (bufferalignment-1)) & -bufferalignment;
+    ASSERT_EQ(104, vlogfilesizes.size());
+    ASSERT_GT(1000, (int64_t)std::abs(newtotalsize-(totalsize+expincr)));  // not a tight match, but if it works throughout the range it's OK
+  }
+}
 
 TEST_F(DBVLogTest, VlogFileSizeTest) {
   Options options = CurrentOptions();

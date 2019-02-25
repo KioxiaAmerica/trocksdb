@@ -149,8 +149,6 @@ printf("\n");
     // Get the compression information to use for this file
     compressiontype = compaction->mutable_cf_options()->ring_compression_style[outputringno];
 
-    // Max size of VLog file
-
     // Calculate the total size of keys+values that we will allow in a single compaction block.  This is enough to hold all the SSTs in max_compaction_bytes, plus 1 VLog file per each of those SSTs.  This is high for non-L0 compactions, which
     // need only enough storage for references that are being copied; but the limit is needed mainly for initial manual compaction of the whole database, which comes from L0 and has to have all the (compressed) data.
     // We will fill up to 2 compaction blocks before we start writing VLogs and SSTs

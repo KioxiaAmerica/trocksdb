@@ -180,9 +180,13 @@ class CompactionPicker {
                                     int* start_level, int* output_level,
                                     CompactionInputFiles* start_level_inputs);
 
-  bool GetOverlappingL0Files(VersionStorageInfo* vstorage,
+  int64_t GetOverlappingL0Files(VersionStorageInfo* vstorage,
                              CompactionInputFiles* start_level_inputs,
-                             int output_level, int* parent_index);
+                             int output_level, int* parent_index);  // return -1=error, 0=OK, 1=OK, change output_level_ to last level
+
+#ifdef INDIRECT_VALUE_SUPPORT
+  bool IsCompactIntoBottomLevel(VersionStorageInfo* vstorage,int output_level,InternalKey& smallkey);  // return true if this compaction can be redirected to the bottom level
+#endif
 
   // Register this compaction in the set of running compactions
   void RegisterCompaction(Compaction* c);

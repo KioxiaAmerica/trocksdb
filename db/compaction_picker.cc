@@ -1000,18 +1000,47 @@ void CompactionPicker::PickFilesMarkedForCompaction(
   start_level_inputs->files.clear();
 }
 
+#ifdef INDIRECT_VALUE_SUPPORT
+// We have collected a group of L0 files that can be processed in parallel into the output level with no overlap there.  This is almost surely sequential-key load.
+// Next we push the output level to the bottom if possible.  This is for 2 reasons: to avoid compacting each file one by one through all the levels (remember, they don't overlap); and
+// to end the load with a one-level database.  The one-level database is desirable because otherwise the levels above the last will be full of nonoverlapping files which will
+// compact inefficiently and, most important, will not stir the database by compactions into the last level.  In such a configuration AR will be called on to do almost all the
+// VLog defragmentation, with an increase in CPU time until the database equilibrates.
+//
+// We could check the keys above the last level, but there's no reason to, since in the case of interest every compaction will go to the bottom.  Instead, we just check to make
+// sure the upper levels are empty.  For the bottom level, it is not logically necessary to check anything: the files we have don't overlap anything being compacted out of L0,
+// and thus the normal checks for files-being-compacted will prevent us from conflicting with an ongoing compaction.  But we have to make sure that the first compaction AFTER the load
+// completes, which might encompass the entire key space, does not attempt to compact the entire bottom level.  The simple solution is that we go into the bottom level only if
+// the smallest new key is larger than all the keys in the bottom level.  Since we are checking BEFORE writing anything, and the L0 files stay in order, this will allow all compactions
+// of a sequential-key load to go to the bottom level even if the compactions complete out of order.
+// return true if this compaction can be redirected to the bottom level
+bool CompactionPicker::IsCompactIntoBottomLevel(VersionStorageInfo* vstorage,int output_level,
+  InternalKey& smallkey){  // the smallest key being added
+  // verify that the levels before the last are unpopulated
+  for(int i=output_level;i<vstorage->num_levels()-1;++i)if(vstorage->LevelFiles(i).size()!=0)return false;  // if there are files before the last level, don't change output level
+  // verify that the largest key in the last level is lower than the smallest key being added
+  if(!vstorage->LevelFiles(vstorage->num_levels()-1).empty() && icmp_->Compare(vstorage->LevelFiles(vstorage->num_levels()-1).back()->largest,smallkey)>=0)return false;  // if there is a key >= one we are adding. don't change
+  return true;
+}
+
+#endif
+
 // When we compact an L0 file it is vital that any earlier overlapping L0 file be included too, otherwise L0 might be processed out of order
-bool CompactionPicker::GetOverlappingL0Files(
+int64_t CompactionPicker::GetOverlappingL0Files(
     VersionStorageInfo* vstorage, CompactionInputFiles* start_level_inputs,
     int output_level, int* parent_index) {
 #ifdef INDIRECT_VALUE_SUPPORT
   if(!level0_compactions_in_progress()->empty()){
     // If another L0 compaction is going on, it must be that we determined that we can throw in all the remaining L0 files without overlapping any keys being compacted already.
     // Do that, replacing the currently-selected file so that we keep all the files in order
+    FileMetaData *smallkeyfile=nullptr;  // the file with the smallest key
     start_level_inputs->files.clear();  // remove all files
     const std::vector<FileMetaData*>& level_files = vstorage->LevelFiles(0);   // files at level 0
-    for(size_t i = 0; i<level_files.size();++i)if(!level_files[i]->being_compacted)start_level_inputs->files.push_back(level_files[i]);
-    return true;  // we have all the files now
+    for(size_t i = 0; i<level_files.size();++i)if(!level_files[i]->being_compacted){
+      start_level_inputs->files.push_back(level_files[i]);  // add file to the list
+      if((smallkeyfile==nullptr)|| icmp_->Compare(level_files[i]->smallest,smallkeyfile->smallest)<0)smallkeyfile=level_files[i];  // remember the smallest key
+    }
+    return IsCompactIntoBottomLevel(vstorage,output_level,smallkeyfile->smallest)?1:0;  // return, requesting change of output_level if called for
   }
 #else
   // Two level 0 compaction won't run at the same time, so don't need to worry
@@ -1033,19 +1062,19 @@ bool CompactionPicker::GetOverlappingL0Files(
   GetRange(*start_level_inputs, &smallest, &largest);
   if (IsRangeInCompaction(vstorage, &smallest, &largest, output_level,
                           parent_index)) {
-    return false;
+    return -1;  // error return
   }
 
 #ifdef INDIRECT_VALUE_SUPPORT  // this would be a good idea for all systems
   // If, after all this, there is only 1 file to be compacted, we are most likely doing sequential writes that produce nonoverlapping L0 files.
-  // If all the keys in the selected file are higher than all the keys in L1 (as we expect they will be), we will throw in all the L0 files that have keys
+  // If all the keys in the selected file are higher than all the keys in output_level (as we expect they will be), we will throw in all the L0 files that have keys
   // above the selected file.
   if(start_level_inputs->files.size()==1){   // only 1 L0 file being compacted
-    FileMetaData *lastl1file = nullptr;  // will be pointer to L1 file with largest key
-    FileMetaData *pickedfile=start_level_inputs->files[0];  // the sole selected file
-    if(vstorage->num_levels()>=2 && vstorage->LevelFiles(1).size())lastl1file=vstorage->LevelFiles(1).back();  // If there is an L1, point to file with largest key
+    FileMetaData *lastl1file = nullptr;  // will be pointer to output_level file with largest key
+    FileMetaData *pickedfile=start_level_inputs->files[0];  // the sole selected file, which also has the smallest key
+    if(vstorage->num_levels()>output_level && vstorage->LevelFiles(output_level).size())lastl1file=vstorage->LevelFiles(output_level).back();  // If there is an L1, point to file with largest key
     if(lastl1file==nullptr || icmp_->Compare(pickedfile->smallest,lastl1file->largest)>0) {
-      // Here the sole file is later than all keys in L1.  Remove it from the list and then reinsert all such files with later keys.  We have to remove
+      // Here the sole file is later than all keys in output_level.  Remove it from the list and then reinsert all such files with later keys.  We have to remove
       // it first to preserve the order of the files (not strictly required, because we know no other files overlap the single file, but we do it for peace of mind).
       // We have to worry about this case:  (low key) file0begin   L1end   file1bgn  file0end  file1end file2begin  file2end  (high key)
       // where the selected file is file 2.  We have to make sure we don't bring in file1, because that would require file0, which overlaps L1.  For simplicity
@@ -1053,13 +1082,16 @@ bool CompactionPicker::GetOverlappingL0Files(
       // higher keys during sequential load, this will give the desired result.
       start_level_inputs->files.clear();  // remove the picked file
       const std::vector<FileMetaData*>& level_files = vstorage->LevelFiles(0);   // files at level 0
-      for(size_t i = 0; i<level_files.size();++i)if(icmp_->Compare(level_files[i]->smallest,pickedfile->smallest)>=0)start_level_inputs->files.push_back(level_files[i]);  // insert those with keys >- picked file's keys
+      for(size_t i = 0; i<level_files.size();++i){
+        if(icmp_->Compare(level_files[i]->smallest,pickedfile->smallest)>=0)start_level_inputs->files.push_back(level_files[i]);  // insert those with keys >- picked file's keys
+      }
+      if(IsCompactIntoBottomLevel(vstorage,output_level,pickedfile->smallest))return 1;  // request change of output_level if called for
     }
   }
 #endif
   assert(!start_level_inputs->files.empty());
 
-  return true;
+  return 0;
 }
 
 bool LevelCompactionPicker::NeedsCompaction(
@@ -1106,8 +1138,8 @@ class LevelCompactionBuilder {
   void SetupInitialFiles();
 
   // If the initial files are from L0 level, pick other L0
-  // files if needed.
-  bool SetupOtherL0FilesIfNeeded();
+  // files if needed.  Result -1=error, 0=OK, 1=OK, and change output_level_ to the last level
+  int64_t SetupOtherL0FilesIfNeeded();
 
   // Based on initial files, setup other files need to be compacted
   // in this compaction, accordingly.
@@ -1292,12 +1324,12 @@ void LevelCompactionBuilder::SetupInitialFiles() {
   }
 }
 
-bool LevelCompactionBuilder::SetupOtherL0FilesIfNeeded() {
+int64_t LevelCompactionBuilder::SetupOtherL0FilesIfNeeded() {
   if (start_level_ == 0 && output_level_ != 0) {
     return compaction_picker_->GetOverlappingL0Files(
         vstorage_, &start_level_inputs_, output_level_, &parent_index_);
   }
-  return true;
+  return 0;  // good return
 }
 
 bool LevelCompactionBuilder::SetupOtherInputsIfNeeded() {
@@ -1385,9 +1417,10 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
 
     // If it is a L0 -> base level compaction, we need to set up other L0
     // files if needed.
-    if (!SetupOtherL0FilesIfNeeded()) {
+    int64_t l0status=SetupOtherL0FilesIfNeeded();
+    if (l0status<0) {  // error
       return nullptr;
-    }
+    }else if (l0status>0)output_level_ = vstorage_->num_levels()-1;  // if sequential-key load, load into last level
 
     // Pick files in the output level and expand more files in the start level
     // if needed.
@@ -1403,8 +1436,8 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
         }
       }
     }
-    TEST_SYNC_POINT_CALLBACK("LevelCompactionBuilder::PickCompaction",
-                           &pickerinfo);
+// obsolete     TEST_SYNC_POINT_CALLBACK("LevelCompactionBuilder::PickCompaction",
+// obsolete                            &pickerinfo);
 #endif
 
 #ifdef INDIRECT_VALUE_SUPPORT
@@ -1577,7 +1610,7 @@ bool LevelCompactionBuilder::PickFileToCompact() {
       if(icmp->Compare(level_files[maxx]->largest,level_files[minx]->smallest)>=0){TEST_SYNC_POINT("LevelCompactionPicker::PickCompactionBySize:0"); return false;}  // if overlap. we can't process it
     }
 
-    // no overlap, OK to continue with the compaction picking.  We will pick the earliest uncompacted file and then expand
+    // no overlap, OK to continue with the compaction picking.  We will pick the earliest uncompacted file (regardless of level0_file_num_compaction_trigger) and then expand
     // the selection with anything that overlaps it.  Eventually we will throw in all the other files L0 too, known to be safe since they don't
     // overlap any existing compaction.
   }
@@ -1664,8 +1697,8 @@ bool LevelCompactionBuilder::PickIntraL0Compaction() {
       level_files[0]->being_compacted) {
     // If L0 isn't accumulating much files beyond the regular trigger, don't
     // resort to L0->L0 compaction yet.  Or, if file 0, where we would start an intraL0, is being compacted, don't bother
-    // To be able to compact with so few files would require that L0->L1 is blocked by a compaction out of L1, which is ceretainly possible.
-    // The thing to worry about is the other side, during ascending load, where L0 has a lot of files that are being compacted in parallel.
+    // To be able to compact with so few files would require that L0->L1 is blocked by a compaction out of L1, which is certainly possible.
+    // The thing to worry about is the other side, during sequential-key load, where L0 has a lot of files that are being compacted in parallel.
     // In that case, this test will always pass, but we never want an L0->L0 compaction.  Fortunately, we get here only when the compaction
     // score is >= 1.0, which means there must be at least compaction_trigger files that are not compacting.  If they have ascending keys, we will
     // have had a chance to take them, so if we are here we know we are not bulk-loading.
