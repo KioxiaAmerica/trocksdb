@@ -182,10 +182,10 @@ class CompactionPicker {
 
   int64_t GetOverlappingL0Files(VersionStorageInfo* vstorage,
                              CompactionInputFiles* start_level_inputs,
-                             int output_level, int* parent_index);  // return -1=error, 0=OK, 1=OK, change output_level_ to last level
+                             int output_level, int* parent_index, const ImmutableCFOptions *ioptions);  // return -1=error, 0=OK, 1=OK, change output_level_ to last level
 
 #ifdef INDIRECT_VALUE_SUPPORT
-  bool IsCompactIntoBottomLevel(VersionStorageInfo* vstorage,int output_level,InternalKey& smallkey);  // return true if this compaction can be redirected to the bottom level
+  bool IsCompactIntoBottomLevel(VersionStorageInfo* vstorage,int output_level,InternalKey& smallkey,bool isdynamic);  // return true if this compaction can be redirected to the bottom level
 #endif
 
   // Register this compaction in the set of running compactions

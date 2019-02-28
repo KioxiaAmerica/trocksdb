@@ -541,7 +541,7 @@ TEST_P(DBCompactionTestWithParam, CompactionDeletionTriggerReopen) {
     std::vector<std::string> values;
     for (int k = 0; k < kTestSize; ++k) {
       values.push_back(RandomString(&rnd, kCDTValueSize));
-      ASSERT_OK(Put(Key(k), values[k]));
+      ASSERT_OK(Put(Key(kTestSize-1-k), values[k]));  // avoid ascending-key code
     }
     dbfull()->TEST_WaitForFlushMemTable();
     dbfull()->TEST_WaitForCompact();
@@ -568,7 +568,7 @@ TEST_P(DBCompactionTestWithParam, CompactionDeletionTriggerReopen) {
     Reopen(options);
     // insert relatively small amount of data to trigger auto compaction.
     for (int k = 0; k < kTestSize / 10; ++k) {
-      ASSERT_OK(Put(Key(k), values[k]));
+      ASSERT_OK(Put(Key(k), values[kTestSize-1-k]));
     }
     dbfull()->TEST_WaitForFlushMemTable();
     dbfull()->TEST_WaitForCompact();

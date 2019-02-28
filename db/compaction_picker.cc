@@ -1015,7 +1015,9 @@ void CompactionPicker::PickFilesMarkedForCompaction(
 // of a sequential-key load to go to the bottom level even if the compactions complete out of order.
 // return true if this compaction can be redirected to the bottom level
 bool CompactionPicker::IsCompactIntoBottomLevel(VersionStorageInfo* vstorage,int output_level,
-  InternalKey& smallkey){  // the smallest key being added
+  InternalKey& smallkey, bool isdynamic){  // the smallest key being added
+  // for compatibility with existing testcases, write the last level only if the user has requested that we build from the bottom up
+  if(!isdynamic)return false;  // if !level_compaction_dynamic_level_bytes
   // verify that the levels before the last are unpopulated
   for(int i=output_level;i<vstorage->num_levels()-1;++i)if(vstorage->LevelFiles(i).size()!=0)return false;  // if there are files before the last level, don't change output level
   // verify that the largest key in the last level is lower than the smallest key being added
@@ -1028,7 +1030,7 @@ bool CompactionPicker::IsCompactIntoBottomLevel(VersionStorageInfo* vstorage,int
 // When we compact an L0 file it is vital that any earlier overlapping L0 file be included too, otherwise L0 might be processed out of order
 int64_t CompactionPicker::GetOverlappingL0Files(
     VersionStorageInfo* vstorage, CompactionInputFiles* start_level_inputs,
-    int output_level, int* parent_index) {
+    int output_level, int* parent_index, const ImmutableCFOptions *ioptions) {
 #ifdef INDIRECT_VALUE_SUPPORT
   if(!level0_compactions_in_progress()->empty()){
     // If another L0 compaction is going on, it must be that we determined that we can throw in all the remaining L0 files without overlapping any keys being compacted already.
@@ -1040,7 +1042,7 @@ int64_t CompactionPicker::GetOverlappingL0Files(
       start_level_inputs->files.push_back(level_files[i]);  // add file to the list
       if((smallkeyfile==nullptr)|| icmp_->Compare(level_files[i]->smallest,smallkeyfile->smallest)<0)smallkeyfile=level_files[i];  // remember the smallest key
     }
-    return IsCompactIntoBottomLevel(vstorage,output_level,smallkeyfile->smallest)?1:0;  // return, requesting change of output_level if called for
+    return IsCompactIntoBottomLevel(vstorage,output_level,smallkeyfile->smallest,ioptions&&ioptions->level_compaction_dynamic_level_bytes)?1:0;  // return, requesting change of output_level if called for
   }
 #else
   // Two level 0 compaction won't run at the same time, so don't need to worry
@@ -1085,7 +1087,7 @@ int64_t CompactionPicker::GetOverlappingL0Files(
       for(size_t i = 0; i<level_files.size();++i){
         if(icmp_->Compare(level_files[i]->smallest,pickedfile->smallest)>=0)start_level_inputs->files.push_back(level_files[i]);  // insert those with keys >- picked file's keys
       }
-      if(IsCompactIntoBottomLevel(vstorage,output_level,pickedfile->smallest))return 1;  // request change of output_level if called for
+      if(IsCompactIntoBottomLevel(vstorage,output_level,pickedfile->smallest,ioptions&&ioptions->level_compaction_dynamic_level_bytes))return 1;  // request change of output_level if called for
     }
   }
 #endif
@@ -1327,7 +1329,7 @@ void LevelCompactionBuilder::SetupInitialFiles() {
 int64_t LevelCompactionBuilder::SetupOtherL0FilesIfNeeded() {
   if (start_level_ == 0 && output_level_ != 0) {
     return compaction_picker_->GetOverlappingL0Files(
-        vstorage_, &start_level_inputs_, output_level_, &parent_index_);
+        vstorage_, &start_level_inputs_, output_level_, &parent_index_,  &ioptions_);
   }
   return 0;  // good return
 }

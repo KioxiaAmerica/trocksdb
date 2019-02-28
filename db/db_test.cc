@@ -91,6 +91,7 @@ class DBTestWithParam
   uint32_t max_subcompactions_;
   bool exclusive_manual_compaction_;
 };
+
 TEST_F(DBTest, MockEnvTest) {
   unique_ptr<MockEnv> env{new MockEnv(Env::Default())};
   Options options;
@@ -274,7 +275,7 @@ TEST_F(DBTest, LevelLimitReopen) {
   const std::string value(1024 * 1024, ' ');
   int i = 0;
   while (NumTableFilesAtLevel(2, 1) == 0) {
-    ASSERT_OK(Put(1, KeyInvInd(i++,value.size(),values_are_indirect), ValueInvInd(value,values_are_indirect)));
+    ASSERT_OK(Put(1, KeyInvInd(1000000-i++,value.size(),values_are_indirect), ValueInvInd(value,values_are_indirect)));  // reverse to avoid ascending-key detection
   }
 
   options.num_levels = 1;
@@ -5782,7 +5783,7 @@ TEST_F(DBTest, SoftLimit) {
 
   // Generating 360KB in Level 3
   for (int i = 0; i < 72; i++) {
-    PutInvInd(Key(i), std::string(5000, 'x'),values_are_indirect);
+    PutInvInd(Key(72-i), std::string(5000, 'x'),values_are_indirect);
     if (i % 10 == 0) {
       Flush();
     }
@@ -5792,7 +5793,7 @@ TEST_F(DBTest, SoftLimit) {
 
   // Generating 360KB in Level 2
   for (int i = 0; i < 72; i++) {
-    PutInvInd(Key(i), std::string(5000, 'x'),values_are_indirect);
+    PutInvInd(Key(72-i), std::string(5000, 'x'),values_are_indirect);
     if (i % 10 == 0) {
       Flush();
     }
@@ -5906,6 +5907,7 @@ TEST_F(DBTest, SoftLimit) {
   sleeping_task_low.WakeUp();
   sleeping_task_low.WaitUntilDone();
 }
+
 
 TEST_F(DBTest, LastWriteBufferDelay) {
   Options options = CurrentOptions();
