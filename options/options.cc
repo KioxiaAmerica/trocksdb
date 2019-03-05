@@ -219,6 +219,8 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
     ROCKS_LOG_HEADER(log, "               Options.disable_auto_compactions: %d",
                      disable_auto_compactions);
 #ifdef INDIRECT_VALUE_SUPPORT
+    ROCKS_LOG_HEADER(log, "                     Options.path_ids_per_level: %d",
+                     path_ids_per_level);
     ROCKS_LOG_HEADER(log, "                     Options.allow_trivial_move: %d",
                      allow_trivial_move);
     ROCKS_LOG_HEADER(log, "                     Options.vlog_direct_IO: %d",

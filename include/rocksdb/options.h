@@ -288,6 +288,10 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   // Default: empty
   std::vector<DbPath> cf_paths;
 #ifdef INDIRECT_VALUE_SUPPORT  // define column-family options
+
+  // minimum cf_path to use for each level.  2 bits per level, starting at the LSB.  Default 0 to allow all levels to use all paths
+  int64_t path_ids_per_level = 0;
+
 // include VLog options for the CF here
   // All are Dynamically changeable through SetOptions() API
   //TRocks Options

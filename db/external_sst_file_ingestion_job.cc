@@ -90,7 +90,8 @@ Status ExternalSstFileIngestionJob::Prepare(
 
   // Copy/Move external files into DB
   for (IngestedFileInfo& f : files_to_ingest_) {
-    f.fd = FileDescriptor(versions_->NewFileNumber(), 0, f.file_size);
+    // Get the path ID as if for L0
+    f.fd = FileDescriptor(versions_->NewFileNumber(), cfd_->ioptions()->MinPathIdForLevel(0), f.file_size);
 
     const std::string path_outside_db = f.external_file_path;
     const std::string path_inside_db =

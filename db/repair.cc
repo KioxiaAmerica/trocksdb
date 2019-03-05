@@ -420,7 +420,8 @@ class Repairer {
       }
 
       FileMetaData meta;
-      meta.fd = FileDescriptor(next_file_number_++, 0, 0);
+      // put the files in the highest enabled path
+      meta.fd = FileDescriptor(next_file_number_++, cfd->ioptions()->MinPathIdForLevel(0), 0);
       ReadOptions ro;
       ro.total_order_seek = true;
       Arena arena;

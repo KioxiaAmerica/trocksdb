@@ -1525,7 +1525,8 @@ uint32_t LevelCompactionBuilder::GetPathId(
 
   // Last path is the fallback
   while (p < ioptions.cf_paths.size() - 1) {
-    if (level_size <= current_path_size) {
+    // The user can indicate the minimum starting path for each level
+    if (cur_level>=ioptions.MinPathIdForLevel(level) && level_size <= current_path_size) {
       if (cur_level == level) {
         // Does desired level fit in this path?
         return p;

@@ -363,6 +363,12 @@ TEST_F(DBVLogTest, SequentialWriteTest) {
   options.vlog_direct_IO = false;
   options.merge_operator.reset(new StringAppendOperator(','));
 
+#if 0  // use this to test path_ids_per_level
+  options.cf_paths.clear();
+  options.cf_paths.emplace_back("C:/Addonsold/L0",10LL<<20);
+  options.cf_paths.emplace_back(dbname_,10LL<<30);
+  options.path_ids_per_level = 0x5555555555555554;   // Allow L0 to go to path 0, others to path 1
+#endif
 
   printf("Starting: #levels=%d, max_bytes_for_level_base=%zd target_file_size_base=%zd write_buffer_size=%zd vlogfile_max_size=%zd\n",options.num_levels,options.max_bytes_for_level_base, options.target_file_size_base,options.write_buffer_size,options.vlogfile_max_size[0]);
   DestroyAndReopen(options);

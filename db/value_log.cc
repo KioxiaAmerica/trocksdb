@@ -454,8 +454,8 @@ void VLogRingFileDeletion::DeleteFile(VLogRing& v,   // the current ring
   EnvOptions& /*file_options*/  // options to use for all VLog files
 ) {
   filepointer = nullptr;  // This closes the file if it was open
-  std::string filename = VLogFileName(v.immdbopts_->db_paths,
-    VLogRingRef(v.ringno_,(int)fileno).FileNumber(), (uint32_t)v.immdbopts_->db_paths.size()-1, v.cfd_->GetName());
+  std::string filename = VLogFileName(v.cfd_->ioptions()->cf_paths,
+    VLogRingRef(v.ringno_,(int)fileno).FileNumber(), (uint32_t)v.cfd_->ioptions()->cf_paths.size()-1, v.cfd_->GetName());
 #if DEBLEVEL&2
 printf("Deleting file: %s\n",filename.c_str());
 #endif
@@ -737,8 +737,8 @@ printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.si
 
     // Create filename for the file to write
 // scaf can't we get by with just one pathname?
-    pathnames.push_back(VLogFileName(immdbopts_->db_paths,
-      VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber(), (uint32_t)immdbopts_->db_paths.size()-1, cfd_->GetName()));
+    pathnames.push_back(VLogFileName(cfd_->ioptions()->cf_paths,
+      VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber(), (uint32_t)cfd_->ioptions()->cf_paths.size()-1, cfd_->GetName()));
 
     // Buffer up the data for the file.  We copy each file's data to the output area; if the data is being moved from the
     // VLog for defrag, read it from the VLog into the buffer.  By delaying till now we avoid having to keep all the recycled data in memory.

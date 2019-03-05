@@ -905,7 +905,7 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
   FileMetaData meta;
   auto pending_outputs_inserted_elem =
       CaptureCurrentFileNumberInPendingOutputs();
-  meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
+  meta.fd = FileDescriptor(versions_->NewFileNumber(), cfd->ioptions()->MinPathIdForLevel(0), 0);
   ReadOptions ro;
   ro.total_order_seek = true;
   Arena arena;

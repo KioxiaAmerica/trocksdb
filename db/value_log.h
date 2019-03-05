@@ -79,7 +79,7 @@ public:
 
 // Files containing values are sequences of bytes, jammed together with no record marks.  Each value can be compressed and CRCd
 // independently.  The filename for a value file is path###.vlg$$$ where
-// path is the last db_path for the column family
+// path is the last cf_path for the column family
 // ### is an ASCII string of the number of the file
 // $$$ is the name of the column family, which must be suitable for inclusion in a file name
 //
@@ -648,20 +648,6 @@ void VLogRingFindLaggingSsts(
 )
 ;
 
-#if 0 // obsolete 
-// Update the deadzone for the ring.  The deadzone should be big enough to ensure that a newly-added file has been added to the current version before it gets
-// out of the deadzone.  Thus, the deadzone should be big enough to hold all the files created by a set of concurrent compactions, times some factor of safety.
-// Alas, we do not have access to the mutable_db_options here, where the max number of background jobs is kept.  So we will take a guess, and apply a factor of safety,
-// and pass the incoming number of files written through a first-order low-pass filter to set the deadzone
-// scaf  this needs to be replaced by a positive interlock with version creation?  It has effect only when the database is small
-// NOTE: this is called outside the mutex, so there is a chance that an update request could be lost.  That's OK.
-void UpdateDeadband(size_t nfileswritten, int64_t arsizetrigger) {
-  if(arsizetrigger!=armagictestingvalue){
-    deletion_deadband = nfileswritten + (size_t)std::round(deletion_deadband * (1.0 - 1.0/(15*10)));  // estimate 15 compactions, 10x margin of safety, for filter gain of 150
-  }else{deletion_deadband = 10;}  // If user turns on test mode, set small deadband so deletions can happen early
-  deletion_deadband=10;  // scaf should work with no deadband
-}
-#endif
 };
 
 //

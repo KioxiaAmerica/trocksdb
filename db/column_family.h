@@ -398,7 +398,8 @@ class ColumnFamilyData {
      VLogRingRefFileno& lastfileno,    // the last file# in the recycled region
      const MutableCFOptions& compoptions   // options in effect for this compaction
      );
-   std::vector<int32_t>& VLogRingActivationLevel() { return mutable_cf_options_.vlogring_activation_level; }
+  std::vector<int32_t>& VLogRingActivationLevel() { return mutable_cf_options_.vlogring_activation_level; }
+  // For each level in the database, the minimum path number that can be used for that level.  2 bits per level, starting at the LSB
 #endif
 
  private:
