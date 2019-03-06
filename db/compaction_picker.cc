@@ -1030,7 +1030,11 @@ bool CompactionPicker::IsCompactIntoBottomLevel(VersionStorageInfo* vstorage,int
 // When we compact an L0 file it is vital that any earlier overlapping L0 file be included too, otherwise L0 might be processed out of order
 int64_t CompactionPicker::GetOverlappingL0Files(
     VersionStorageInfo* vstorage, CompactionInputFiles* start_level_inputs,
+#ifdef INDIRECT_VALUE_SUPPORT
     int output_level, int* parent_index, const ImmutableCFOptions *ioptions) {
+#else
+    int output_level, int* parent_index, const ImmutableCFOptions* /* ioptions */) {
+#endif
 #ifdef INDIRECT_VALUE_SUPPORT
   if(!level0_compactions_in_progress()->empty()){
     // If another L0 compaction is going on, it must be that we determined that we can throw in all the remaining L0 files without overlapping any keys being compacted already.
