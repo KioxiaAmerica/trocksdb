@@ -122,10 +122,10 @@ struct ImmutableCFOptions {
   std::vector<DbPath> cf_paths;
 #ifdef INDIRECT_VALUE_SUPPORT
   uint64_t path_ids_per_level;
-  int const MinPathIdForLevel(int32_t level) const  { return
+  int MinPathIdForLevel(int32_t level) const  { return
     (path_ids_per_level>>(level*2))&3;  // must match kFileNumberMask
 #else
-  int const MinPathIdForLevel(int32_t level) const  { return
+  int MinPathIdForLevel(int32_t level) const  { return
     0;  // in the vanilla system all levels are always available
 #endif
   }
