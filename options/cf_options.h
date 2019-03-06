@@ -125,7 +125,7 @@ struct ImmutableCFOptions {
   int MinPathIdForLevel(int32_t level) const  { return
     (path_ids_per_level>>(level*2))&3;  // must match kFileNumberMask
 #else
-  int MinPathIdForLevel(int32_t level) const  { return
+  int MinPathIdForLevel(int32_t /*level*/ ) const  { return
     0;  // in the vanilla system all levels are always available
 #endif
   }
