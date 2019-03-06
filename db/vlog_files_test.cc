@@ -311,7 +311,7 @@ static void DecodeRingStats(std::string stats, uint64_t& r0files, double& r0size
 static std::string LongKey(int i, int len) { return DBTestBase::Key(i).append(len,' '); }
 #endif
 
-#if 1  // turn on for sequential write test with multiple L0 compactions
+#if 0  // turn on for sequential write test with multiple L0 compactions
 TEST_F(DBVLogTest, SequentialWriteTest) {
  // Generate Puts as fast as we can, to overrun the compactor and  force multiple parallel L0 compactions
   const int32_t value_ref_size = 16;  // length of indirect reference
@@ -507,9 +507,9 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   options.fragmentation_active_recycling_trigger = std::vector<int32_t>({25});
   options.fragmentation_active_recycling_klaxon = std::vector<int32_t>({50});
   options.active_recycling_size_trigger = std::vector<int64_t>({(int64_t)(0.8*batch_size*value_size)});   // start AR when the DB is almost full
-  options.active_recycling_sst_minct = std::vector<int32_t>({5});
-  options.active_recycling_sst_maxct = std::vector<int32_t>({15});
-  options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
+  options.active_recycling_sst_minct = std::vector<int32_t>({15});
+  options.active_recycling_sst_maxct = std::vector<int32_t>({25});
+  options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({15});
   options.compaction_picker_age_importance = std::vector<int32_t>({100});
   options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
   options.vlogfile_max_size = std::vector<uint64_t>({sstkvcount*(value_size+10)});  // amount of value in 1 sst, allowing for CRC & header
@@ -528,8 +528,8 @@ TEST_F(DBVLogTest, IndirectCompactionPickingTest) {
   // We want our statistics to show the steady-state status.  To do that, we set numcompactions negative so that we ignore the startup transient and
   // take stats only after a delay.  We originally reset the stats inside the loop below, but that fails thread-safety since compactions are running
   // at the same time
-  int64_t npasses=2;  // number of overall passes
-  numcompactions = -16000*(npasses-1);  // set number to ignore - all but the last pass
+  int64_t npasses=3;  // number of overall passes
+  numcompactions = -8500*(npasses-1);  // set number to ignore - all but the last pass
 
   SyncPoint::GetInstance()->SetCallBack(
       "CompactionJob::InstallCompactionResults", [&](void* arg) {

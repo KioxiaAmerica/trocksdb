@@ -1726,6 +1726,9 @@ std::unordered_map<std::string, OptionTypeInfo>
           OptionType::kBoolean, OptionVerificationType::kNormal, true,
           offsetof(struct MutableCFOptions, disable_auto_compactions)}},
 #ifdef INDIRECT_VALUE_SUPPORT
+        {"path_ids_per_level",
+         {offset_of(&ColumnFamilyOptions::path_ids_per_level),
+          OptionType::kUInt64T, OptionVerificationType::kNormal, false, 0}},
     {"allow_trivial_move",
      {offset_of(&ColumnFamilyOptions::allow_trivial_move),
       OptionType::kBoolean, OptionVerificationType::kNormal, true,
