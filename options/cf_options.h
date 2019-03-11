@@ -122,11 +122,23 @@ struct ImmutableCFOptions {
   std::vector<DbPath> cf_paths;
 #ifdef INDIRECT_VALUE_SUPPORT
   uint64_t path_ids_per_level;
-  int MinPathIdForLevel(int32_t level) const  { return
+#endif
+#ifdef INDIRECT_VALUE_SUPPORT
+  int MinPathIdForLevel(int32_t level) const { return
     (path_ids_per_level>>(level*2))&3;  // must match kFileNumberMask
 #else
   int MinPathIdForLevel(int32_t /*level*/ ) const  { return
     0;  // in the vanilla system all levels are always available
+#endif
+  }
+  // If the user has specified a minimum path for any level, and they have set level_compaction_dynamic_level_bytes, we can't do anything useful with
+  // the level numbers so we just force the use of the minimum path for each level as specified.  The VLog will go into the last path as always.  Usually the
+  // distinction will be between L0 and all other levels
+  bool AlwaysUseMinPath() const { return
+#ifdef INDIRECT_VALUE_SUPPORT
+  path_ids_per_level!=0 && level_compaction_dynamic_level_bytes;
+#else
+  0;
 #endif
   }
 };
