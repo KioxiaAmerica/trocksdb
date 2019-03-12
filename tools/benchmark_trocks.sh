@@ -66,8 +66,16 @@ if [ ! -z $SST_COMPRESSION ]; then
   sst_compression=$compression_type;
 fi
 
+# default to use db=DB_DIR unless RAM_DISK is defined
+database_path="--db=$DB_DIR"
+if [ ! -z $RAM_DISK ]; then
+  echo "Turning on RAM DISK for all tests"
+  database_path="--db_paths=/mnt/ram_disk/,10000000000:$DB_DIR,4000000000000 \
+	  --path_ids_per_level=0x5554"
+fi
+
 const_params="
-  --db=$DB_DIR \
+  $database_path \
   --wal_dir=$WAL_DIR \
   \
   --num=$num_keys \
@@ -88,7 +96,7 @@ const_params="
   \
   --hard_rate_limit=3 \
   --rate_limit_delay_max_milliseconds=1000000 \
-  --write_buffer_size=$((110 * M)) \
+  --write_buffer_size=$((510 * M)) \
   --target_file_size_base=$((10 * M)) \
   --max_bytes_for_level_base=$((80 * M)) \
   \
@@ -118,7 +126,7 @@ const_params="
   --active_recycling_sst_maxct=15 \
   --active_recycling_vlogfile_freed_min=7 \
   --active_recycling_size_trigger=$((100 * G)) \
-  --vlogfile_max_size=$((50 * M)) \
+  --vlogfile_max_size=$((250 * M)) \
   --compaction_picker_age_importance=100 \
   --ring_compression_style=$compression_type \
   --vlog_direct_IO=0"
@@ -131,8 +139,8 @@ l0_config="
 
 l0_config_b="
   --level0_file_num_compaction_trigger=4 \
-  --level0_slowdown_writes_trigger=24 \
-  --level0_stop_writes_trigger=40"
+  --level0_slowdown_writes_trigger=36 \
+  --level0_stop_writes_trigger=48"
 
 if [ $duration -gt 0 ]; then
   const_params="$const_params --duration=$duration"
@@ -145,10 +153,8 @@ params_w="$const_params \
 
 params_wb="$const_params \
           $l0_config_b \
-          --max_background_jobs=40 \
-          --subcompactions=2 \
-          --max_successive_merges=1000 \
-          --max_write_buffer_number=12"
+          --max_background_jobs=48 \
+          --max_write_buffer_number=13"
 
 params_bulkload="$const_params \
                  --max_background_jobs=20 \
