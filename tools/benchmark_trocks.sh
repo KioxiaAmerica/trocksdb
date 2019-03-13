@@ -99,6 +99,7 @@ const_params="
   --write_buffer_size=$((510 * M)) \
   --target_file_size_base=$((10 * M)) \
   --max_bytes_for_level_base=$((80 * M)) \
+  --arena_block_size=$((16 * M)) \
   \
   --verify_checksum=1 \
   --delete_obsolete_files_period_micros=$((60 * M)) \

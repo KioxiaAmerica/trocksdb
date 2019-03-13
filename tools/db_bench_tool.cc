@@ -597,6 +597,8 @@ DEFINE_int32(level0_file_num_compaction_trigger,
              "Number of files in level-0"
              " when compactions start");
 
+DEFINE_int32(arena_block_size, 0, "Arena Block Size.");
+
 static bool ValidateInt32Percent(const char* flagname, int32_t value) {
   if (value <= 0 || value>=100) {
     fprintf(stderr, "Invalid value for --%s: %d, 0< pct <100 \n",
@@ -3313,6 +3315,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
         FLAGS_level0_file_num_compaction_trigger;
     options.level0_slowdown_writes_trigger =
       FLAGS_level0_slowdown_writes_trigger;
+    options.arena_block_size = FLAGS_arena_block_size;
 #ifdef INDIRECT_VALUE_SUPPORT
     options.path_ids_per_level = FLAGS_path_ids_per_level;
     options.allow_trivial_move = FLAGS_allow_trivial_move;
