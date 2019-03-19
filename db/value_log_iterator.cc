@@ -90,8 +90,19 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
   current_vlog(cfd->vlog()),
   recyciter_(recyciter),
   job_id_(job_id),
-  compaction_(compaction)
-  {
+  compaction_ringno(compaction->ringno()),
+  compaction_output_level(compaction->output_level()),
+  compaction_mutable_cf_options(compaction->mutable_cf_options()),
+  compaction_lastfileno(compaction->lastfileno()),
+  compaction_max_compaction_bytes(compaction->max_compaction_bytes()),
+  compaction_inputs_size((const_cast<Compaction *>(compaction))->inputs()->size()),
+  compaction_max_output_file_size(compaction->max_output_file_size()),
+  compaction_grandparents(&compaction->grandparents()),
+  compaction_comparator(&compaction->column_family_data()->internal_comparator())
+  { IndirectIteratorDo(); }
+
+
+void IndirectIterator::IndirectIteratorDo() {
     // init stats we will keep
     remappeddatalen = 0;  // number of bytes that were read & rewritten to a new VLog position
     bytesintocompression = 0;  // number of bytes split off to go to VLog
@@ -104,10 +115,10 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
     std::vector<uint64_t> iitimevec(10,0);
 #endif
     // For Active Recycling, use the ringno chosen earlier; otherwise use the ringno for the output level
-    if(recyciter!=nullptr)outputringno = compaction->ringno();   // AR
+    if(recyciter_!=nullptr)outputringno = compaction_ringno;   // AR
     else{
 
-      outputringno = current_vlog->VLogRingNoForLevelOutput(compaction->output_level());  // get the ring number we will write output to
+      outputringno = current_vlog->VLogRingNoForLevelOutput(compaction_output_level);  // get the ring number we will write output to
 #if DEBLEVEL&4
 printf("Creating iterator for level=%d, earliest_passthrough=",compaction->output_level());
 #endif
@@ -128,18 +139,18 @@ printf("Creating iterator for level=%d, earliest_passthrough=",compaction->outpu
     if(head>tail)head-=tail; else head=0;  // change 'head' to head-tail.  It would be possible for tail to pass head, on an
            // empty ring.  What happens then doesn't matter, but to keep things polite we check for it rather than overflowing the unsigned subtraction.
     earliest_passthrough = (VLogRingRefFileno)(tail + 
-                                                    0.01 * ((recyciter!=nullptr) ? compaction->mutable_cf_options()->fraction_remapped_during_active_recycling
-                                                                                 : compaction->mutable_cf_options()->fraction_remapped_during_compaction)[outputringno]
+                                                    0.01 * ((recyciter_!=nullptr) ? compaction_mutable_cf_options->fraction_remapped_during_active_recycling
+                                                                                 : compaction_mutable_cf_options->fraction_remapped_during_compaction)[outputringno]
                                                     * head);  // calc file# before which we remap.  fraction is expressed as percentage
         // scaf bug this creates one passthrough for all rings during AR, whilst they might have different thresholds
     // For Active Recycling, since the aim is to free old files, we make sure we remap everything in the files we are going to delete.  But we should remap a little
     // more than that: the same SSTs that write to the oldest VLog files probably wrote to a sequence of VLog files, and it would be a shame to recycle them only to have to
     // come and do it again to pick up the other half of the files.  So, How much more?  Good question.  We would like to know how many VLog files were written by the
-    // compaction that created them.  Alas, there is no way to know that, nor even to make a good guess.  So, we hope that the user has responsibly sized the files so that
+    // compaction that created them.  Alas, there is no way to know that, or even to make a good guess.  So, we hope that the user has responsibly sized the files so that
     // there aren't many more VLog files than SSTs, and we pick a number that is more than the number of files we expect in a compaction.  It is OK to err on the high side,
     // because once an SST has been compacted it probably won't be revisited for a while, and thus there will be a large gap between the batch of oldest files referred to
     // in an SST and the second-oldest batch.
-    if(recyciter!=nullptr)earliest_passthrough = std::max(earliest_passthrough,compaction->lastfileno()+30);   // AR   scaf constant, which is max # VLog files per compaction, conservatively high
+    if(recyciter_!=nullptr)earliest_passthrough = std::max(earliest_passthrough,compaction_lastfileno+30);   // AR   scaf constant, which is max # VLog files per compaction, conservatively high
 #if DEBLEVEL&4
     for(int i=0;i<earliest_passthrough.size();++i)printf("%lld ",earliest_passthrough[i]);
 printf("\n");
@@ -147,33 +158,33 @@ printf("\n");
     addedfrag.clear(); addedfrag.resize(current_vlog->rings_.size());   // init the fragmentation count to 0 for each ring
 
     // Get the compression information to use for this file
-    compressiontype = compaction->mutable_cf_options()->ring_compression_style[outputringno];
+    compressiontype = compaction_mutable_cf_options->ring_compression_style[outputringno];
 
     // Calculate the total size of keys+values that we will allow in a single compaction block.  This is enough to hold all the SSTs in max_compaction_bytes, plus 1 VLog file per each of those SSTs.  This is high for non-L0 compactions, which
     // need only enough storage for references that are being copied; but the limit is needed mainly for initial manual compaction of the whole database, which comes from L0 and has to have all the (compressed) data.
     // We will fill up to 2 compaction blocks before we start writing VLogs and SSTs
     // File size of -1 means 'unlimited', and we use a guess.
-    double sstsizemult = compaction->mutable_cf_options()->vlogfile_max_size[outputringno]>0 && compaction->mutable_cf_options()->max_file_size[compaction->output_level()]>0 ?
-       (double)compaction->mutable_cf_options()->vlogfile_max_size[outputringno] / (double)compaction->mutable_cf_options()->max_file_size[compaction->output_level()] :  // normal value
+    double sstsizemult = compaction_mutable_cf_options->vlogfile_max_size[outputringno]>0 && compaction_mutable_cf_options->max_file_size[compaction_output_level]>0 ?
+       (double)compaction_mutable_cf_options->vlogfile_max_size[outputringno] / (double)compaction_mutable_cf_options->max_file_size[compaction_output_level] :  // normal value
        5;  // if filesize unlimited, make the batch pretty big
     // For some reason, if compaction->max_compaction_bytes() is HIGH_VALUE gcc overflows and ends up with compactionblocksize set to 0.  We try to avoid that case
-    double maxcompbytes = (double)std::min(maxcompactionblocksize,compaction->max_compaction_bytes());
+    double maxcompbytes = (double)std::min(maxcompactionblocksize,compaction_max_compaction_bytes);
     compactionblocksize = std::min(maxcompactionblocksize,(size_t)(compactionblocksizefudge * maxcompbytes * (1 + sstsizemult)));
     // If something was specified funny, make sure the compaction block is big enough to allow progress
     compactionblocksize = std::max(mincompactionblocksize,compactionblocksize);
 
     // Get the length in bytes of the smallest value that we will make indirect for the output level we are writing into
-    minindirectlen = (size_t)compaction->mutable_cf_options()->min_indirect_val_size[outputringno];
+    minindirectlen = (size_t)compaction_mutable_cf_options->min_indirect_val_size[outputringno];
 
     // Get the initial allocation for the disk-data buffer for a block.  This is related to the size of the files going into the compaction: for most compactions, it is the remapped references
     // from the SSTs (remapped values are expanded to full size just before being written).  We allow for 30% of the indirect values to be remapped.
     // to disk).  For the first compaction into a ring, the files are L0 files, aka write buffers that have not been split yet.  This is typically much bigger, depending on key size.
     // We want the initial value to be fairly close to avoid repeated copying of very large buffers
-    initdiskallo = (size_t) ((compaction->output_level()<=1)?compaction->mutable_cf_options()->write_buffer_size*compaction->mutable_cf_options()->level0_file_num_compaction_trigger  // into L1 or (rare) L0, allow for the min # compactible write buffers
-                                                  :0.3*compaction->mutable_cf_options()->target_file_size_base*(compaction->mutable_cf_options()->max_bytes_for_level_multiplier+2));   // into other levels, allow for as many SSTs as a normal compaction will have
+    initdiskallo = (size_t) ((compaction_output_level<=1)?compaction_mutable_cf_options->write_buffer_size*compaction_mutable_cf_options->level0_file_num_compaction_trigger  // into L1 or (rare) L0, allow for the min # compactible write buffers
+                                                  :0.3*compaction_mutable_cf_options->target_file_size_base*(compaction_mutable_cf_options->max_bytes_for_level_multiplier+2));   // into other levels, allow for as many SSTs as a normal compaction will have
 
     // For AR, create the list of number of records in each input file.
-    filecumreccnts.clear(); if(recyciter!=nullptr)filecumreccnts.resize((const_cast<Compaction *>(compaction))->inputs()->size());
+    filecumreccnts.clear(); if(recyciter_!=nullptr)filecumreccnts.resize(compaction_inputs_size);
 
     // Init stats for the compaction: number of bytes written to disk
     diskdatalen = 0;
@@ -433,7 +444,7 @@ void IndirectIterator::ReadAndResolveInputBlock() {
 #endif
   // Allocate space in the Value Log and write the values out, and save the information for assigning references
   VLogRingRefFileOffset initfrag;  // fragmentation created with initial writing of files
-  outputring->VLogRingWrite(current_vlog,diskdata,diskrecl,valueclass,compaction_->mutable_cf_options()->vlogfile_max_size[outputringno],job_id_,firstdiskref,fileendoffsets,outputerrorstatus,initfrag);
+  outputring->VLogRingWrite(current_vlog,diskdata,diskrecl,valueclass,compaction_mutable_cf_options->vlogfile_max_size[outputringno],job_id_,firstdiskref,fileendoffsets,outputerrorstatus,initfrag);
   addedfrag[outputringno] += initfrag;  // add end-of-file fragmentation to fragmentation total
   // Now, before any SSTs have been released, switch over the first time from 'waiting for SST/VLog info' to 'normal operation'
   current_vlog->SetInitComplete();
@@ -443,7 +454,7 @@ void IndirectIterator::ReadAndResolveInputBlock() {
 #endif
   // add the new batch into the file-related stats we keep
   nfileswritten += fileendoffsets.size();
-// obsolete   outputring->UpdateDeadband(fileendoffsets.size(),compaction_->mutable_cf_options()->active_recycling_size_trigger[outputringno]);
+// obsolete   outputring->UpdateDeadband(fileendoffsets.size(),compaction_mutable_cf_options->active_recycling_size_trigger[outputringno]);
   if(nfileswritten) {  // start file# of 0 means delete, so don't add an entry if there are no files added
     // for huge compactions, coalesce adjacent runs.  Not necessary, supposedly
     if(createdfilelist.size() && createdfilelist.back()==firstdiskref.Fileno()-1) {
@@ -473,9 +484,9 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
   if(outputerrorstatus.empty()) {
     // No error reading keys and writing to disk.
     if(recyciter_==nullptr) {      // If this is NOT Active Recycling, allocate the kvs to SSTs so as to keep files sizes equal.
-      BreakRecordsIntoFiles(filecumreccnts, outputrcdend, compaction_->max_output_file_size(),
-        &compaction_->grandparents(), &keys, &keylens, &compaction_->column_family_data()->internal_comparator(),
-        compaction_->max_compaction_bytes());  // calculate filecumreccnts, including use of grandparent info
+      BreakRecordsIntoFiles(filecumreccnts, outputrcdend, compaction_max_output_file_size,
+        compaction_grandparents, &keys, &keylens, compaction_comparator,
+        compaction_max_compaction_bytes);  // calculate filecumreccnts, including use of grandparent info
       // If there are too many data files per SST, the files are too small
       if(fileendoffsets.size()>2.0*filecumreccnts.size()){
         ROCKS_LOG_WARN(

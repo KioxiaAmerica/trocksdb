@@ -33,6 +33,9 @@
 #include "util/filename.h"
 #include "util/stop_watch.h"
 #include "util/sync_point.h"
+#ifdef INDIRECT_VALUE_SUPPORT
+#include "db/value_log_iterator.h"
+#endif
 
 namespace rocksdb {
 
@@ -76,7 +79,11 @@ Status BuildTable(
     InternalStats* internal_stats, TableFileCreationReason reason,
     EventLogger* event_logger, int job_id, const Env::IOPriority io_priority,
     TableProperties* table_properties, int level, const uint64_t creation_time,
-    const uint64_t oldest_key_time, Env::WriteLifeTimeHint write_hint) {
+    const uint64_t oldest_key_time, Env::WriteLifeTimeHint write_hint
+#ifdef INDIRECT_VALUE_SUPPORT
+    ,VLog *value_log
+#endif
+    ) {
   assert((column_family_id ==
           TablePropertiesCollectorFactory::Context::kUnknownColumnFamily) ==
          column_family_name.empty());
@@ -141,6 +148,37 @@ Status BuildTable(
         &snapshots, earliest_write_conflict_snapshot, snapshot_checker, env,
         true /* internal key corruption is not ok */, range_del_agg.get());
     c_iter.SeekToFirst();
+
+#if 0
+#ifdef INDIRECT_VALUE_SUPPORT
+  // The IndirectIterator will do all mapping/remapping and will return the new key/values one by one
+  // The constructor called here immediately reads all the values from c_iter, buffers them, and writes values to the Value Log.
+  // Then in the loop it returns the references to the values that were written.  Errors encountered during c_iter are preserved
+  // and associated with the failing keys.
+  // If there is no VLog it means this table type doesn't support indirects, and the iterator will be a passthrough
+#if DEBLEVEL&0x2000
+if(sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling)
+  printf("Starting kv capture for Active Recycling (%zd SSTs, VLogFiles up to %zd)\n",sub_compact->compaction->num_input_levels(),sub_compact->compaction->lastfileno());  // scaf
+#endif
+  std::unique_ptr<IndirectIterator> value_iter(new IndirectIterator(
+    c_iter,value_log,sub_compact->compaction,cfd->vlog()!=nullptr && cfd->vlog()->rings().size()!=0,
+    // For Active Recycling we pass a pointer to the RecyclingIterator, so the IndirectIterator can query it directly about end-of-file
+    sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling ? (RecyclingIterator*)input.get() : nullptr,
+    job_id_));  // keep iterator around till end of function
+  s = value_iter->status();  // initial status indicates errors writing VLog files
+  // For Active Recycling, we need to keep track of which input file's keys we are working on so that when we create the corresponding output
+  // file we mark it at the correct level.  If we are not AR, we will just use the output_level
+  int arfileno = 0;
+#else
+  // in the non-indirect version, initial error status on the iterator is never checked.  Bug?
+  CompactionIterator *value_iter(c_iter);
+#endif
+#endif
+
+
+
+
+
     for (; c_iter.Valid(); c_iter.Next()) {
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();

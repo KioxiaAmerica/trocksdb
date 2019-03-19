@@ -133,12 +133,15 @@ public:
   IndirectIterator(
    CompactionIterator* c_iter,   // the input iterator that feeds us kvs
    ColumnFamilyData* cfd,  // the column family we are working on
-   const Compaction *compaction,   // variuos info for this compaction
+   const Compaction *compaction,   // various info for this compaction
    Slice *end,   // the last+1 key to include (i. e. end of open interval), or nullptr if not given
    bool use_indirects,   // if false, do not do any indirect processing, just pass through c_iter_
    RecyclingIterator *recyciter,  // null if not Active Recycling; then, points to the iterator
    int job_id  // job id for logmsgs
   );
+
+  void IndirectIterator::IndirectIteratorDo(); // routine to finish the constructor's work
+
 
   // Routine to read and process one normal compaction's worth of input, called multiple times if compactions are immense
   void ReadAndResolveInputBlock();
@@ -228,7 +231,17 @@ private:
   std::shared_ptr<VLog> current_vlog;
   RecyclingIterator *recyciter_;  // null if not Active Recycling; then, points to the iterator
   int job_id_;  // job id for logmsgs
-  const Compaction *compaction_;  // the current compaction info
+  // fields extracted/created from inputs to constructor
+  size_t compaction_ringno;
+  int compaction_output_level;
+  const MutableCFOptions *compaction_mutable_cf_options;
+  VLogRingRefFileno compaction_lastfileno;  // last filenumber in recycling job
+  uint64_t compaction_max_compaction_bytes;  // last filenumber in recycling job
+  size_t compaction_inputs_size;  // number of input file to AR
+  uint64_t compaction_max_output_file_size;
+  const std::vector<FileMetaData*> *compaction_grandparents;
+  const InternalKeyComparator *compaction_comparator;
+// obsolete   const Compaction *compaction_;  // the current compaction info
 
   // values set for all compaction blocks and used in ReadAndResolveInputBlock
   size_t outputringno;   // The ring# we will be writing VLog files to
