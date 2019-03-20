@@ -157,7 +157,7 @@ public:
   );
 
 
-  void IndirectIterator::IndirectIteratorDo(); // routine to finish the constructor's work
+  void IndirectIteratorDo(); // routine to finish the constructor's work
 
 
   // Routine to read and process one normal compaction's worth of input, called multiple times if compactions are immense
