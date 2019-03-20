@@ -950,9 +950,9 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
           cfd->ioptions()->compression_opts, paranoid_file_checks,
           cfd->internal_stats(), TableFileCreationReason::kRecovery,
           &event_logger_, job_id, Env::IO_HIGH, nullptr /* table_properties */,
-          -1 /* level */, current_time, current_time, write_hint
+          -1 /* level */, current_time, 0, write_hint
 #ifdef INDIRECT_VALUE_SUPPORT
-          ,nullptr /* value_log */ 
+          ,nullptr /* cfd */, nullptr /* vlog_flush_info */
 #endif
           );
       LogFlush(immutable_db_options_.info_log);

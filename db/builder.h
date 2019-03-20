@@ -22,6 +22,7 @@
 #include "util/event_logger.h"
 #ifdef INDIRECT_VALUE_SUPPORT
 #include "value_log.h"
+#include "value_log_iterator.h"
 #endif
 
 namespace rocksdb {
@@ -85,7 +86,8 @@ extern Status BuildTable(
     const uint64_t creation_time = 0, const uint64_t oldest_key_time = 0,
     Env::WriteLifeTimeHint write_hint = Env::WLTH_NOT_SET
 #ifdef INDIRECT_VALUE_SUPPORT
-    ,VLog *value_log=nullptr  // if we should wsrite values to the VLog, this is the VLog; otherwise nullptr
+    ,ColumnFamilyData* cfd=nullptr  // if we should wsrite values to the VLog, this is the VLog; otherwise nullptr
+    ,VLogEditStats *vlog_flush_info=nullptr    // vlog info that needs to go to edit and stats
 #endif
     );
 

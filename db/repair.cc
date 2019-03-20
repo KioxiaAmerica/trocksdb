@@ -442,9 +442,9 @@ class Repairer {
           CompressionOptions(), false, nullptr /* internal_stats */,
           TableFileCreationReason::kRecovery, nullptr /* event_logger */,
           0 /* job_id */, Env::IO_HIGH, nullptr /* table_properties */,
-          -1 /* level */, current_time, current_time, write_hint
+          -1 /* level */, current_time, 0, write_hint
 #ifdef INDIRECT_VALUE_SUPPORT
-          ,nullptr /* value_log */ 
+          ,nullptr /* cfd */, nullptr /* vlog_flush_info */
 #endif
           );
       ROCKS_LOG_INFO(db_options_.info_log,

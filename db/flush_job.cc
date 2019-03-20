@@ -278,6 +278,9 @@ Status FlushJob::WriteLevel0Table() {
   db_mutex_->AssertHeld();
   const uint64_t start_micros = db_options_.env->NowMicros();
   Status s;
+#ifdef INDIRECT_VALUE_SUPPORT
+  VLogEditStats vlog_flush_info;  // this communicates edit info and stats back from the flush
+#endif
   {
     auto write_hint = cfd_->CalculateSSTWriteHint(0);
     db_mutex_->Unlock();
@@ -360,7 +363,8 @@ Status FlushJob::WriteLevel0Table() {
           Env::IO_HIGH, &table_properties_, 0 /* level */, current_time,
           oldest_key_time, write_hint
 #ifdef INDIRECT_VALUE_SUPPORT
-          ,cfd_->vlog().get() /* value_log */ 
+          ,cfd_ /* column family */
+          ,&vlog_flush_info
 #endif
           );
       LogFlush(db_options_.info_log);
@@ -385,6 +389,11 @@ Status FlushJob::WriteLevel0Table() {
   // Note that if file_size is zero, the file has been deleted and
   // should not be added to the manifest.
   if (s.ok() && meta_.fd.GetFileSize() > 0) {
+#ifdef INDIRECT_VALUE_SUPPORT
+    // vlog_flush_info contains info about the flush.  The list of files added goes into the edit; the rest go into the stats
+    Coalesce(edit_->VLogAdditions(),vlog_flush_info.restart_info,true /* allow_delete */);
+#endif
+
     // if we have more than 1 background thread, then we cannot
     // insert files directly into higher levels because some other
     // threads could be concurrently producing compacted files for
@@ -405,6 +414,12 @@ Status FlushJob::WriteLevel0Table() {
   InternalStats::CompactionStats stats(CompactionReason::kFlush, 1);
   stats.micros = db_options_.env->NowMicros() - start_micros;
   stats.bytes_written = meta_.fd.GetFileSize();
+#ifdef INDIRECT_VALUE_SUPPORT
+  stats.vlog_bytes_written_comp=vlog_flush_info.vlog_bytes_written_comp;  // Include info about VLog I/O
+  stats.vlog_bytes_written_raw=vlog_flush_info.vlog_bytes_written_raw;
+  stats.vlog_bytes_remapped=vlog_flush_info.vlog_bytes_remapped;
+  stats.vlog_files_created=vlog_flush_info.vlog_files_created;
+#endif
   MeasureTime(stats_, FLUSH_TIME, stats.micros);
   cfd_->internal_stats()->AddCompactionStats(0 /* level */, stats);
   cfd_->internal_stats()->AddCFStats(InternalStats::BYTES_FLUSHED,

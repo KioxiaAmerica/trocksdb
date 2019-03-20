@@ -120,7 +120,15 @@ private:
   const EnvOptions& env_options;  // env options for reading the database
 };
 
-
+// This structure contains the stuff that will be needed to update the Stats and the edit after a flush or compaction.  For historical reasons, we use
+// the struct only for flush
+struct VLogEditStats {
+  std::vector<VLogRingRestartInfo> restart_info;
+  uint64_t vlog_bytes_written_comp;   // bytes written after compression, including comp header & CRC
+  uint64_t vlog_bytes_written_raw;  // bytes written before compression
+  uint64_t vlog_bytes_remapped;  // bytes copied from one VLog file to its successor
+  uint64_t vlog_files_created;     // # vlog files created
+};
 
 
 // Iterator class to layer between the compaction_job loop and the compaction_iterator
@@ -130,15 +138,24 @@ class IndirectIterator {
 public: 
   static const VLogRingRefFileno high_value = ((VLogRingRefFileno)-1)>>1;  // biggest positive value
 
-  IndirectIterator(
-   CompactionIterator* c_iter,   // the input iterator that feeds us kvs
-   ColumnFamilyData* cfd,  // the column family we are working on
-   const Compaction *compaction,   // various info for this compaction
-   Slice *end,   // the last+1 key to include (i. e. end of open interval), or nullptr if not given
-   bool use_indirects,   // if false, do not do any indirect processing, just pass through c_iter_
-   RecyclingIterator *recyciter,  // null if not Active Recycling; then, points to the iterator
-   int job_id  // job id for logmsgs
+  IndirectIterator(  // this constructor used by compaction
+    CompactionIterator* c_iter,   // the input iterator that feeds us kvs
+    ColumnFamilyData* cfd,  // the column family we are working on
+    const Compaction *compaction,   // various info for this compaction
+    Slice *end,   // the last+1 key to include (i. e. end of open interval), or nullptr if not given
+    bool use_indirects,   // if false, do not do any indirect processing, just pass through c_iter_
+    RecyclingIterator *recyciter,  // null if not Active Recycling; then, points to the iterator
+    int job_id  // job id for logmsgs
   );
+
+ IndirectIterator(  // this constructor used by flush
+    CompactionIterator* c_iter,   // the input iterator that feeds us kvs
+    ColumnFamilyData* cfd,  // CF the file is in
+    bool use_indirects,   // if false, do not do any indirect processing, just pass through c_iter_
+    const MutableCFOptions& mutable_cf_options,  // options in use
+    int job_id   // job number for logging
+  );
+
 
   void IndirectIterator::IndirectIteratorDo(); // routine to finish the constructor's work
 

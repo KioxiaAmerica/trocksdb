@@ -74,7 +74,7 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
 // This iterator lies between the compaction-iterator and the builder loop.
 // We read all the values, save the key/values, write indirects, and then
 // return the indirect kvs one by one to the builder.
-  IndirectIterator::IndirectIterator(
+  IndirectIterator::IndirectIterator(  // this constructor is used for compaction
    CompactionIterator* c_iter,   // the input iterator that feeds us kvs.
    ColumnFamilyData* cfd,  // the column family we are working on
    const Compaction *compaction,   // various info for this compaction
@@ -96,10 +96,36 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
   compaction_lastfileno(compaction->lastfileno()),
   compaction_max_compaction_bytes(compaction->max_compaction_bytes()),
   compaction_inputs_size((const_cast<Compaction *>(compaction))->inputs()->size()),
-  compaction_max_output_file_size(compaction->max_output_file_size()),
+  compaction_max_output_file_size(compaction_output_level==0?0:compaction->max_output_file_size()),  // no size limit on SST files written to L0
   compaction_grandparents(&compaction->grandparents()),
   compaction_comparator(&compaction->column_family_data()->internal_comparator())
   { IndirectIteratorDo(); }
+
+ IndirectIterator::IndirectIterator(  // this constructor used by flush
+    CompactionIterator* c_iter,   // the input iterator that feeds us kvs
+    ColumnFamilyData* cfd,  // VLog for this CF, if any
+    bool use_indirects,   // if false, do not do any indirect processing, just pass through c_iter_
+    const MutableCFOptions& mutable_cf_options,  // options in use
+    int job_id
+ ) :
+  c_iter_(c_iter),
+  pcfd(cfd),
+  end_(nullptr),
+  use_indirects_(use_indirects),
+  current_vlog(cfd==nullptr?nullptr:cfd->vlog()),
+  recyciter_(nullptr),
+  job_id_(job_id),
+  compaction_ringno(0),  // if we use a ring, it's 0
+  compaction_output_level(0),  // flush always goes to level 0
+  compaction_mutable_cf_options(&mutable_cf_options),
+  compaction_lastfileno(0),  // not used
+  compaction_max_compaction_bytes(0),  // used only for grandparents
+  compaction_inputs_size(0),  // used only for AR
+  compaction_max_output_file_size(0),  // flush always write a single file
+  compaction_grandparents(nullptr),
+  compaction_comparator(nullptr)
+  { IndirectIteratorDo(); }
+
 
 
 void IndirectIterator::IndirectIteratorDo() {
@@ -484,15 +510,21 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
   if(outputerrorstatus.empty()) {
     // No error reading keys and writing to disk.
     if(recyciter_==nullptr) {      // If this is NOT Active Recycling, allocate the kvs to SSTs so as to keep files sizes equal.
-      BreakRecordsIntoFiles(filecumreccnts, outputrcdend, compaction_max_output_file_size,
-        compaction_grandparents, &keys, &keylens, compaction_comparator,
-        compaction_max_compaction_bytes);  // calculate filecumreccnts, including use of grandparent info
-      // If there are too many data files per SST, the files are too small
-      if(fileendoffsets.size()>2.0*filecumreccnts.size()){
-        ROCKS_LOG_WARN(
-            current_vlog->immdbopts_->info_log, "[%s]  You have %5.1f VLog files per SST.  Consider increasing vlogfile_max_size.",
-            current_vlog->cfd_->GetName().c_str(),
-            (double)fileendoffsets.size()/(double)filecumreccnts.size());
+      if(compaction_max_output_file_size!=0) {   // this is 0 for flush
+        // here for compaction.  break the records into files
+        BreakRecordsIntoFiles(filecumreccnts, outputrcdend, compaction_max_output_file_size,
+          compaction_grandparents, &keys, &keylens, compaction_comparator,
+          compaction_max_compaction_bytes);  // calculate filecumreccnts, including use of grandparent info
+        // If there are too many data files per SST, the files are too small
+        if(fileendoffsets.size()>2.0*filecumreccnts.size()){
+          ROCKS_LOG_WARN(
+              current_vlog->immdbopts_->info_log, "[%s]  You have %5.1f VLog files per SST.  Consider increasing vlogfile_max_size.",
+              current_vlog->cfd_->GetName().c_str(),
+              (double)fileendoffsets.size()/(double)filecumreccnts.size());
+        }
+      } else {
+        // here for flush.  The records all go into a single file
+        fileendoffsets.push_back(outputrcdend.size());  // allocate all the records to the sole output file
       }
     }
     // now filecumreccnts has the length in kvs of each eventual output file.  For AR, we mimic the input; for compaction, we create new files

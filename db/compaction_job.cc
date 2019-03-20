@@ -1057,9 +1057,15 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
     // during subcompactions (i.e. if output size, estimated by input size, is
     // going to be 1.2MB and max_output_file_size = 1MB, prefer to have 0.6MB
     // and 0.6MB instead of 1MB and 0.2MB)
+#ifdef INDIRECT_VALUE_SUPPORT
+    // We want to enforce the size limit on SSTs for files at levels > 0.  If we are compacting into L0, we have gotten behind and there is nothing
+    // to be gained from splitting the file since we are going to be compacting all the L0 files into L1 at once anyway.  However, if we are doing
+    // AR on level 0, which is just barely possible, we need to preserve the SST input sizes.  So we have included the level-0 logic in the calculation
+    // of overrideclose, and we can give that priority over output_level.  output_level and the length are used only when value logging is not used.
+#endif
     bool output_file_ended = false;
     Status input_status;
-    if (sub_compact->compaction->output_level() != 0 && (overrideclose>0 || (!overrideclose && 
+    if (overrideclose>0 || (!overrideclose && sub_compact->compaction->output_level() != 0 && (
         sub_compact->current_output_file_size >=
             sub_compact->compaction->max_output_file_size()))) {
       // (1) this key terminates the file. For historical reasons, the iterator
@@ -1068,7 +1074,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
       output_file_ended = true;
     }
     value_iter->Next();
-    if (sub_compact->compaction->output_level() != 0 && !overrideclose && !output_file_ended && value_iter->Valid() &&
+    if (!overrideclose && sub_compact->compaction->output_level() != 0 && !output_file_ended && value_iter->Valid() &&
         sub_compact->ShouldStopBefore(value_iter->key(),
           sub_compact->current_output_file_size) &&
         sub_compact->builder != nullptr) {

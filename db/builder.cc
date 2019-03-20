@@ -81,7 +81,8 @@ Status BuildTable(
     TableProperties* table_properties, int level, const uint64_t creation_time,
     const uint64_t oldest_key_time, Env::WriteLifeTimeHint write_hint
 #ifdef INDIRECT_VALUE_SUPPORT
-    ,VLog *value_log
+    ,ColumnFamilyData* cfd
+    ,VLogEditStats *vlog_flush_info
 #endif
     ) {
   assert((column_family_id ==
@@ -149,41 +150,31 @@ Status BuildTable(
         true /* internal key corruption is not ok */, range_del_agg.get());
     c_iter.SeekToFirst();
 
-#if 0
+
 #ifdef INDIRECT_VALUE_SUPPORT
   // The IndirectIterator will do all mapping/remapping and will return the new key/values one by one
   // The constructor called here immediately reads all the values from c_iter, buffers them, and writes values to the Value Log.
   // Then in the loop it returns the references to the values that were written.  Errors encountered during c_iter are preserved
   // and associated with the failing keys.
   // If there is no VLog it means this table type doesn't support indirects, and the iterator will be a passthrough
-#if DEBLEVEL&0x2000
-if(sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling)
-  printf("Starting kv capture for Active Recycling (%zd SSTs, VLogFiles up to %zd)\n",sub_compact->compaction->num_input_levels(),sub_compact->compaction->lastfileno());  // scaf
-#endif
   std::unique_ptr<IndirectIterator> value_iter(new IndirectIterator(
-    c_iter,value_log,sub_compact->compaction,cfd->vlog()!=nullptr && cfd->vlog()->rings().size()!=0,
-    // For Active Recycling we pass a pointer to the RecyclingIterator, so the IndirectIterator can query it directly about end-of-file
-    sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling ? (RecyclingIterator*)input.get() : nullptr,
-    job_id_));  // keep iterator around till end of function
-  s = value_iter->status();  // initial status indicates errors writing VLog files
-  // For Active Recycling, we need to keep track of which input file's keys we are working on so that when we create the corresponding output
-  // file we mark it at the correct level.  If we are not AR, we will just use the output_level
-  int arfileno = 0;
+    &c_iter,cfd,cfd!=nullptr && cfd->vlog()!=nullptr && cfd->vlog()->rings().size()!=0,mutable_cf_options,job_id));  // keep iterator around till end of function
+    // initial status indicates errors writing VLog files; checked in next call to Valid()
 #else
   // in the non-indirect version, initial error status on the iterator is never checked.  Bug?
-  CompactionIterator *value_iter(c_iter);
+  CompactionIterator *value_iter(&c_iter);
 #endif
-#endif
 
 
 
 
 
-    for (; c_iter.Valid(); c_iter.Next()) {
-      const Slice& key = c_iter.key();
-      const Slice& value = c_iter.value();
+
+    for (; value_iter->Valid(); value_iter->Next()) {
+      const Slice& key = value_iter->key();
+      const Slice& value = value_iter->value();
       builder->Add(key, value);
-      meta->UpdateBoundaries(key, c_iter.ikey().sequence);
+      meta->UpdateBoundaries(key, value_iter->ikey().sequence);
 
       // TODO(noetzli): Update stats after flush, too.
       if (io_priority == Env::IO_HIGH &&
@@ -198,7 +189,7 @@ if(sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecy
 
     // Finish and check for builder errors
     bool empty = builder->NumEntries() == 0;
-    s = c_iter.status();
+    s = value_iter->status();
     if (!s.ok() || empty) {
       builder->Abandon();
     } else {
@@ -248,6 +239,17 @@ if(sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecy
         s = it->status();
       }
     }
+#ifdef INDIRECT_VALUE_SUPPORT
+    if(cfd){  // if we are VLogging this flush...
+      std::vector<uint64_t> ref0;  // vector of file-refs
+      value_iter->ref0(ref0, true /* include_last */);  // true to pick up the very last key, which will not have been included in the file because we didn't know the file was ending
+      meta->InstallRef0(0,ref0,cfd);
+      // extract the edit/stats info from the flush job.  We pass this back for inclusion in the Version
+      value_iter->getedit(vlog_flush_info->restart_info, 
+      vlog_flush_info->vlog_bytes_written_comp, vlog_flush_info->vlog_bytes_written_raw, vlog_flush_info->vlog_bytes_remapped,vlog_flush_info->vlog_files_created);
+    }
+#endif
+
   }
 
   // Check for input iterator errors
