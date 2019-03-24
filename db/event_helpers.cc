@@ -67,7 +67,11 @@ void EventHelpers::LogAndNotifyTableFileCreationFinished(
     const std::string& db_name, const std::string& cf_name,
     const std::string& file_path, int job_id, const FileDescriptor& fd,
     const TableProperties& table_properties, TableFileCreationReason reason,
-    const Status& s) {
+    const Status& s
+#ifdef INDIRECT_VALUE_SUPPORT
+    ,const std::vector<uint64_t> *ref0  // lowest ref in each ring
+#endif
+    ) {
   if (s.ok() && event_logger) {
     JSONWriter jwriter;
     AppendCurrentTime(&jwriter);
@@ -95,6 +99,17 @@ void EventHelpers::LogAndNotifyTableFileCreationFinished(
               << "num_data_blocks" << table_properties.num_data_blocks
               << "num_entries" << table_properties.num_entries
               << "filter_policy_name" << table_properties.filter_policy_name;
+#ifdef INDIRECT_VALUE_SUPPORT
+      if(ref0&&ref0->size()) {
+        jwriter << "ref0";
+        jwriter.StartArray();
+        for (auto f : *ref0) {
+          jwriter  << f;
+        }
+        jwriter.EndArray();
+      }
+#endif
+
 
       // user collected properties
       for (const auto& prop : table_properties.readable_properties) {

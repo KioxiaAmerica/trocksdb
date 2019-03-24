@@ -122,7 +122,11 @@ Status BuildTable(
       if (!s.ok()) {
         EventHelpers::LogAndNotifyTableFileCreationFinished(
             event_logger, ioptions.listeners, dbname, column_family_name, fname,
-            job_id, meta->fd, tp, reason, s);
+            job_id, meta->fd, tp, reason, s
+#ifdef INDIRECT_VALUE_SUPPORT
+            ,nullptr /* ref0 */
+#endif
+            );
         return s;
       }
       file->SetIOPriority(io_priority);
@@ -150,7 +154,6 @@ Status BuildTable(
         true /* internal key corruption is not ok */, range_del_agg.get());
     c_iter.SeekToFirst();
 
-
 #ifdef INDIRECT_VALUE_SUPPORT
   // The IndirectIterator will do all mapping/remapping and will return the new key/values one by one
   // The constructor called here immediately reads all the values from c_iter, buffers them, and writes values to the Value Log.
@@ -164,11 +167,6 @@ Status BuildTable(
   // in the non-indirect version, initial error status on the iterator is never checked.  Bug?
   CompactionIterator *value_iter(&c_iter);
 #endif
-
-
-
-
-
 
     for (; value_iter->Valid(); value_iter->Next()) {
       const Slice& key = value_iter->key();
@@ -264,7 +262,11 @@ Status BuildTable(
   // Output to event logger and fire events.
   EventHelpers::LogAndNotifyTableFileCreationFinished(
       event_logger, ioptions.listeners, dbname, column_family_name, fname,
-      job_id, meta->fd, tp, reason, s);
+      job_id, meta->fd, tp, reason, s
+#ifdef INDIRECT_VALUE_SUPPORT
+      ,&meta->indirect_ref_0  // lowest ref in each ring
+#endif
+);
 
   return s;
 }

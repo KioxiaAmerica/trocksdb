@@ -1026,7 +1026,7 @@ ProbDelay();
     if(retrystate<0){
       // file number not between head and tail 
       ROCKS_LOG_ERROR(immdbopts_->info_log,
-        "Invalid file number %zd in reference in ring %d",request.Fileno(),ringno_);
+        "Invalid file number %zd in reference in ring %d: headfile=%zd, tailfile=%zd",request.Fileno(),ringno_,atomics.fd_ring_head_fileno,atomics.fd_ring_tail_fileno);
       iostatus = Status::Corruption("Indirect reference to file out of bounds");
     } else {
       // file not opened in fdring

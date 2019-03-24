@@ -35,7 +35,11 @@ class EventHelpers {
       const std::string& db_name, const std::string& cf_name,
       const std::string& file_path, int job_id, const FileDescriptor& fd,
       const TableProperties& table_properties, TableFileCreationReason reason,
-      const Status& s);
+      const Status& s
+#ifdef INDIRECT_VALUE_SUPPORT
+      ,const std::vector<uint64_t> *ref0  // lowest ref in each ring
+#endif
+      );
   static void LogAndNotifyTableFileDeletion(
       EventLogger* event_logger, int job_id,
       uint64_t file_number, const std::string& file_path,

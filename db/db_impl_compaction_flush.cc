@@ -1960,7 +1960,7 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
   } else if (status.IsShutdownInProgress()) {
     // Ignore compaction errors found during shutting down
   } else {
-    ROCKS_LOG_WARN(immutable_db_options_.info_log, "Compaction error: %s",
+    ROCKS_LOG_WARN(immutable_db_options_.info_log, "Job [%d]: Compaction error: %s",job_context->job_id,
                    status.ToString().c_str());
     if (immutable_db_options_.paranoid_checks && bg_error_.ok()) {
       Status new_bg_error = status;

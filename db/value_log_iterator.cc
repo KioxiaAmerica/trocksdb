@@ -575,7 +575,7 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
     if(!use_indirects_){ c_iter_->Next(); return; }
     // Here indirects are supported.
   
-    // Include the previous key's file/ring in the current result (because the compaction job calls Next() before closing
+    // Include the previous key's file/ring in the current result (because the compaction job calls Valid() then OverrideClose() then Next() then ref0() for
     // the current output file).  We do this even if the current key is invalid, because it is the previous key that we have to
     // include in the current file
     if(ref0_[prevringfno.ringno]>prevringfno.fileno)
@@ -583,6 +583,9 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
 
     // If there are no keys remaining in the current block, go get a new block.
     if(keyno_ >= valueclass.size() && inputnotempty)ReadAndResolveInputBlock();
+
+    // NOTE: if ReadAndResolve was called, it has reset all the pointers to point to the start of the new batch, and has reset the data vectors.
+    // It also set nextdiskref for the first record of the new block
 
     //  If there was an error writing files, or we have returned all the keys, set this one as invalid
     valid_ = status_.ok() && keyno_ < valueclass.size();

@@ -1407,7 +1407,12 @@ Status CompactionJob::FinishCompactionOutputFile(
   }
   EventHelpers::LogAndNotifyTableFileCreationFinished(
       event_logger_, cfd->ioptions()->listeners, dbname_, cfd->GetName(), fname,
-      job_id_, output_fd, tp, TableFileCreationReason::kCompaction, s);
+      job_id_, output_fd, tp, TableFileCreationReason::kCompaction, s
+#ifdef INDIRECT_VALUE_SUPPORT
+      ,meta?&meta->indirect_ref_0:nullptr  // lowest ref in each ring
+#endif
+
+      );
 
 #ifndef ROCKSDB_LITE
   // Report new file to SstFileManagerImpl
@@ -1663,7 +1668,11 @@ Status CompactionJob::OpenCompactionOutputFile(
     EventHelpers::LogAndNotifyTableFileCreationFinished(
         event_logger_, cfd->ioptions()->listeners, dbname_, cfd->GetName(),
         fname, job_id_, FileDescriptor(), TableProperties(),
-        TableFileCreationReason::kCompaction, s);
+        TableFileCreationReason::kCompaction, s
+#ifdef INDIRECT_VALUE_SUPPORT
+        ,nullptr  // lowest ref in each ring
+#endif
+);
     return s;
   }
 
@@ -1869,7 +1878,15 @@ void CompactionJob::LogCompaction() {
       stream << ("files_L" + ToString(compaction->level(i)));
       stream.StartArray();
       for (auto f : *compaction->inputs(i)) {
+#ifdef INDIRECT_VALUE_SUPPORT
+        // If there are no indirect refs for a file, don't try to print one.  Even if flush goes to VLog normally, flush for recovery does not, and has no indirect refs
+        char buf[80];
+        sprintf(buf,"%zd[%zd]",f->fd.GetNumber(),f->indirect_ref_0.size()?f->indirect_ref_0[0]:0);
+        stream << buf;
+#else
         stream << f->fd.GetNumber();
+#endif
+
       }
       stream.EndArray();
     }
