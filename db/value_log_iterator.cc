@@ -219,7 +219,12 @@ printf("\n");
 
     // If there is no error, perform Next which functions as a SeekToFirst.  If there is an error, we must leave valid_=0 to cause immediate failure in compaction
     if(status_.ok()){
+      // The info related to references must not hiccup at batch boundaries.  Compaction moves to a new batch (via Next) before we have taken the ref0 for the previous file.
+      // We initialize here, and always prevringfno holds the ring/file output by the previous Next(), and ref0 has the references as of BEFORE prevringfno.  ref0 is reset to high-value only
+      // during ref0() when it is output
       prevringfno = RingFno{0,rocksdb::high_value};  // init to no previous key
+      ref0_ = std::vector<uint64_t>(pcfd->vlog()->nrings(),rocksdb::high_value);  // initialize to no refs to each ring
+
       Next();   // first Next() gets the first key; subsequent ones return later keys
     }
   }
@@ -545,8 +550,7 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
     statusx_ = 0;  // reset input error pointer to first error
     ostatusx_ = 0;  // reset output error pointer to first error
     passthroughrefx_ = 0;  // reset pointer to passthrough file/ring
-    ref0_ = std::vector<uint64_t>(pcfd->vlog()->nrings(),rocksdb::high_value);  // initialize to no refs to each ring
-    outputfileno = 0;  // init that the records we are emitting are going into SST 0
+    outputfileno = 0;  // init the output pointer for the next OverrideClose.  Next is called AFTER OverrideClose
 
   } else {
     // If there is an error(s) writing to the VLog, we don't have any way to give them all.  Until such an

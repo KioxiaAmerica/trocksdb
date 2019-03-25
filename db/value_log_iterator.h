@@ -190,6 +190,7 @@ public:
       if(ref0_[prevringfno.ringno]>prevringfno.fileno)
         ref0_[prevringfno.ringno]=prevringfno.fileno;  // if current > new, switch to new
     }
+    // as we output the result for this file, reset the accumulator for the next file.  Change high_value to 0 for the result
     result = ref0_; for(size_t i=0;i<ref0_.size();++i){if(result[i]==high_value)result[i]=0; ref0_[i]=high_value;}
 #if DEBLEVEL&4
 printf("Iterator file info (include_last=%d): ",include_last);
