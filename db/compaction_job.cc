@@ -1374,10 +1374,32 @@ Status CompactionJob::FinishCompactionOutputFile(
         compact_->compaction->output_level());
     s = iter->status();
 
-    if (s.ok() && paranoid_file_checks_) {
+    if (s.ok() && (1||paranoid_file_checks_)) {  // scaf for CRC error testing - remove for production
       for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+#ifdef INDIRECT_VALUE_SUPPORT
+        if(cfd->vlog()!=nullptr && cfd->vlog()->rings().size()!=0){
+          std::string getresult;  // where we will resolve references
+          // if the value an indirect reference, look up the reference
+          ParsedInternalKey ikey;
+          if(ParseInternalKey(iter->key(),&ikey)){
+            if(IsTypeIndirect(ikey.type)){
+            // indirect reference - do the lookup
+            s=cfd->vlog()->VLogGet(iter->value(),getresult);
+            if(!s.ok())break;  // if error during lookup, 
+            }
+          }else{s = Status::Corruption("Key error detected in readback of SST file"); break;}
+        }
+#endif
       }
-      s = iter->status();
+      if(s.ok())s = iter->status();  // Get final status of iterator if there has been no error
+      if(!s.ok()){
+        // If we hit an error, log it
+        ROCKS_LOG_ERROR(
+            db_options_.info_log,
+            "[%s] [JOB %d] Key readback fails with status %s",
+            sub_compact->compaction->column_family_data()->GetName().c_str(),
+            job_id_, s.ToString().c_str());
+      }
     }
 
     delete iter;
