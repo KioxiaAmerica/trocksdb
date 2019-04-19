@@ -877,7 +877,8 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
   // under lock to make sure they get resized correctly.  The lock is not needed to make Get() work.
 #if DELAYPROB
 ProbDelay();
-#endif 
+#endif
+  bool clearedprevbuffer=false;  // set if we cleared the oprevious ping-pong buffer while we were here
   AcquireLock();
     // Figure out which ring slot the new file(s) will go into
     currentarray = atomics.currentarrayx.load(std::memory_order_acquire);  // fetch current ping-pong side
@@ -904,6 +905,7 @@ ProbDelay();
         // the lock; but nothing could be done to prevent that anyway.
         if(atomics.fd_ring_head_fileno.load(std::memory_order_acquire)>atomics.fd_ring_prevbuffer_clear_fileno.load(std::memory_order_acquire)){
           fd_ring[1-currentarray].clear();  // clear the previous buffer, to save space
+          clearedprevbuffer=true;  // remember what we did for later logging
         }
 #if DELAYPROB
 ProbDelay();
@@ -911,6 +913,7 @@ ProbDelay();
       }
     }
   ReleaseLock();
+  if(clearedprevbuffer)ROCKS_LOG_INFO(immdbopts_->info_log,"Previous VLogRing buffer has been cleared\n");
 
   // fill in the FileRef for the first value, with its length
   firstdataref.FillVLogRingRef(ringno_,fileno_for_writing,0,rcdend[0]);
