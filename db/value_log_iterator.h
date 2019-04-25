@@ -145,7 +145,8 @@ public:
     Slice *end,   // the last+1 key to include (i. e. end of open interval), or nullptr if not given
     bool use_indirects,   // if false, do not do any indirect processing, just pass through c_iter_
     RecyclingIterator *recyciter,  // null if not Active Recycling; then, points to the iterator
-    int job_id  // job id for logmsgs
+    int job_id,  // job id for logmsgs
+    bool paranoid_file_checks  // should we audit files as created?
   );
 
  IndirectIterator(  // this constructor used by flush
@@ -153,7 +154,8 @@ public:
     ColumnFamilyData* cfd,  // CF the file is in
     bool use_indirects,   // if false, do not do any indirect processing, just pass through c_iter_
     const MutableCFOptions& mutable_cf_options,  // options in use
-    int job_id   // job number for logging
+    int job_id,   // job number for logging
+    bool paranoid_file_checks  // should we audit files as created?
   );
 
 
@@ -249,6 +251,7 @@ private:
   std::shared_ptr<VLog> current_vlog;
   RecyclingIterator *recyciter_;  // null if not Active Recycling; then, points to the iterator
   int job_id_;  // job id for logmsgs
+  bool paranoid_file_checks_;  // set if we should look up references as we create them
   // fields extracted/created from inputs to constructor
   size_t compaction_ringno;
   int compaction_output_level;

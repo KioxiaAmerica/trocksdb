@@ -586,7 +586,7 @@ ProbDelay();
   // EXCEPTIONS OK NOW
   size_t newsize = fd_ring[newcurrent].size();  // remember what we are going to print before we release the lock
   ReleaseLock();
-    ROCKS_LOG_INFO(immdbopts_->info_log,"VLogRing has been resized, new buffer is %d, length=%zd, tailfile=%zd, headfile=%zd\n",newcurrent,newsize,tailfile,headfile);
+    ROCKS_LOG_INFO(immdbopts_->info_log,"VLogRing buffer has been resized, new buffer is %d, length=%zd, tailfile=%zd, headfile=%zd\n",newcurrent,newsize,tailfile,headfile);
   AcquireLock();
 
   return newcurrent;  // let operation proceed
@@ -1061,7 +1061,7 @@ ProbDelay();
     iostatus = selectedfile->Read(readfileoffset, readlen, &resultslice, (char *)response.data()+alignoffset);  // Read the reference
     if(!iostatus.ok()) {
       ROCKS_LOG_ERROR(immdbopts_->info_log,
-        "Error reading reference from file number %zd in ring %d",request.Fileno(),ringno_);
+        "Error reading reference from file number %zd, offset%zd, length %zd in ring %d",request.Fileno(),request.Offset(),request.Len(),ringno_);
       response.clear();   // error, return empty string
     } else {
       // normal path.  if the data was read into the user's buffer, leave it there; otherwise copy it in
@@ -1491,7 +1491,7 @@ Status VLog::VLogGet(
   // CRC the type/data and compare the CRC to the value in the record
   if(crc32c::Value(ringresult.data()+dataoffset,ref.Len())!=0xffffffff){  // take CRC of the header byte/data.  Should come out to 0 before complement
     ROCKS_LOG_ERROR(immdbopts_->info_log,
-      "CRC error reading from file number %zd in ring %d",ref.Fileno(),ref.Ringno());
+      "CRC error reading from file number %zd, offset %zd, length %zd in ring %d",ref.Fileno(),ref.Offset(),ref.Len(),ref.Ringno());
     return s = Status::Corruption("indirect reference CRC mismatch.");
   }
   uint64_t comptime = immdbopts_->env->NowMicros(); uint64_t compdur = comptime - readtime;
@@ -1510,7 +1510,7 @@ Status VLog::VLogGet(
           kVLogCompressionVersionFormat,
         *(cfd_->ioptions()))).ok()){
       ROCKS_LOG_ERROR(immdbopts_->info_log,
-        "Decompression error reading from file number %zd in ring %d",ref.Fileno(),ref.Ringno());
+        "Decompression error reading from file number %zd, offset %zd, length %zd in ring %d",ref.Fileno(),ref.Offset(),ref.Len(),ref.Ringno());
       return s;
     }
     result.assign(contents.data.data(),contents.data.size());  // move data to user's buffer

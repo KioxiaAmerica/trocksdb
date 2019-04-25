@@ -356,6 +356,7 @@ TEST_F(DBVLogTest, SequentialWriteTest) {
   options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
   options.compaction_picker_age_importance = std::vector<int32_t>({100});
   options.ring_compression_style = std::vector<CompressionType>({kNoCompression});
+  options.paranoid_file_checks = true;
 
   options.vlogfile_max_size = std::vector<uint64_t>({sstkvcount*((value_size+10))});  // amount of value in 1 sst, allowing for CRC & header
   options.max_compaction_bytes = (uint64_t)((options.max_bytes_for_level_multiplier + 12) * options.target_file_size_base);

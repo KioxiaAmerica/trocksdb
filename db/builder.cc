@@ -161,7 +161,7 @@ Status BuildTable(
   // and associated with the failing keys.
   // If there is no VLog it means this table type doesn't support indirects, and the iterator will be a passthrough
   std::unique_ptr<IndirectIterator> value_iter(new IndirectIterator(
-    &c_iter,cfd,cfd!=nullptr && cfd->vlog()!=nullptr && cfd->vlog()->rings().size()!=0,mutable_cf_options,job_id));  // keep iterator around till end of function
+    &c_iter,cfd,cfd!=nullptr && cfd->vlog()!=nullptr && cfd->vlog()->rings().size()!=0,mutable_cf_options,job_id,paranoid_file_checks));  // keep iterator around till end of function
     // initial status indicates errors writing VLog files; checked in next call to Valid()
 #else
   // in the non-indirect version, initial error status on the iterator is never checked.  Bug?

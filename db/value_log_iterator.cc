@@ -81,7 +81,8 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
    Slice *end,  // end+1 key in range, if given
    bool use_indirects,  // if false, just pass c_iter through
    RecyclingIterator *recyciter,  // null if not Active Recycling; then, points to the iterator
-   int job_id  // job id for logmsgs
+   int job_id,  // job id for logmsgs
+   bool paranoid_file_checks  // set if we should verify references as created
  ) :
   c_iter_(c_iter),
   pcfd(cfd),
@@ -90,6 +91,7 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
   current_vlog(cfd->vlog()),
   recyciter_(recyciter),
   job_id_(job_id),
+  paranoid_file_checks_(paranoid_file_checks),
   compaction_ringno(compaction->ringno()),
   compaction_output_level(compaction->output_level()),
   compaction_mutable_cf_options(compaction->mutable_cf_options()),
@@ -106,7 +108,8 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
     ColumnFamilyData* cfd,  // VLog for this CF, if any
     bool use_indirects,   // if false, do not do any indirect processing, just pass through c_iter_
     const MutableCFOptions& mutable_cf_options,  // options in use
-    int job_id
+    int job_id,
+    bool paranoid_file_checks
  ) :
   c_iter_(c_iter),
   pcfd(cfd),
@@ -115,6 +118,7 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
   current_vlog(cfd==nullptr?nullptr:cfd->vlog()),
   recyciter_(nullptr),
   job_id_(job_id),
+  paranoid_file_checks_(paranoid_file_checks),
   compaction_ringno(0),  // if we use a ring, it's 0
   compaction_output_level(0),  // flush always goes to level 0
   compaction_mutable_cf_options(&mutable_cf_options),
@@ -631,6 +635,12 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
         // nextdiskref contains the next record to return
         // Fill in the slice with the current disk reference; then advance the reference to the next record
         nextdiskref.IndirectSlice(value_);  // convert nextdiskref to string form in its workarea, and point value_ to the workarea
+        if(paranoid_file_checks_){  // scaf remove for production
+          // scaf see if the reference is OK before we send it to the SST
+          std::string result;
+          Status paranoidstat = current_vlog->VLogGet(value_,result);
+          if(!paranoidstat.ok())paranoid_file_checks_=false;  // to save log space, stop looking after 1 error
+        }
         // Save the file/ring of the record we are returning
         prevringfno = RingFno{nextdiskref.Ringno(),nextdiskref.Fileno()};
         // Advance to the next record - or the next file, getting the new file/offset/length ready in nextdiskref

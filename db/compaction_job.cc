@@ -933,7 +933,7 @@ if(sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecy
     c_iter,cfd,sub_compact->compaction,end,cfd->vlog()!=nullptr && cfd->vlog()->rings().size()!=0,
     // For Active Recycling we pass a pointer to the RecyclingIterator, so the IndirectIterator can query it directly about end-of-file
     sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling ? (RecyclingIterator*)input.get() : nullptr,
-    job_id_));  // keep iterator around till end of function
+    job_id_,paranoid_file_checks_));  // keep iterator around till end of function
   status = value_iter->status();  // initial status indicates errors writing VLog files
   // For Active Recycling, we need to keep track of which input file's keys we are working on so that when we create the corresponding output
   // file we mark it at the correct level.  If we are not AR, we will just use the output_level
@@ -1374,7 +1374,7 @@ Status CompactionJob::FinishCompactionOutputFile(
         compact_->compaction->output_level());
     s = iter->status();
 
-    if (s.ok() && (1||paranoid_file_checks_)) {  // scaf for CRC error testing - remove for production
+    if (s.ok() && (paranoid_file_checks_)) { 
       for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
 #ifdef INDIRECT_VALUE_SUPPORT
         if(cfd->vlog()!=nullptr && cfd->vlog()->rings().size()!=0){
@@ -1383,9 +1383,11 @@ Status CompactionJob::FinishCompactionOutputFile(
           ParsedInternalKey ikey;
           if(ParseInternalKey(iter->key(),&ikey)){
             if(IsTypeIndirect(ikey.type)){
-            // indirect reference - do the lookup
-            s=cfd->vlog()->VLogGet(iter->value(),getresult);
-            if(!s.ok())break;  // if error during lookup, 
+              // indirect reference - do the lookup
+              s=cfd->vlog()->VLogGet(iter->value(),getresult);
+              if(!s.ok()){
+                break;  // don't display multiple errors
+              }
             }
           }else{s = Status::Corruption("Key error detected in readback of SST file"); break;}
         }
@@ -1396,9 +1398,9 @@ Status CompactionJob::FinishCompactionOutputFile(
         // If we hit an error, log it
         ROCKS_LOG_ERROR(
             db_options_.info_log,
-            "[%s] [JOB %d] Key readback fails with status %s",
+            "[%s] [JOB %d] Key readback for table#%" PRIu64 " fails with status %s",
             sub_compact->compaction->column_family_data()->GetName().c_str(),
-            job_id_, s.ToString().c_str());
+            job_id_, output_number, s.ToString().c_str());
       }
     }
 
