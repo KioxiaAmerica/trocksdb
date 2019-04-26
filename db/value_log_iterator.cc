@@ -489,6 +489,10 @@ if(val.size()>3000){  // scaf only short lengths in our test, notice others
   // Now, before any SSTs have been released, switch over the first time from 'waiting for SST/VLog info' to 'normal operation'
   current_vlog->SetInitComplete();
   nextdiskref = firstdiskref;    // remember where we start, and initialize the running pointer to the disk data
+if(firstdiskref.Len()>3000){  // scaf for debug
+ ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+ "IndirectIterator: firstdiskref file=%zd, len=%zd, offset=%zd",nextdiskref.Fileno(),nextdiskref.Len(),nextdiskref.Offset());
+}
 #ifdef IITIMING
   iitimevec[8] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 8 - after write to VLog
 #endif
