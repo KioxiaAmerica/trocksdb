@@ -1374,7 +1374,7 @@ Status CompactionJob::FinishCompactionOutputFile(
         compact_->compaction->output_level());
     s = iter->status();
 
-    if (s.ok() && (paranoid_file_checks_)) { 
+    if (s.ok() && paranoid_file_checks_) { 
       for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
 #ifdef INDIRECT_VALUE_SUPPORT
         if(cfd->vlog()!=nullptr && cfd->vlog()->rings().size()!=0){

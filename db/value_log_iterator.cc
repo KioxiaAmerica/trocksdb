@@ -270,6 +270,7 @@ void IndirectIterator::ReadAndResolveInputBlock() {
 #ifdef IITIMING
     iitimevec[0] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 0 - top of loop
 #endif
+
     // check to see if the compaction batch is full.  If so, switch to the other one; if both are full, exit loop
     if(totalsstlen+bytesresvindiskdata > compactionblocksize  && recyciter_==nullptr){  // never break up an AR.  But they shouldn't get big anyway
       // main compaction block is full.  If the overflow is not empty, we have to stop and process the overflow
@@ -316,6 +317,10 @@ void IndirectIterator::ReadAndResolveInputBlock() {
     sstvaluelen = val.size();  // if value passes through, its length will go to the SST
     if(IsTypeDirect(c_iter_->ikey().type) && recyciter_==nullptr && val.size() > minindirectlen ) {  // remap Direct type if length is big enough - but never if AR
       // direct value that should be indirected
+if(val.size()>3000){  // scaf only short lengths in our test, notice others
+ ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+   "valuelen of %zd encountered from compaction.",val.size());
+}
 #ifdef IITIMING
       iitimevec[1] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 1 - starting value handling
 #endif
@@ -639,7 +644,11 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
           // scaf see if the reference is OK before we send it to the SST
           std::string result;
           Status paranoidstat = current_vlog->VLogGet(value_,result);
-          if(!paranoidstat.ok())paranoid_file_checks_=false;  // to save log space, stop looking after 1 error
+          if(!paranoidstat.ok()){
+            ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+              "During compaction: error checking references before handing them to compaction.  keyno_=%zd; ref file=%zd, len=%zd, offset=%zd",keyno_,nextdiskref.Fileno(),nextdiskref.Len(),nextdiskref.Offset());
+            paranoid_file_checks_=false;  // to save log space, stop looking after 1 error
+          }
         }
         // Save the file/ring of the record we are returning
         prevringfno = RingFno{nextdiskref.Ringno(),nextdiskref.Fileno()};

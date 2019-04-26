@@ -752,6 +752,10 @@ printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.si
       char valuetype;   // this will hold the type of the next record
       // find the type of the next record, by going through valueclass until we come to the next one
       while(!((valuetype=valueclass[runningvaluex++])&(vIndirectRemapped|vIndirectFirstMap)));  // skip types without diskdata
+if(valuelen>3000){  // scaf only short lengths in our test, notice others
+ ROCKS_LOG_ERROR(immdbopts_->info_log,
+          "valuelen of %zd encountered writing file.  valuetype=%d",valuelen,valuetype);
+}
       if(valuetype&vIndirectFirstMap){
         // Here the data itself is in 'bytes'.  Move it.
         memcpy((char *)filebuffer.data()+filebufferx,(char *)bytes.data()+runningbytesx,valuelen);
@@ -808,9 +812,9 @@ printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
 
       // Log writing the file
       ROCKS_LOG_INFO(
-        current_vlog->immdbopts_->info_log, "[%s] [JOB %d] wrote file# %" PRIu64 ", %" PRIu64 " bytes",
+        current_vlog->immdbopts_->info_log, "[%s] [JOB %d] wrote file# %" PRIu64 ": %" PRIu64 " values, %" PRIu64 " bytes",
         current_vlog->cfd_->GetName().c_str(), job_id,
-        VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber(), filebufferx+padlen-filebufferalignoffset);
+        VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber(), filecumreccnts[i]-(i?filecumreccnts[i-1]:0), filebufferx+padlen-filebufferalignoffset);
 
       // Sync the written data.  We must make sure it is synced before the SSTs referring to it are committed to the manifest.
       // We might as well sync it right now
