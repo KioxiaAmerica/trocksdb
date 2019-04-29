@@ -127,6 +127,7 @@ static const float ARdesired_Vlog_files_per_SST = (float)0.20;  // For picking A
 // obsolete static const int64_t armagictestingvalue = 0x63a6b38ad8014e36;  // if active_recycling_size_trigger is set to this value, it is treated as 0 and deadband is set to 10 (for testing)
 static const size_t mincompactionblocksize = 1LL<<26;  // allow at least this much memory per compaction block
 static const size_t maxcompactionblocksize = 1LL<<29;  // block large compactions into blocks no bigger than this (max 2 per compaction)
+static const size_t maxinitdiskallo = 1LL<<29;  // initial size of disk buffer.  The buffer will grow as needed
 static const double compactionblocksizefudge = 1.4;  // expand the nominal block size by this amount, subject to the overall limit
 static const size_t compactionblockinitkeyalloc = 20000;  // number of keys to preallocate for a normal compaction (if more are needed, the alloc is extended)
 static const size_t compactionblockavgkeylen = 24;  // estimated bytes per key

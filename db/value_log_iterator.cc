@@ -124,7 +124,7 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
   compaction_mutable_cf_options(&mutable_cf_options),
   compaction_lastfileno(0),  // not used
   compaction_max_compaction_bytes(0),  // used only for grandparents
-  compaction_inputs_size(0),  // used only for AR
+  compaction_inputs_size(0),  // used only for AR.  0 is a flag indicating flush
   compaction_max_output_file_size(0),  // flush always write a single file
   compaction_grandparents(nullptr),
   compaction_comparator(nullptr)
@@ -208,10 +208,19 @@ printf("\n");
 
     // Get the initial allocation for the disk-data buffer for a block.  This is related to the size of the files going into the compaction: for most compactions, it is the remapped references
     // from the SSTs (remapped values are expanded to full size just before being written).  We allow for 30% of the indirect values to be remapped.
-    // to disk).  For the first compaction into a ring, the files are L0 files, aka write buffers that have not been split yet.  This is typically much bigger, depending on key size.
-    // We want the initial value to be fairly close to avoid repeated copying of very large buffers
-    initdiskallo = (size_t) ((compaction_output_level<=1)?compaction_mutable_cf_options->write_buffer_size*compaction_mutable_cf_options->level0_file_num_compaction_trigger  // into L1 or (rare) L0, allow for the min # compactible write buffers
-                                                  :0.3*compaction_mutable_cf_options->target_file_size_base*(compaction_mutable_cf_options->max_bytes_for_level_multiplier+2));   // into other levels, allow for as many SSTs as a normal compaction will have
+    // to disk).  We want the initial value to be fairly close to avoid repeated copying of very large buffers.
+    // If this is a flush, we need save only enough room for 1 write buffer (plus a smidgen of overhead).
+    // If it is a first compaction into the ring (implying we didn't write to VLog on flush), we have to allow enough for all the compacted L0 blocks
+    // Otherwise it's a recompaction and we 
+
+    initdiskallo = (size_t) (
+      (compaction_inputs_size==0) ? 1.1 * compaction_mutable_cf_options->write_buffer_size  // flush
+      :  (compaction_output_level<=current_vlog->starting_level_for_ring((int)outputringno))?  // uncompacted inputs  (scaf intra-L0 when start=1 is too big)
+         compaction_mutable_cf_options->write_buffer_size*compaction_mutable_cf_options->level0_file_num_compaction_trigger  // allow for the min # compactible write buffers
+       : 0.3*compaction_mutable_cf_options->target_file_size_base*(compaction_mutable_cf_options->max_bytes_for_level_multiplier+2)
+      );   // into other levels, allow for as many SSTs as a normal compaction will have
+    // Limit the max size, for example if the user has a huge l0-files number.  If more is needed, the buffer will be entended
+    initdiskallo=std::min(maxinitdiskallo,initdiskallo);
 
     // For AR, create the list of number of records in each input file.
     filecumreccnts.clear(); if(recyciter_!=nullptr)filecumreccnts.resize(compaction_inputs_size);
