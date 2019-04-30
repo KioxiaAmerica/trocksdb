@@ -631,7 +631,10 @@ VLogRingRefFileOffset& initfrag  // result: total fragmentation in the created f
   initfrag = 0;  // init no bytes wasted at end of files
   // If there is nothing to write, abort early.  We must, because 0-length files are not allowed when memory-mapping is turned on
   // This also avoids errors if there are no references
-  if(!bytes.size())return;   // fast exit if no data
+  if(!bytes.size()){
+    firstdataref.FillVLogRingRef(0,0,0,0);  // We don't need a starting ref since there are no records, but garbage interferes with our auditing
+    return;   // fast exit if no data
+  }
 
   std::vector<size_t> filecumreccnts;  // this will hold the # records in each file
 

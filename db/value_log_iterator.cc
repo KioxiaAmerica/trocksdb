@@ -379,6 +379,10 @@ if(val.size()>3000){  // scaf only short lengths in our test, notice others
       } else {
         // Valid indirect reference.  See if it needs to be remapped: too old, or not in our output ring
         VLogRingRef ref(val.data());   // analyze the reference
+if(ref.Len()>3000){  // scaf3000 only short lengths in our test, notice others
+ ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+   "Reference received from compaction: file number %zd, offset%zd, length %zd in ring %d",ref.Fileno(),ref.Offset(),ref.Len());
+}
         assert(ref.Ringno()<addedfrag.size());  // should be a reference
         if(ref.Ringno()>=addedfrag.size()) {  // If ring does not exist for this CF, that's an error
           ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
@@ -702,6 +706,18 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
       npikey.clear();  // clear the old key
       AppendInternalKey(&npikey, ikey_);
       key_.install(npikey.data(),npikey.size());  // Install data & size into the object buffer, to avoid returning stack variable
+ParsedInternalKey tempkey;  // scaf3000
+ParseInternalKey(key_,&tempkey);
+size_t actvaluelen;
+if(IsTypeDirect(tempkey.type)){actvaluelen=value_.size();
+}else{
+  VLogRingRef ref(value_.data());   // analyze the reference
+  actvaluelen=ref.Len();
+}
+if(actvaluelen>3000){
+ ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+   "Returning reference with length %zd, type=%d",actvaluelen,tempkey.type);
+}
 
       // Advance to next position for next time
       ++keyno_;   // keyno_ always has the key-number to use for the next call to Next()
