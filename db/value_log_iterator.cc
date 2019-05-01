@@ -133,114 +133,114 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
 
 
 void IndirectIterator::IndirectIteratorDo() {
-    // init stats we will keep
-    remappeddatalen = 0;  // number of bytes that were read & rewritten to a new VLog position
-    bytesintocompression = 0;  // number of bytes split off to go to VLog
-    nfileswritten = 0;  // number of files created
+  // init stats we will keep
+  remappeddatalen = 0;  // number of bytes that were read & rewritten to a new VLog position
+  bytesintocompression = 0;  // number of bytes split off to go to VLog
+  nfileswritten = 0;  // number of files created
 
-    // If indirects are disabled, we have nothing to do.  We will just be returning values from c_iter_.
-    if(!use_indirects_)return;
+  // If indirects are disabled, we have nothing to do.  We will just be returning values from c_iter_.
+  if(!use_indirects_)return;
 #ifdef IITIMING
-    const uint64_t start_micros = current_vlog->immdbopts_->env->NowMicros();
-    std::vector<uint64_t> iitimevec(10,0);
+  const uint64_t start_micros = current_vlog->immdbopts_->env->NowMicros();
+  std::vector<uint64_t> iitimevec(10,0);
 #endif
-    // For Active Recycling, use the ringno chosen earlier; otherwise use the ringno for the output level
-    if(recyciter_!=nullptr)outputringno = compaction_ringno;   // AR
-    else{
+  // For Active Recycling, use the ringno chosen earlier; otherwise use the ringno for the output level
+  if(recyciter_!=nullptr)outputringno = compaction_ringno;   // AR
+  else{
 
-      outputringno = current_vlog->VLogRingNoForLevelOutput(compaction_output_level);  // get the ring number we will write output to
+    outputringno = current_vlog->VLogRingNoForLevelOutput(compaction_output_level);  // get the ring number we will write output to
 #if DEBLEVEL&4
 printf("Creating iterator for level=%d, earliest_passthrough=",compaction->output_level());
 #endif
-    }
-    if(outputringno+1==0){use_indirects_ = false; return;}  // if no output ring, skip looking for indirects
-    outputring = current_vlog->VLogRingFromNo((int)outputringno);  // the ring we will write values to
+  }
+  if(outputringno+1==0){use_indirects_ = false; return;}  // if no output ring, skip looking for indirects
+  outputring = current_vlog->VLogRingFromNo((int)outputringno);  // the ring we will write values to
 
-    // Calculate the remapping threshold.  References earlier than this will be remapped.
-    //
-    // It is not necessary to lock the ring to calculate the remapping - any valid value is OK - but we do need to do an
-    // atomic read to make sure we get a recent one
-    //
-    // We have to calculate a threshold for our output ring.  A reference to any other ring will automatically be passed through
-    // For active Recycling, we stop just a few files above the last remapped file, because any remapping that does not
-    // result in an empty file just ADDS to fragmentation.  For normal compaction, we copy a fixed fraction of the ring
-    VLogRingRefFileno head = current_vlog->rings_[outputringno]->atomics.fd_ring_head_fileno.load(std::memory_order_acquire);  // last file with data
-    VLogRingRefFileno tail = current_vlog->rings_[outputringno]->atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // first file with live refs
-    if(head>tail)head-=tail; else head=0;  // change 'head' to head-tail.  It would be possible for tail to pass head, on an
-           // empty ring.  What happens then doesn't matter, but to keep things polite we check for it rather than overflowing the unsigned subtraction.
-    earliest_passthrough = (VLogRingRefFileno)(tail + 
-                                                    0.01 * ((recyciter_!=nullptr) ? compaction_mutable_cf_options->fraction_remapped_during_active_recycling
-                                                                                 : compaction_mutable_cf_options->fraction_remapped_during_compaction)[outputringno]
-                                                    * head);  // calc file# before which we remap.  fraction is expressed as percentage
+  // Calculate the remapping threshold.  References earlier than this will be remapped.
+  //
+  // It is not necessary to lock the ring to calculate the remapping - any valid value is OK - but we do need to do an
+  // atomic read to make sure we get a recent one
+  //
+  // We have to calculate a threshold for our output ring.  A reference to any other ring will automatically be passed through
+  // For active Recycling, we stop just a few files above the last remapped file, because any remapping that does not
+  // result in an empty file just ADDS to fragmentation.  For normal compaction, we copy a fixed fraction of the ring
+  VLogRingRefFileno head = current_vlog->rings_[outputringno]->atomics.fd_ring_head_fileno.load(std::memory_order_acquire);  // last file with data
+  VLogRingRefFileno tail = current_vlog->rings_[outputringno]->atomics.fd_ring_tail_fileno.load(std::memory_order_acquire);  // first file with live refs
+  if(head>tail)head-=tail; else head=0;  // change 'head' to head-tail.  It would be possible for tail to pass head, on an
+         // empty ring.  What happens then doesn't matter, but to keep things polite we check for it rather than overflowing the unsigned subtraction.
+  earliest_passthrough = (VLogRingRefFileno)(tail + 
+                                                  0.01 * ((recyciter_!=nullptr) ? compaction_mutable_cf_options->fraction_remapped_during_active_recycling
+                                                                               : compaction_mutable_cf_options->fraction_remapped_during_compaction)[outputringno]
+                                                  * head);  // calc file# before which we remap.  fraction is expressed as percentage
         // scaf bug this creates one passthrough for all rings during AR, whilst they might have different thresholds
-    // For Active Recycling, since the aim is to free old files, we make sure we remap everything in the files we are going to delete.  But we should remap a little
-    // more than that: the same SSTs that write to the oldest VLog files probably wrote to a sequence of VLog files, and it would be a shame to recycle them only to have to
-    // come and do it again to pick up the other half of the files.  So, How much more?  Good question.  We would like to know how many VLog files were written by the
-    // compaction that created them.  Alas, there is no way to know that, or even to make a good guess.  So, we hope that the user has responsibly sized the files so that
-    // there aren't many more VLog files than SSTs, and we pick a number that is more than the number of files we expect in a compaction.  It is OK to err on the high side,
-    // because once an SST has been compacted it probably won't be revisited for a while, and thus there will be a large gap between the batch of oldest files referred to
-    // in an SST and the second-oldest batch.
-    if(recyciter_!=nullptr)earliest_passthrough = std::max(earliest_passthrough,compaction_lastfileno+30);   // AR   scaf constant, which is max # VLog files per compaction, conservatively high
+  // For Active Recycling, since the aim is to free old files, we make sure we remap everything in the files we are going to delete.  But we should remap a little
+  // more than that: the same SSTs that write to the oldest VLog files probably wrote to a sequence of VLog files, and it would be a shame to recycle them only to have to
+  // come and do it again to pick up the other half of the files.  So, How much more?  Good question.  We would like to know how many VLog files were written by the
+  // compaction that created them.  Alas, there is no way to know that, or even to make a good guess.  So, we hope that the user has responsibly sized the files so that
+  // there aren't many more VLog files than SSTs, and we pick a number that is more than the number of files we expect in a compaction.  It is OK to err on the high side,
+  // because once an SST has been compacted it probably won't be revisited for a while, and thus there will be a large gap between the batch of oldest files referred to
+  // in an SST and the second-oldest batch.
+  if(recyciter_!=nullptr)earliest_passthrough = std::max(earliest_passthrough,compaction_lastfileno+30);   // AR   scaf constant, which is max # VLog files per compaction, conservatively high
 #if DEBLEVEL&4
-    for(int i=0;i<earliest_passthrough.size();++i)printf("%lld ",earliest_passthrough[i]);
+  for(int i=0;i<earliest_passthrough.size();++i)printf("%lld ",earliest_passthrough[i]);
 printf("\n");
 #endif
-    addedfrag.clear(); addedfrag.resize(current_vlog->rings_.size());   // init the fragmentation count to 0 for each ring
+  addedfrag.clear(); addedfrag.resize(current_vlog->rings_.size());   // init the fragmentation count to 0 for each ring
 
-    // Get the compression information to use for this file
-    compressiontype = compaction_mutable_cf_options->ring_compression_style[outputringno];
+  // Get the compression information to use for this file
+  compressiontype = compaction_mutable_cf_options->ring_compression_style[outputringno];
 
-    // Calculate the total size of keys+values that we will allow in a single compaction block.  This is enough to hold all the SSTs in max_compaction_bytes, plus 1 VLog file per each of those SSTs.  This is high for non-L0 compactions, which
-    // need only enough storage for references that are being copied; but the limit is needed mainly for initial manual compaction of the whole database, which comes from L0 and has to have all the (compressed) data.
-    // We will fill up to 2 compaction blocks before we start writing VLogs and SSTs
-    // File size of -1 means 'unlimited', and we use a guess.
-    double sstsizemult = compaction_mutable_cf_options->vlogfile_max_size[outputringno]>0 && compaction_mutable_cf_options->max_file_size[compaction_output_level]>0 ?
-       (double)compaction_mutable_cf_options->vlogfile_max_size[outputringno] / (double)compaction_mutable_cf_options->max_file_size[compaction_output_level] :  // normal value
-       5;  // if filesize unlimited, make the batch pretty big
-    // For some reason, if compaction->max_compaction_bytes() is HIGH_VALUE gcc overflows and ends up with compactionblocksize set to 0.  We try to avoid that case
-    double maxcompbytes = (double)std::min(maxcompactionblocksize,compaction_max_compaction_bytes);
-    compactionblocksize = std::min(maxcompactionblocksize,(size_t)(compactionblocksizefudge * maxcompbytes * (1 + sstsizemult)));
-    // If something was specified funny, make sure the compaction block is big enough to allow progress
-    compactionblocksize = std::max(mincompactionblocksize,compactionblocksize);
+  // Calculate the total size of keys+values that we will allow in a single compaction block.  This is enough to hold all the SSTs in max_compaction_bytes, plus 1 VLog file per each of those SSTs.  This is high for non-L0 compactions, which
+  // need only enough storage for references that are being copied; but the limit is needed mainly for initial manual compaction of the whole database, which comes from L0 and has to have all the (compressed) data.
+  // We will fill up to 2 compaction blocks before we start writing VLogs and SSTs
+  // File size of -1 means 'unlimited', and we use a guess.
+  double sstsizemult = compaction_mutable_cf_options->vlogfile_max_size[outputringno]>0 && compaction_mutable_cf_options->max_file_size[compaction_output_level]>0 ?
+     (double)compaction_mutable_cf_options->vlogfile_max_size[outputringno] / (double)compaction_mutable_cf_options->max_file_size[compaction_output_level] :  // normal value
+     5;  // if filesize unlimited, make the batch pretty big
+  // For some reason, if compaction->max_compaction_bytes() is HIGH_VALUE gcc overflows and ends up with compactionblocksize set to 0.  We try to avoid that case
+  double maxcompbytes = (double)std::min(maxcompactionblocksize,compaction_max_compaction_bytes);
+  compactionblocksize = std::min(maxcompactionblocksize,(size_t)(compactionblocksizefudge * maxcompbytes * (1 + sstsizemult)));
+  // If something was specified funny, make sure the compaction block is big enough to allow progress
+  compactionblocksize = std::max(mincompactionblocksize,compactionblocksize);
 
-    // Get the length in bytes of the smallest value that we will make indirect for the output level we are writing into
-    minindirectlen = (size_t)compaction_mutable_cf_options->min_indirect_val_size[outputringno];
+  // Get the length in bytes of the smallest value that we will make indirect for the output level we are writing into
+  minindirectlen = (size_t)compaction_mutable_cf_options->min_indirect_val_size[outputringno];
 
-    // Get the initial allocation for the disk-data buffer for a block.  This is related to the size of the files going into the compaction: for most compactions, it is the remapped references
-    // from the SSTs (remapped values are expanded to full size just before being written).  We allow for 30% of the indirect values to be remapped.
-    // to disk).  We want the initial value to be fairly close to avoid repeated copying of very large buffers.
-    // If this is a flush, we need save only enough room for 1 write buffer (plus a smidgen of overhead).
-    // If it is a first compaction into the ring (implying we didn't write to VLog on flush), we have to allow enough for all the compacted L0 blocks
-    // Otherwise it's a recompaction and we 
+  // Get the initial allocation for the disk-data buffer for a block.  This is related to the size of the files going into the compaction: for most compactions, it is the remapped references
+  // from the SSTs (remapped values are expanded to full size just before being written).  We allow for 30% of the indirect values to be remapped.
+  // to disk).  We want the initial value to be fairly close to avoid repeated copying of very large buffers.
+  // If this is a flush, we need save only enough room for 1 write buffer (plus a smidgen of overhead).
+  // If it is a first compaction into the ring (implying we didn't write to VLog on flush), we have to allow enough for all the compacted L0 blocks
+  // Otherwise it's a recompaction and we 
 
-    initdiskallo = (size_t) (
-      (compaction_inputs_size==0) ? 1.1 * compaction_mutable_cf_options->write_buffer_size  // flush
-      :  (compaction_output_level<=current_vlog->starting_level_for_ring((int)outputringno))?  // uncompacted inputs  (scaf intra-L0 when start=1 is too big)
-         compaction_mutable_cf_options->write_buffer_size*compaction_mutable_cf_options->level0_file_num_compaction_trigger  // allow for the min # compactible write buffers
-       : 0.3*compaction_mutable_cf_options->target_file_size_base*(compaction_mutable_cf_options->max_bytes_for_level_multiplier+2)
-      );   // into other levels, allow for as many SSTs as a normal compaction will have
-    // Limit the max size, for example if the user has a huge l0-files number.  If more is needed, the buffer will be entended
-    initdiskallo=std::min(maxinitdiskallo,initdiskallo);
+  initdiskallo = (size_t) (
+    (compaction_inputs_size==0) ? 1.1 * compaction_mutable_cf_options->write_buffer_size  // flush
+    :  (compaction_output_level<=current_vlog->starting_level_for_ring((int)outputringno))?  // uncompacted inputs  (scaf intra-L0 when start=1 is too big)
+       compaction_mutable_cf_options->write_buffer_size*compaction_mutable_cf_options->level0_file_num_compaction_trigger  // allow for the min # compactible write buffers
+     : 0.3*compaction_mutable_cf_options->target_file_size_base*(compaction_mutable_cf_options->max_bytes_for_level_multiplier+2)
+    );   // into other levels, allow for as many SSTs as a normal compaction will have
+  // Limit the max size, for example if the user has a huge l0-files number.  If more is needed, the buffer will be entended
+  initdiskallo=std::min(maxinitdiskallo,initdiskallo);
 
-    // For AR, create the list of number of records in each input file.
-    filecumreccnts.clear(); if(recyciter_!=nullptr)filecumreccnts.resize(compaction_inputs_size);
+  // For AR, create the list of number of records in each input file.
+  filecumreccnts.clear(); if(recyciter_!=nullptr)filecumreccnts.resize(compaction_inputs_size);
 
-    // Init stats for the compaction: number of bytes written to disk
-    diskdatalen = 0;
+  // Init stats for the compaction: number of bytes written to disk
+  diskdatalen = 0;
 
-    ReadAndResolveInputBlock();  // if there is an error this sets status_
+  ReadAndResolveInputBlock();  // if there is an error this sets status_
 
-    // If there is no error, perform Next which functions as a SeekToFirst.  If there is an error, we must leave valid_=0 to cause immediate failure in compaction
-    if(status_.ok()){
-      // The info related to references must not hiccup at batch boundaries.  Compaction moves to a new batch (via Next) before we have taken the ref0 for the previous file.
-      // We initialize here, and always prevringfno holds the ring/file output by the previous Next(), and ref0 has the references as of BEFORE prevringfno.  ref0 is reset to high-value only
-      // during ref0() when it is output
-      prevringfno = RingFno{0,rocksdb::high_value};  // init to no previous key
-      ref0_ = std::vector<uint64_t>(pcfd->vlog()->nrings(),rocksdb::high_value);  // initialize to no refs to each ring
+  // If there is no error, perform Next which functions as a SeekToFirst.  If there is an error, we must leave valid_=0 to cause immediate failure in compaction
+  if(status_.ok()){
+    // The info related to references must not hiccup at batch boundaries.  Compaction moves to a new batch (via Next) before we have taken the ref0 for the previous file.
+    // We initialize here, and always prevringfno holds the ring/file output by the previous Next(), and ref0 has the references as of BEFORE prevringfno.  ref0 is reset to high-value only
+    // during ref0() when it is output
+    prevringfno = RingFno{0,rocksdb::high_value};  // init to no previous key
+    ref0_ = std::vector<uint64_t>(pcfd->vlog()->nrings(),rocksdb::high_value);  // initialize to no refs to each ring
 
-      Next();   // first Next() gets the first key; subsequent ones return later keys
-    }
+    Next();   // first Next() gets the first key; subsequent ones return later keys
   }
+}
 
 // Read all the kvs from c_iter and save them.  We start at the first kv
 // We create:
@@ -283,7 +283,11 @@ void IndirectIterator::ReadAndResolveInputBlock() {
     // check to see if the compaction batch is full.  If so, switch to the other one; if both are full, exit loop
     if(totalsstlen+bytesresvindiskdata > compactionblocksize  && recyciter_==nullptr){  // never break up an AR.  But they shouldn't get big anyway
       // main compaction block is full.  If the overflow is not empty, we have to stop and process the overflow
+      ROCKS_LOG_WARN(current_vlog->immdbopts_->info_log,
+        "JOB [%zd] IndirectIterator: compaction batch full with diskrecl[0]=%zd",job_id_,diskrecl[0]);  // scaf diskrecl
       if(valueclass2.size()!=0)break;  // if 2 full blocks, stop
+      ROCKS_LOG_WARN(current_vlog->immdbopts_->info_log,
+        "JOB [%zd] IndirectIterator: empty batch found, swapping it in",job_id_);  // scaf diskrecl
       // Here when the first block fills.  The second block is empty, so we just swap the current block into the overflow, which will reset the current to empty
       outputrcdend2.swap(outputrcdend); diskdata2.swap(diskdata); keys2.swap(keys); keylens2.swap(keylens); passthroughdata2.swap(passthroughdata);
         passthroughrecl2.swap(passthroughrecl); diskfileref2.swap(diskfileref); valueclass2.swap(valueclass); diskrecl2.swap(diskrecl);
@@ -460,16 +464,20 @@ if(ref.Len()>3000){  // scaf3000 only short lengths in our test, notice others
   // We will have to swap the blocks to bring the next-to-process back to the main block.  In addition, if there are no more keys after the ones we have seen, we
   // append the overflow to the main so that we can process them both together and avoid having a runt block
   if(valueclass2.size()!=0){
+     ROCKS_LOG_WARN(current_vlog->immdbopts_->info_log,
+       "JOB [%zd] IndirectIterator: processing stacked compaction batch with diskrecl[0]=%zd",job_id_,diskrecl2[0]);  // scaf diskrecl
     // swap overflow back to main
     outputrcdend2.swap(outputrcdend); diskdata2.swap(diskdata); keys2.swap(keys); keylens2.swap(keylens); passthroughdata2.swap(passthroughdata);
       passthroughrecl2.swap(passthroughrecl); diskfileref2.swap(diskfileref); valueclass2.swap(valueclass); diskrecl2.swap(diskrecl);
     // if there are no more keys, combine the main and overflow
     if(!inputnotempty){
+     ROCKS_LOG_WARN(current_vlog->immdbopts_->info_log,
+       "JOB [%zd] IndirectIterator: combining second compaction batch with diskrecl[0]=%zd",job_id_,diskrecl2[0]);  // scaf diskrecl
       // for the values that are running totals, add the main ending value to all the values in the overflow
       for(auto& atom : outputrcdend2)atom += outputrcdend.back();
       for(auto& atom : diskrecl2)atom += diskrecl.back();
       for(auto& atom : keylens2)atom += keylens.back();
-      // append the overflow to the main
+      // append the overflow to the main.  scaf should clear the 2s after we copy
       outputrcdend.insert(outputrcdend.end(), outputrcdend2.begin(), outputrcdend2.end()); 
       diskdata.insert(diskdata.end(), diskdata2.begin(), diskdata2.end());
       keys.insert(keys.end(), keys2.begin(), keys2.end());
@@ -491,6 +499,10 @@ if(ref.Len()>3000){  // scaf3000 only short lengths in our test, notice others
 
   // TODO: It might be worthwhile to sort the kvs by key.  This would be needed only during Active Recycling, since they are
   // automatically sorted during compaction.  Perhaps we could merge by level.
+if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
+ ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+ "JOB [%zd] IndirectIterator: diskrecl[0]=%zd",job_id_,diskrecl[0]);
+}
 
 #ifdef IITIMING
   iitimevec[7] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 7 - before write to VLog
@@ -504,7 +516,7 @@ if(ref.Len()>3000){  // scaf3000 only short lengths in our test, notice others
   nextdiskref = firstdiskref;    // remember where we start, and initialize the running pointer to the disk data
 if(firstdiskref.Len()>3000){  // scaf for debug
  ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "IndirectIterator: firstdiskref file=%zd, len=%zd, offset=%zd",nextdiskref.Fileno(),nextdiskref.Len(),nextdiskref.Offset());
+ "JOB [%zd] IndirectIterator: firstdiskref file=%zd, len=%zd, offset=%zd",job_id_,nextdiskref.Fileno(),nextdiskref.Len(),nextdiskref.Offset());
 }
 #ifdef IITIMING
   iitimevec[8] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 8 - after write to VLog
