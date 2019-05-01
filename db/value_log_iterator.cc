@@ -11,6 +11,7 @@
 #endif
 #include "db/value_log_iterator.h"
 #include "rocksdb/status.h"
+#include "util/string_util.h"
 
 namespace rocksdb {
 // Iterator class to go through the files for Active Recycling, in order
@@ -754,19 +755,24 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
       npikey.clear();  // clear the old key
       AppendInternalKey(&npikey, ikey_);
       key_.install(npikey.data(),npikey.size());  // Install data & size into the object buffer, to avoid returning stack variable
-ParsedInternalKey tempkey;  // scaf3000
-ParseInternalKey(key_,&tempkey);
-size_t actvaluelen;
-if(IsTypeDirect(tempkey.type)){actvaluelen=value_.size();
-}else{
-  VLogRingRef ref(value_.data());   // analyze the reference
-  actvaluelen=ref.Len();
-}
-if(actvaluelen>3000){
- ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
-   "Returning reference with length %zd, type=%d",actvaluelen,tempkey.type);
-}
 
+      ParsedInternalKey tempkey;  // scaf3000
+      if (!ParseInternalKey(key_,&tempkey)) {
+        ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+          "Unparsable key %s",EscapeString(key_).c_str());
+      }
+      
+      size_t actvaluelen;
+      if(IsTypeDirect(tempkey.type)){actvaluelen=value_.size();
+      }else{
+        VLogRingRef ref(value_.data());   // analyze the reference
+        actvaluelen=ref.Len();
+      }
+      if(actvaluelen>3000){
+       ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+         "Returning reference with length %zd, type=%d",actvaluelen,tempkey.type);
+      }
+      
       // Advance to next position for next time
       ++keyno_;   // keyno_ always has the key-number to use for the next call to Next()
     }  // obsolete else status_ = Status();  // if key not valid, give good status
