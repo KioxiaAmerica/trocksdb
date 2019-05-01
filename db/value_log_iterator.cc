@@ -507,10 +507,30 @@ if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
   }
 
   // After we have read all the keys, see how many bytes were read from each ring.  They will become fragmentation, to the extent they were not passed through
+if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
+ ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+ "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
+}
   if(!inputnotempty){   // after every key has been read, we can ask the iterator for its totals
+if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
+ ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+ "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
+}
     std::vector<int64_t> refsread(std::vector<int64_t>(addedfrag.size()));  // for each ring, the # bytes referred to
+if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
+ ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+ "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
+}
     c_iter_->RingBytesRefd(refsread);  // read bytesread from the iterator
+if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
+ ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+ "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
+}
     for(uint32_t i=0;i<addedfrag.size();++i)addedfrag[i] += refsread[i];  //  every byte will add to fragmentation, if not passed through
+if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
+ ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+ "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
+}
   }
 
   // TODO: It might be worthwhile to sort the kvs by key.  This would be needed only during Active Recycling, since they are
