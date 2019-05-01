@@ -284,10 +284,10 @@ void IndirectIterator::ReadAndResolveInputBlock() {
     if(totalsstlen+bytesresvindiskdata > compactionblocksize  && recyciter_==nullptr){  // never break up an AR.  But they shouldn't get big anyway
       // main compaction block is full.  If the overflow is not empty, we have to stop and process the overflow
       ROCKS_LOG_WARN(current_vlog->immdbopts_->info_log,
-        "JOB [%zd] IndirectIterator: compaction batch full with diskrecl[0]=%zd",job_id_,diskrecl[0]);  // scaf diskrecl
+        "JOB [%zd] IndirectIterator: compaction batch full with diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl.size()?diskrecl[0]:-1);  // scaf diskrecl
       if(valueclass2.size()!=0)break;  // if 2 full blocks, stop
       ROCKS_LOG_WARN(current_vlog->immdbopts_->info_log,
-        "JOB [%zd] IndirectIterator: empty batch found, swapping it in",job_id_);  // scaf diskrecl
+        "JOB [%zd] IndirectIterator: empty batch found, swapping it in with diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl2.size(),diskrecl2.size()?diskrecl2[0]:-1);  // scaf diskrecl
       // Here when the first block fills.  The second block is empty, so we just swap the current block into the overflow, which will reset the current to empty
       outputrcdend2.swap(outputrcdend); diskdata2.swap(diskdata); keys2.swap(keys); keylens2.swap(keylens); passthroughdata2.swap(passthroughdata);
         passthroughrecl2.swap(passthroughrecl); diskfileref2.swap(diskfileref); valueclass2.swap(valueclass); diskrecl2.swap(diskrecl);
@@ -299,6 +299,10 @@ void IndirectIterator::ReadAndResolveInputBlock() {
       // Reset output pointers to 0
       totalsstlen=0; bytesresvindiskdata=0;
     }
+if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
+ ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+ "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
+}
 
     // process this kv.  It is valid and the key is not past the specified ending key
     char vclass;   // disposition of this value
@@ -366,6 +370,10 @@ if(val.size()>3000){  // scaf only short lengths in our test, notice others
       vclass += vIndirectFirstMap;  // indicate the conversion.  We always have a value in diskrecl when we set this vclass
       // We have built the compressed/CRCd record.  save its length
       diskrecl.push_back(bytesresvindiskdata += diskdata.size()-ctypeindex);   // write running sum of record lengths, i. e. current total allocated size after we add this record
+if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
+ ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+ "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
+}
       sstvaluelen = VLogRingRef::sstrefsize;  // what we write to the SST will be a reference
     } else if(IsTypeIndirect(c_iter_->ikey().type)) {  // is indirect ref?
       // value is indirect; does it need to be remapped?
@@ -407,6 +415,10 @@ if(ref.Len()>3000){  // scaf3000 only short lengths in our test, notice others
 
           // move in the record length of the reference
           diskrecl.push_back(bytesresvindiskdata += ref.Len());   // write running sum of record lengths, i. e. current total size of diskdata after remapped references are expanded
+if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
+ ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+ "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
+}
         } else {
           // indirect value, passed through (normal case).  Mark it as a passthrough, and install the file number in the
           // reference for the ring so it can contribute to the earliest-ref for this file
@@ -456,6 +468,10 @@ if(ref.Len()>3000){  // scaf3000 only short lengths in our test, notice others
     iitimevec[6] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 6 - after Next
 #endif
   }
+if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
+ ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
+ "JOB [%zd] IndirectIterator before swaps: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
+}
 
   // All values have been read from c_iter for the current block
   // inputnotempty is set if there are more input keys to process
@@ -501,7 +517,7 @@ if(ref.Len()>3000){  // scaf3000 only short lengths in our test, notice others
   // automatically sorted during compaction.  Perhaps we could merge by level.
 if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
  ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%zd] IndirectIterator: diskrecl[0]=%zd",job_id_,diskrecl[0]);
+ "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
 }
 
 #ifdef IITIMING
