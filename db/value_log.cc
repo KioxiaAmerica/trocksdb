@@ -440,7 +440,7 @@ Status VLogRing::VerifyFilesPresent() {
   // Message if there were unopened files
   if(nmissingfiles){
     ROCKS_LOG_ERROR(immdbopts_->info_log,
-         "%zd Not all VLog files could be opened.  The first one missing was #%zd, last was #%zd\n",nmissingfiles,firstmissingfile,lastmissingfile);
+         "%" PRIu64 " Not all VLog files could be opened.  The first one missing was #%" PRIu64 ", last was #%" PRIu64 "\n",nmissingfiles,firstmissingfile,lastmissingfile);
     s = Status::Corruption("VLog file cannot be opened");
   }
 
@@ -586,7 +586,7 @@ ProbDelay();
   // EXCEPTIONS OK NOW
   size_t newsize = fd_ring[newcurrent].size();  // remember what we are going to print before we release the lock
   ReleaseLock();
-    ROCKS_LOG_INFO(immdbopts_->info_log,"VLogRing buffer has been resized, new buffer is %d, length=%zd, tailfile=%zd, headfile=%zd\n",newcurrent,newsize,tailfile,headfile);
+    ROCKS_LOG_INFO(immdbopts_->info_log,"VLogRing buffer has been resized, new buffer is %d, length=%" PRIu64 ", tailfile=%" PRIu64 ", headfile=%" PRIu64 "\n",newcurrent,newsize,tailfile,headfile);
   AcquireLock();
 
   return newcurrent;  // let operation proceed
@@ -714,7 +714,7 @@ printf("Head pointer set; pointers=%lld %lld\n",atomics.fd_ring_tail_fileno.load
 // obsolete  size_t startofnextfile = 0;  // starting position of the next file.  Starts at beginning, advances by file-length
 
 #if DEBLEVEL&2
-printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.size(),rcdend.size(), bytes.size());
+printf("Writing %" PRIu64 " sequential files, %" PRIu64 " values, %" PRIu64 " bytes\n",filecumreccnts.size(),rcdend.size(), bytes.size());
 #endif
 
   // Loop for each file: create it, reopen as random-access
@@ -755,10 +755,6 @@ printf("Writing %zd sequential files, %zd values, %zd bytes\n",filecumreccnts.si
       char valuetype;   // this will hold the type of the next record
       // find the type of the next record, by going through valueclass until we come to the next one
       while(!((valuetype=valueclass[runningvaluex++])&(vIndirectRemapped|vIndirectFirstMap)));  // skip types without diskdata
-if(valuelen>3000){  // scaf only short lengths in our test, notice others
- ROCKS_LOG_ERROR(immdbopts_->info_log,
-          "valuelen of %zd encountered writing file.  valuetype=%d",valuelen,valuetype);
-}
       if(valuetype&vIndirectFirstMap){
         // Here the data itself is in 'bytes'.  Move it.
         memcpy((char *)filebuffer.data()+filebufferx,(char *)bytes.data()+runningbytesx,valuelen);
@@ -792,7 +788,7 @@ if(valuelen>3000){  // scaf only short lengths in our test, notice others
           "Error opening VLog file %s for write, Status code/subcode=%d/%d",pathnames.back().c_str(),iostatus.code(),iostatus.subcode());
       }
 #if DEBLEVEL&2
-printf("file %s: %zd bytes\n",pathnames.back().c_str(), lenofthisfile);
+printf("file %s: %" PRIu64 " bytes\n",pathnames.back().c_str(), lenofthisfile);
 #endif
 
       if(iostatus.ok()) {
@@ -920,7 +916,7 @@ ProbDelay();
       }
     }
   ReleaseLock();
-  if(clearedprevbuffer)ROCKS_LOG_INFO(immdbopts_->info_log,"Previous VLogRing buffer has been cleared\n");
+  if(clearedprevbuffer)ROCKS_LOG_INFO(immdbopts_->info_log,"[JOB %d] Previous VLogRing buffer has been cleared\n",job_id);
 
   // fill in the FileRef for the first value, with its length
   firstdataref.FillVLogRingRef(ringno_,fileno_for_writing,0,rcdend[0]);
@@ -1036,12 +1032,12 @@ ProbDelay();
     if(retrystate<0){
       // file number not between head and tail 
       ROCKS_LOG_ERROR(immdbopts_->info_log,
-        "Invalid file number %zd in reference in ring %d: headfile=%zd, tailfile=%zd",request.Fileno(),ringno_,atomics.fd_ring_head_fileno.load(std::memory_order_acquire),atomics.fd_ring_tail_fileno.load(std::memory_order_acquire));
+        "Invalid file number %" PRIu64 " in reference in ring %d: headfile=%" PRIu64 ", tailfile=%" PRIu64 "",request.Fileno(),ringno_,atomics.fd_ring_head_fileno.load(std::memory_order_acquire),atomics.fd_ring_tail_fileno.load(std::memory_order_acquire));
       iostatus = Status::Corruption("Indirect reference to file out of bounds");
     } else {
       // file not opened in fdring
       ROCKS_LOG_ERROR(immdbopts_->info_log,
-        "Reference to file number %zd in ring %d, but file was not opened",request.Fileno(),ringno_);
+        "Reference to file number %" PRIu64 " in ring %d, but file was not opened",request.Fileno(),ringno_);
       iostatus = Status::Corruption("Indirect reference to unopened file");
     } 
     response.clear();   // error, return empty string
@@ -1068,7 +1064,7 @@ ProbDelay();
     iostatus = selectedfile->Read(readfileoffset, readlen, &resultslice, (char *)response.data()+alignoffset);  // Read the reference
     if(!iostatus.ok()) {
       ROCKS_LOG_ERROR(immdbopts_->info_log,
-        "Error reading reference from file number %zd, offset%zd, length %zd in ring %d",request.Fileno(),request.Offset(),request.Len(),ringno_);
+        "Error reading reference from file number %" PRIu64 ", offset%" PRIu64 ", length %" PRIu64 " in ring %d",request.Fileno(),request.Offset(),request.Len(),ringno_);
       response.clear();   // error, return empty string
     } else {
       // normal path.  if the data was read into the user's buffer, leave it there; otherwise copy it in
@@ -1115,7 +1111,7 @@ printf("VLogRingSstInstall newsst=%p ref0=%lld refs=%d",&newsst,newsst.indirect_
 printf("\n");
 #endif
 #if DEBLEVEL&128
-printf("Ring pointers: tail=%zd head=%zd\n   queue=",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
+printf("Ring pointers: tail=%" PRIu64 " head=%" PRIu64 "\n   queue=",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
 for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){int ct=0; FileMetaData* qp=(*fdring)[Ringx(*fdring,i)].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
 printf("\nrefcount_deletion=");
 for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[Ringx(*fdring,i)].refcount_deletion);}
@@ -1162,7 +1158,7 @@ printf("VLogRingSstUnCurrent retiringsst=%p ref0=%lld refs=%d",&retiringsst,reti
 printf("\n");
 #endif
 #if DEBLEVEL&128
-printf("Ring pointers: tail=%zd head=%zd\n   queue=",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
+printf("Ring pointers: tail=%" PRIu64 " head=%" PRIu64 "\n   queue=",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
 for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){int ct=0; FileMetaData* qp=(*fdring)[Ringx(*fdring,i)].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
 printf("\nrefcount_deletion=");
 for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[Ringx(*fdring,i)].refcount_deletion);}
@@ -1237,7 +1233,7 @@ printf("VLogRingSstDelete expiringsst=%p ref0=%lld refs=%d",&expiringsst,expirin
 printf("\n");
 #endif
 #if DEBLEVEL&128
-printf("Ring pointers: tail=%zd head=%zd\n   queue=",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
+printf("Ring pointers: tail=%" PRIu64 " head=%" PRIu64 "\n   queue=",atomics.fd_ring_tail_fileno.load(),atomics.fd_ring_head_fileno.load());
 for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){int ct=0; FileMetaData* qp=(*fdring)[Ringx(*fdring,i)].queue;while(qp){++ct; qp=qp->ringfwdchain[ringno_];}printf("%d ",ct);}
 printf("\nrefcount_deletion=");
 for(uint64_t i = atomics.fd_ring_tail_fileno.load();i<=atomics.fd_ring_head_fileno.load();++i){printf("%d ",(*fdring)[Ringx(*fdring,i)].refcount_deletion);}
@@ -1409,7 +1405,7 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
 #if DEBLEVEL&0x800
     {printf("VLogInit: ");
        const std::vector<VLogRingRestartInfo> *vring = &cfd_->vloginfo();
-       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, space amp=%5.2f, files=",i,(*vring)[i].size,(*vring)[i].frag,((double)(*vring)[i].size)/(1+(*vring)[i].size-(*vring)[i].frag));for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
+       for(int i=0;i<vring->size();++i){printf("ring %d: size=%" PRIu64 ", frag=%" PRIu64 ", space amp=%5.2f, files=",i,(*vring)[i].size,(*vring)[i].frag,((double)(*vring)[i].size)/(1+(*vring)[i].size-(*vring)[i].frag));for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%" PRIu64 " ",(*vring)[i].valid_files[j]);};printf("\n");}
     }
 #endif
 
@@ -1480,7 +1476,7 @@ Status VLog::VLogGet(
 
   if(ref.Len()<(1+4)){
     ROCKS_LOG_ERROR(immdbopts_->info_log,
-        "Reference too short in file %zd in ring %d",ref.Fileno(),ref.Ringno());
+        "Reference too short in file %" PRIu64 " in ring %d",ref.Fileno(),ref.Ringno());
     return s = Status::Corruption("indirect reference is too short.");
   }
 
@@ -1498,7 +1494,7 @@ Status VLog::VLogGet(
   // CRC the type/data and compare the CRC to the value in the record
   if(crc32c::Value(ringresult.data()+dataoffset,ref.Len())!=0xffffffff){  // take CRC of the header byte/data.  Should come out to 0 before complement
     ROCKS_LOG_ERROR(immdbopts_->info_log,
-      "CRC error reading from file number %zd, offset %zd, length %zd in ring %d",ref.Fileno(),ref.Offset(),ref.Len(),ref.Ringno());
+      "CRC error reading from file number %" PRIu64 ", offset %" PRIu64 ", length %" PRIu64 " in ring %d",ref.Fileno(),ref.Offset(),ref.Len(),ref.Ringno());
     return s = Status::Corruption("indirect reference CRC mismatch.");
   }
   uint64_t comptime = immdbopts_->env->NowMicros(); uint64_t compdur = comptime - readtime;
@@ -1517,7 +1513,7 @@ Status VLog::VLogGet(
           kVLogCompressionVersionFormat,
         *(cfd_->ioptions()))).ok()){
       ROCKS_LOG_ERROR(immdbopts_->info_log,
-        "Decompression error reading from file number %zd, offset %zd, length %zd in ring %d",ref.Fileno(),ref.Offset(),ref.Len(),ref.Ringno());
+        "Decompression error reading from file number %" PRIu64 ", offset %" PRIu64 ", length %" PRIu64 " in ring %d",ref.Fileno(),ref.Offset(),ref.Len(),ref.Ringno());
       return s;
     }
     result.assign(contents.data.data(),contents.data.size());  // move data to user's buffer
@@ -1579,7 +1575,7 @@ if(!rings_.size() || !newsst.indirect_ref_0.size())printf("VLogSstInstall newsst
     FileMetaData& retiringsst   // the SST that has just been obsoleted
   ) {
 #if DEBLEVEL&64
-if(!rings_.size() || !retiringsst.indirect_ref_0.size())printf("VLogSstUnCurrent retiringsst=%p rings_.size()=%zd\n",&retiringsst,rings_.size());
+if(!rings_.size() || !retiringsst.indirect_ref_0.size())printf("VLogSstUnCurrent retiringsst=%p rings_.size()=%" PRIu64 "\n",&retiringsst,rings_.size());
 #endif
     if(!rings_.size())return;  // no action if the rings have not, or never will be, created
     for (uint32_t i=0;i<retiringsst.indirect_ref_0.size();++i)if(retiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstUnCurrent(retiringsst);
@@ -1590,7 +1586,7 @@ if(!rings_.size() || !retiringsst.indirect_ref_0.size())printf("VLogSstUnCurrent
     FileMetaData& expiringsst   // the SST that is about to be destroyed
   ) {
 #if DEBLEVEL&64
-if(!rings_.size() || !expiringsst.indirect_ref_0.size())printf("VLogSstDelete expiringsst=%p rings_.size()=%zd\n",&expiringsst,rings_.size());
+if(!rings_.size() || !expiringsst.indirect_ref_0.size())printf("VLogSstDelete expiringsst=%p rings_.size()=%" PRIu64 "\n",&expiringsst,rings_.size());
 #endif
     if(!rings_.size())return;  // no action if the rings have not, or never will be, created
     for (uint32_t i=0;i<expiringsst.indirect_ref_0.size();++i)if(expiringsst.indirect_ref_0[i])rings_[i].get()->VLogRingSstDelete(expiringsst);

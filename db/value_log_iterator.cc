@@ -6,9 +6,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 // scaf #define IITIMING  // set to log timing breakdown for the iterator
-#ifdef IITIMING
 #include <inttypes.h>
-#endif
 #include "db/value_log_iterator.h"
 #include "rocksdb/status.h"
 #include "util/string_util.h"
@@ -285,10 +283,10 @@ void IndirectIterator::ReadAndResolveInputBlock() {
     if(totalsstlen+bytesresvindiskdata > compactionblocksize  && recyciter_==nullptr){  // never break up an AR.  But they shouldn't get big anyway
       // main compaction block is full.  If the overflow is not empty, we have to stop and process the overflow
       ROCKS_LOG_WARN(current_vlog->immdbopts_->info_log,
-        "JOB [%zd] IndirectIterator: compaction batch full with diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl.size()?diskrecl[0]:-1);  // scaf diskrecl
+        "JOB [%" PRIu64 "] IndirectIterator: compaction batch full with %" PRIu64 " values",job_id_,diskrecl.size());
       if(valueclass2.size()!=0)break;  // if 2 full blocks, stop
       ROCKS_LOG_WARN(current_vlog->immdbopts_->info_log,
-        "JOB [%zd] IndirectIterator: empty batch found, swapping it in with diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl2.size(),diskrecl2.size()?diskrecl2[0]:-1);  // scaf diskrecl
+        "JOB [%" PRIu64 "] IndirectIterator: empty batch found, switching over to it",job_id_);
       // Here when the first block fills.  The second block is empty, so we just swap the current block into the overflow, which will reset the current to empty
       outputrcdend2.swap(outputrcdend); diskdata2.swap(diskdata); keys2.swap(keys); keylens2.swap(keylens); passthroughdata2.swap(passthroughdata);
         passthroughrecl2.swap(passthroughrecl); diskfileref2.swap(diskfileref); valueclass2.swap(valueclass); diskrecl2.swap(diskrecl);
@@ -302,7 +300,7 @@ void IndirectIterator::ReadAndResolveInputBlock() {
     }
 if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
  ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
+ "JOB [%" PRIu64 "] IndirectIterator: diskrecl.size=%" PRIu64 ", diskrecl[0]=%" PRIu64 "",job_id_,diskrecl.size(),diskrecl[0]);
 }
 
     // process this kv.  It is valid and the key is not past the specified ending key
@@ -337,7 +335,7 @@ if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
       // direct value that should be indirected
 if(val.size()>3000){  // scaf only short lengths in our test, notice others
  ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
-   "valuelen of %zd encountered from compaction.",val.size());
+   "valuelen of %" PRIu64 " encountered from compaction.",val.size());
 }
 #ifdef IITIMING
       iitimevec[1] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 1 - starting value handling
@@ -373,7 +371,7 @@ if(val.size()>3000){  // scaf only short lengths in our test, notice others
       diskrecl.push_back(bytesresvindiskdata += diskdata.size()-ctypeindex);   // write running sum of record lengths, i. e. current total allocated size after we add this record
 if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
  ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
+ "JOB [%" PRIu64 "] IndirectIterator: diskrecl.size=%" PRIu64 ", diskrecl[0]=%" PRIu64 "",job_id_,diskrecl.size(),diskrecl[0]);
 }
       sstvaluelen = VLogRingRef::sstrefsize;  // what we write to the SST will be a reference
     } else if(IsTypeIndirect(c_iter_->ikey().type)) {  // is indirect ref?
@@ -394,12 +392,12 @@ if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
         VLogRingRef ref(val.data());   // analyze the reference
 if(ref.Len()>3000){  // scaf3000 only short lengths in our test, notice others
  ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
-   "Reference received from compaction: file number %zd, offset%zd, length %zd in ring %d",ref.Fileno(),ref.Offset(),ref.Len());
+   "Reference received from compaction: file number %" PRIu64 ", offset%" PRIu64 ", length %" PRIu64 " in ring %d",ref.Fileno(),ref.Offset(),ref.Len());
 }
         assert(ref.Ringno()<addedfrag.size());  // should be a reference
         if(ref.Ringno()>=addedfrag.size()) {  // If ring does not exist for this CF, that's an error
           ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
-            "During compaction: reference is to ring %d, but there are only %zd rings",ref.Ringno(),addedfrag.size());
+            "During compaction: reference is to ring %d, but there are only %" PRIu64 " rings",ref.Ringno(),addedfrag.size());
           if(vclass<vHasError){   // Don't create an error for this key if it carries one already
             inputerrorstatus.push_back(Status::Corruption("indirect reference is ill-formed."));
             vclass += vHasError;  // indicate that this key now carries error status...
@@ -418,7 +416,7 @@ if(ref.Len()>3000){  // scaf3000 only short lengths in our test, notice others
           diskrecl.push_back(bytesresvindiskdata += ref.Len());   // write running sum of record lengths, i. e. current total size of diskdata after remapped references are expanded
 if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
  ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
+ "JOB [%" PRIu64 "] IndirectIterator: diskrecl.size=%" PRIu64 ", diskrecl[0]=%" PRIu64 "",job_id_,diskrecl.size(),diskrecl[0]);
 }
         } else {
           // indirect value, passed through (normal case).  Mark it as a passthrough, and install the file number in the
@@ -471,7 +469,7 @@ if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
   }
 if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
  ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%zd] IndirectIterator before swaps: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
+ "JOB [%" PRIu64 "] IndirectIterator before swaps: diskrecl.size=%" PRIu64 ", diskrecl[0]=%" PRIu64 "",job_id_,diskrecl.size(),diskrecl[0]);
 }
 
   // All values have been read from c_iter for the current block
@@ -482,18 +480,18 @@ if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
   // append the overflow to the main so that we can process them both together and avoid having a runt block
   if(valueclass2.size()!=0){
      ROCKS_LOG_WARN(current_vlog->immdbopts_->info_log,
-       "JOB [%zd] IndirectIterator: processing stacked compaction batch with diskrecl[0]=%zd",job_id_,diskrecl2[0]);  // scaf diskrecl
+       "JOB [%" PRIu64 "] IndirectIterator: processing stacked compaction batch with %" PRIu64 " values",job_id_,diskrecl2.size());
     // swap overflow back to main
     outputrcdend2.swap(outputrcdend); diskdata2.swap(diskdata); keys2.swap(keys); keylens2.swap(keylens); passthroughdata2.swap(passthroughdata);
       passthroughrecl2.swap(passthroughrecl); diskfileref2.swap(diskfileref); valueclass2.swap(valueclass); diskrecl2.swap(diskrecl);
     // if there are no more keys, combine the main and overflow
     if(!inputnotempty){
      ROCKS_LOG_WARN(current_vlog->immdbopts_->info_log,
-       "JOB [%zd] IndirectIterator: combining second compaction batch with diskrecl[0]=%zd",job_id_,diskrecl2[0]);  // scaf diskrecl
-      // for the values that are running totals, add the main ending value to all the values in the overflow
-      for(auto& atom : outputrcdend2)atom += outputrcdend.back();
-      for(auto& atom : diskrecl2)atom += diskrecl.back();
-      for(auto& atom : keylens2)atom += keylens.back();
+       "JOB [%" PRIu64 "] IndirectIterator: combining second compaction batch with %" PRIu64 " values",job_id_,diskrecl2.size());
+      // for the values that are running totals, add the main ending value to all the values in the overflow.  Only if the main is not empty & thus contains a valid ending value
+      if(outputrcdend.size()){for(auto& atom : outputrcdend2)atom += outputrcdend.back();}
+      if(diskrecl.size()){for(auto& atom : diskrecl2)atom += diskrecl.back();}
+      if(keylens.size()){for(auto& atom : keylens2)atom += keylens.back();}
       // append the overflow to the main.  scaf should clear the 2s after we copy
       outputrcdend.insert(outputrcdend.end(), outputrcdend2.begin(), outputrcdend2.end()); 
       diskdata.insert(diskdata.end(), diskdata2.begin(), diskdata2.end());
@@ -508,37 +506,17 @@ if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
   }
 
   // After we have read all the keys, see how many bytes were read from each ring.  They will become fragmentation, to the extent they were not passed through
-if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
- ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
-}
   if(!inputnotempty){   // after every key has been read, we can ask the iterator for its totals
-if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
- ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
-}
     std::vector<int64_t> refsread(std::vector<int64_t>(addedfrag.size()));  // for each ring, the # bytes referred to
-if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
- ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
-}
     c_iter_->RingBytesRefd(refsread);  // read bytesread from the iterator
-if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
- ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
-}
     for(uint32_t i=0;i<addedfrag.size();++i)addedfrag[i] += refsread[i];  //  every byte will add to fragmentation, if not passed through
-if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
- ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
-}
   }
 
   // TODO: It might be worthwhile to sort the kvs by key.  This would be needed only during Active Recycling, since they are
   // automatically sorted during compaction.  Perhaps we could merge by level.
 if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
  ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%zd] IndirectIterator: diskrecl.size=%zd, diskrecl[0]=%zd",job_id_,diskrecl.size(),diskrecl[0]);
+ "JOB [%" PRIu64 "] IndirectIterator: diskrecl.size=%" PRIu64 ", diskrecl[0]=%" PRIu64 "",job_id_,diskrecl.size(),diskrecl[0]);
 }
 
 #ifdef IITIMING
@@ -553,7 +531,7 @@ if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
   nextdiskref = firstdiskref;    // remember where we start, and initialize the running pointer to the disk data
 if(firstdiskref.Len()>3000){  // scaf for debug
  ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%zd] IndirectIterator: firstdiskref file=%zd, len=%zd, offset=%zd",job_id_,nextdiskref.Fileno(),nextdiskref.Len(),nextdiskref.Offset());
+ "JOB [%" PRIu64 "] IndirectIterator: firstdiskref file=%" PRIu64 ", len=%" PRIu64 ", offset=%" PRIu64 "",job_id_,nextdiskref.Fileno(),nextdiskref.Len(),nextdiskref.Offset());
 }
 #ifdef IITIMING
   iitimevec[8] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 8 - after write to VLog
@@ -573,9 +551,9 @@ if(firstdiskref.Len()>3000){  // scaf for debug
 
   // save what we need to return to stats
   diskdatalen += bytesresvindiskdata+initfrag;  // save # bytes written for stats report.  This is the actual file length on disk, including amounts added in rounding
-// obsolete printf("diskdatalen=%zd, initfrag=%zd, refsread[0]=%zd, addedfrag[0]=%zd\n",diskdatalen,initfrag,refsread[0],addedfrag[0]);  // scaf
+// obsolete printf("diskdatalen=%" PRIu64 ", initfrag=%" PRIu64 ", refsread[0]=%" PRIu64 ", addedfrag[0]=%" PRIu64 "\n",diskdatalen,initfrag,refsread[0],addedfrag[0]);  // scaf
 #if DEBLEVEL&4
-printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.size());
+printf("%" PRIu64 " keys read, with %" PRIu64 " passthroughs\n",keylens.size(),passthroughrecl.size());
 #endif
 
 #ifdef IITIMING
@@ -706,16 +684,18 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
         // nextdiskref contains the next record to return
         // Fill in the slice with the current disk reference; then advance the reference to the next record
         nextdiskref.IndirectSlice(value_);  // convert nextdiskref to string form in its workarea, and point value_ to the workarea
-        if(paranoid_file_checks_){  // scaf remove for production
+#if 0  // use if we have to run down an errant value reference
+        if(paranoid_file_checks_){
           // scaf see if the reference is OK before we send it to the SST
           std::string result;
           Status paranoidstat = current_vlog->VLogGet(value_,result);
           if(!paranoidstat.ok()){
             ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
-              "During compaction: error checking references before handing them to compaction.  keyno_=%zd; ref file=%zd, len=%zd, offset=%zd",keyno_,nextdiskref.Fileno(),nextdiskref.Len(),nextdiskref.Offset());
+              "During compaction: error checking references before handing them to compaction.  keyno_=%" PRIu64 "; ref file=%" PRIu64 ", len=%" PRIu64 ", offset=%" PRIu64 "",keyno_,nextdiskref.Fileno(),nextdiskref.Len(),nextdiskref.Offset());
             paranoid_file_checks_=false;  // to save log space, stop looking after 1 error
           }
         }
+#endif
         // Save the file/ring of the record we are returning
         prevringfno = RingFno{nextdiskref.Ringno(),nextdiskref.Fileno()};
         // Advance to the next record - or the next file, getting the new file/offset/length ready in nextdiskref
@@ -770,7 +750,7 @@ printf("%zd keys read, with %zd passthroughs\n",keylens.size(),passthroughrecl.s
       }
       if(actvaluelen>3000){
        ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
-         "Returning reference with length %zd, type=%d",actvaluelen,tempkey.type);
+         "Returning reference with length %" PRIu64 ", type=%d",actvaluelen,tempkey.type);
       }
       
       // Advance to next position for next time
