@@ -298,10 +298,6 @@ void IndirectIterator::ReadAndResolveInputBlock() {
       // Reset output pointers to 0
       totalsstlen=0; bytesresvindiskdata=0;
     }
-if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
- ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%" PRIu64 "] IndirectIterator: diskrecl.size=%" PRIu64 ", diskrecl[0]=%" PRIu64 "",job_id_,diskrecl.size(),diskrecl[0]);
-}
 
     // process this kv.  It is valid and the key is not past the specified ending key
     char vclass;   // disposition of this value
@@ -333,10 +329,6 @@ if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
     sstvaluelen = val.size();  // if value passes through, its length will go to the SST
     if(IsTypeDirect(c_iter_->ikey().type) && recyciter_==nullptr && val.size() > minindirectlen ) {  // remap Direct type if length is big enough - but never if AR
       // direct value that should be indirected
-if(val.size()>3000){  // scaf only short lengths in our test, notice others
- ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
-   "valuelen of %" PRIu64 " encountered from compaction.",val.size());
-}
 #ifdef IITIMING
       iitimevec[1] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 1 - starting value handling
 #endif
@@ -362,17 +354,12 @@ if(val.size()>3000){  // scaf only short lengths in our test, notice others
 // UBSAN complains      *(uint32_t*)((char *)diskdata.data()+diskdata.size()-4) = crcint;
       // To silence UBSAN, use memcpy.  But the CRC code itself is riddled with unaligned accesses
       memcpy((char *)diskdata.data()+diskdata.size()-4,&crcint,4);   // preserve native processor order so that CRC will work on the combined
-// scaf      for(int i = 24;i>=0;i-=8){diskdata.push_back((char)(crcint>>i));}
 #ifdef IITIMING
       iitimevec[4] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 4 - after CRC
 #endif
       vclass += vIndirectFirstMap;  // indicate the conversion.  We always have a value in diskrecl when we set this vclass
       // We have built the compressed/CRCd record.  save its length
       diskrecl.push_back(bytesresvindiskdata += diskdata.size()-ctypeindex);   // write running sum of record lengths, i. e. current total allocated size after we add this record
-if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
- ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%" PRIu64 "] IndirectIterator: diskrecl.size=%" PRIu64 ", diskrecl[0]=%" PRIu64 "",job_id_,diskrecl.size(),diskrecl[0]);
-}
       sstvaluelen = VLogRingRef::sstrefsize;  // what we write to the SST will be a reference
     } else if(IsTypeIndirect(c_iter_->ikey().type)) {  // is indirect ref?
       // value is indirect; does it need to be remapped?
@@ -390,10 +377,6 @@ if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
       } else {
         // Valid indirect reference.  See if it needs to be remapped: too old, or not in our output ring
         VLogRingRef ref(val.data());   // analyze the reference
-if(ref.Len()>3000){  // scaf3000 only short lengths in our test, notice others
- ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
-   "Reference received from compaction: file number %" PRIu64 ", offset%" PRIu64 ", length %" PRIu64 " in ring %d",ref.Fileno(),ref.Offset(),ref.Len());
-}
         assert(ref.Ringno()<addedfrag.size());  // should be a reference
         if(ref.Ringno()>=addedfrag.size()) {  // If ring does not exist for this CF, that's an error
           ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
@@ -414,10 +397,6 @@ if(ref.Len()>3000){  // scaf3000 only short lengths in our test, notice others
 
           // move in the record length of the reference
           diskrecl.push_back(bytesresvindiskdata += ref.Len());   // write running sum of record lengths, i. e. current total size of diskdata after remapped references are expanded
-if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
- ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%" PRIu64 "] IndirectIterator: diskrecl.size=%" PRIu64 ", diskrecl[0]=%" PRIu64 "",job_id_,diskrecl.size(),diskrecl[0]);
-}
         } else {
           // indirect value, passed through (normal case).  Mark it as a passthrough, and install the file number in the
           // reference for the ring so it can contribute to the earliest-ref for this file
@@ -467,10 +446,6 @@ if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
     iitimevec[6] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 6 - after Next
 #endif
   }
-if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
- ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%" PRIu64 "] IndirectIterator before swaps: diskrecl.size=%" PRIu64 ", diskrecl[0]=%" PRIu64 "",job_id_,diskrecl.size(),diskrecl[0]);
-}
 
   // All values have been read from c_iter for the current block
   // inputnotempty is set if there are more input keys to process
@@ -492,16 +467,16 @@ if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
       if(outputrcdend.size()){for(auto& atom : outputrcdend2)atom += outputrcdend.back();}
       if(diskrecl.size()){for(auto& atom : diskrecl2)atom += diskrecl.back();}
       if(keylens.size()){for(auto& atom : keylens2)atom += keylens.back();}
-      // append the overflow to the main.  scaf should clear the 2s after we copy
-      outputrcdend.insert(outputrcdend.end(), outputrcdend2.begin(), outputrcdend2.end()); 
-      diskdata.insert(diskdata.end(), diskdata2.begin(), diskdata2.end());
-      keys.insert(keys.end(), keys2.begin(), keys2.end());
-      keylens.insert(keylens.end(), keylens2.begin(), keylens2.end()); 
-      passthroughdata.insert(passthroughdata.end(), passthroughdata2.begin(), passthroughdata2.end());
-      passthroughrecl.insert(passthroughrecl.end(), passthroughrecl2.begin(), passthroughrecl2.end());
-      diskfileref.insert(diskfileref.end(), diskfileref2.begin(), diskfileref2.end());
-      valueclass.insert(valueclass.end(), valueclass2.begin(), valueclass2.end());
-      diskrecl.insert(diskrecl.end(), diskrecl2.begin(), diskrecl2.end());
+      // append the overflow to the main.
+      outputrcdend.insert(outputrcdend.end(), outputrcdend2.begin(), outputrcdend2.end()); outputrcdend2.clear();
+      diskdata.insert(diskdata.end(), diskdata2.begin(), diskdata2.end()); diskdata2.clear();
+      keys.insert(keys.end(), keys2.begin(), keys2.end()); keys2.clear();
+      keylens.insert(keylens.end(), keylens2.begin(), keylens2.end()); keylens2.clear();
+      passthroughdata.insert(passthroughdata.end(), passthroughdata2.begin(), passthroughdata2.end()); passthroughdata2.clear();
+      passthroughrecl.insert(passthroughrecl.end(), passthroughrecl2.begin(), passthroughrecl2.end()); passthroughrecl2.clear();
+      diskfileref.insert(diskfileref.end(), diskfileref2.begin(), diskfileref2.end()); diskfileref2.clear();
+      valueclass.insert(valueclass.end(), valueclass2.begin(), valueclass2.end()); valueclass2.clear();
+      diskrecl.insert(diskrecl.end(), diskrecl2.begin(), diskrecl2.end()); diskrecl2.clear();
     }
   }
 
@@ -514,10 +489,6 @@ if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
 
   // TODO: It might be worthwhile to sort the kvs by key.  This would be needed only during Active Recycling, since they are
   // automatically sorted during compaction.  Perhaps we could merge by level.
-if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
- ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%" PRIu64 "] IndirectIterator: diskrecl.size=%" PRIu64 ", diskrecl[0]=%" PRIu64 "",job_id_,diskrecl.size(),diskrecl[0]);
-}
 
 #ifdef IITIMING
   iitimevec[7] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 7 - before write to VLog
@@ -529,10 +500,6 @@ if(diskrecl.size()&&diskrecl[0]>3000){  // scaf for debug
   // Now, before any SSTs have been released, switch over the first time from 'waiting for SST/VLog info' to 'normal operation'
   current_vlog->SetInitComplete();
   nextdiskref = firstdiskref;    // remember where we start, and initialize the running pointer to the disk data
-if(firstdiskref.Len()>3000){  // scaf for debug
- ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
- "JOB [%" PRIu64 "] IndirectIterator: firstdiskref file=%" PRIu64 ", len=%" PRIu64 ", offset=%" PRIu64 "",job_id_,nextdiskref.Fileno(),nextdiskref.Len(),nextdiskref.Offset());
-}
 #ifdef IITIMING
   iitimevec[8] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 8 - after write to VLog
 #endif
@@ -736,23 +703,6 @@ printf("%" PRIu64 " keys read, with %" PRIu64 " passthroughs\n",keylens.size(),p
       AppendInternalKey(&npikey, ikey_);
       key_.install(npikey.data(),npikey.size());  // Install data & size into the object buffer, to avoid returning stack variable
 
-      ParsedInternalKey tempkey;  // scaf3000
-      if (!ParseInternalKey(key_,&tempkey)) {
-        ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
-          "Unparsable key %s",EscapeString(key_).c_str());
-      }
-      
-      size_t actvaluelen;
-      if(IsTypeDirect(tempkey.type)){actvaluelen=value_.size();
-      }else{
-        VLogRingRef ref(value_.data());   // analyze the reference
-        actvaluelen=ref.Len();
-      }
-      if(actvaluelen>3000){
-       ROCKS_LOG_ERROR(current_vlog->immdbopts_->info_log,
-         "Returning reference with length %" PRIu64 ", type=%d",actvaluelen,tempkey.type);
-      }
-      
       // Advance to next position for next time
       ++keyno_;   // keyno_ always has the key-number to use for the next call to Next()
     }  // obsolete else status_ = Status();  // if key not valid, give good status
