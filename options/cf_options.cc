@@ -76,9 +76,6 @@ ImmutableCFOptions::ImmutableCFOptions(const ImmutableDBOptions& db_options,
           cf_options.memtable_insert_with_hint_prefix_extractor.get()),
       ttl(cf_options.ttl),
       cf_paths(cf_options.cf_paths)
-#ifdef INDIRECT_VALUE_SUPPORT
-      ,path_ids_per_level(cf_options.path_ids_per_level)
-#endif
    {}
 
 // Multiple two operands. If they overflow, return op1.

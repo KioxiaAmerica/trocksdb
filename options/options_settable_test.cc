@@ -473,7 +473,6 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
       "compaction=false;};"
 
 #ifdef INDIRECT_VALUE_SUPPORT
-      "path_ids_per_level=0;"
       "allow_trivial_move=false;"
       "vlog_direct_IO=false;"
       "compaction_score_limit_L0=1000.0;"

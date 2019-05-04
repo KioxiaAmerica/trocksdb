@@ -178,8 +178,8 @@ void FlushJob::PickMemTable() {
   edit_->SetLogNumber(mems_.back()->GetNextLogNumber());
   edit_->SetColumnFamily(cfd_->GetID());
 
-  // path 0 for level 0 file, unless user has reserved a higher path
-  meta_.fd = FileDescriptor(versions_->NewFileNumber(), cfd_->ioptions()->MinPathIdForLevel(0), 0);
+  // path 0 for level 0 file
+  meta_.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
 
   base_ = cfd_->current();
   base_->Ref();  // it is likely that we do not need this reference

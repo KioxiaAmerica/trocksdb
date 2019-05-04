@@ -1091,7 +1091,6 @@ static const bool FLAGS_table_cache_numshardbits_dummy __attribute__((__unused__
                           &ValidateTableCacheNumshardbits);
 
 #ifdef INDIRECT_VALUE_SUPPORT
-DEFINE_uint64(path_ids_per_level, 0, "Use with db_paths, 0x5554: Path0 only for L0, 0x5555: Disable Path0, Default: All levels use all paths");
 DEFINE_bool(allow_trivial_move, false, "Set to allow trivial move.  This does not update the VLogs and is used only to allow tests to run.");
 DEFINE_double(compaction_score_limit_L0, 1000.0, "Compaction limit for L0.  The calculated compaction priority is (level size/desired level size)."
              "When the host Put()s faster than the system can compact, L0 starts to fill.  Its compaction priority gors."
@@ -3317,7 +3316,6 @@ void VerifyDBFromDB(std::string& truth_db_name) {
       FLAGS_level0_slowdown_writes_trigger;
     options.arena_block_size = FLAGS_arena_block_size;
 #ifdef INDIRECT_VALUE_SUPPORT
-    options.path_ids_per_level = FLAGS_path_ids_per_level;
     options.allow_trivial_move = FLAGS_allow_trivial_move;
     options.compaction_score_limit_L0 = FLAGS_compaction_score_limit_L0;
     options.vlog_direct_IO = FLAGS_vlog_direct_IO;

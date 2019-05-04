@@ -341,14 +341,11 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
 
   if (result.level_compaction_dynamic_level_bytes) {
     if (result.compaction_style != kCompactionStyleLevel || (
-#ifdef INDIRECT_VALUE_SUPPORT
-        result.path_ids_per_level==0 &&
-#endif
         result.cf_paths.size() > 1U)) {
       // 1. level_compaction_dynamic_level_bytes only makes sense for
       //    level-based compaction.
       // 2. we don't yet know how to make both of this feature and multiple
-      //    DB path work.  BUT if user has taken charge of path by setting path_ids_per_level, let them go ahead
+      //    DB path work.
       result.level_compaction_dynamic_level_bytes = false;
     }
   }

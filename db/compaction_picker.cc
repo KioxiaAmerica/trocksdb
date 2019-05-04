@@ -1531,7 +1531,7 @@ uint32_t LevelCompactionBuilder::GetPathId(
   while (p < ioptions.cf_paths.size() - 1) {
     // The user can indicate the minimum starting path for each level.  If level_compaction_dynamic_level_bytes is set and some level has a minimum path, we don't know how
     // to interpret level numbers, and the minimum path is used as the actual path regardless of size
-    if (cur_level>=ioptions.MinPathIdForLevel(level) && (ioptions.AlwaysUseMinPath() || level_size <= current_path_size)) {
+    if (level_size <= current_path_size) {
       if (cur_level == level) {
         // Does desired level fit in this path?
         return p;
