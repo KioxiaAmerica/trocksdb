@@ -1241,8 +1241,12 @@ void InternalStats::DumpCFMapStats(
           (input_bytes == 0)
               ? 0.0
 #ifdef INDIRECT_VALUE_SUPPORT
+         // The input_bytes to compaction are SST info coming in from the compacted files.  The bytes written include bytes written to SSTs and all bytes
+         // written to VLogs.  Some of the bytes written to VLogs are remappings, which drive up (& usually dominate) write amp for the last level; less so for earlier levels
+         // that have little remapping.  The assignment of remapping to levels is somewhat arbitrary; arguably we could remove the remapping from the level stats
+         // and include it only in the grand totals, but then someone might complain that the columns don't foot.
               : (static_cast<double>(comp_stats_[level].bytes_written) + static_cast<double>(comp_stats_[level].vlog_bytes_written_comp)) /
-                    (input_bytes + comp_stats_[level].vlog_bytes_written_raw);
+                    (input_bytes);
 #else
               : static_cast<double>(comp_stats_[level].bytes_written) /
                     input_bytes;
@@ -1256,8 +1260,9 @@ void InternalStats::DumpCFMapStats(
   }
   // Cumulative summary
 #ifdef INDIRECT_VALUE_SUPPORT
+  // see above
   double w_amp = (compaction_stats_sum->bytes_written + compaction_stats_sum->vlog_bytes_written_comp) /
-                 (static_cast<double>(curr_ingest + 1) + compaction_stats_sum->vlog_bytes_written_raw);
+                 (static_cast<double>(curr_ingest + 1));
 #else
   double w_amp = compaction_stats_sum->bytes_written /
                  static_cast<double>(curr_ingest + 1);
@@ -1388,7 +1393,7 @@ void InternalStats::DumpCFStatsNoFileHistogram(std::string* value) {
   interval_stats.Subtract(cf_stats_snapshot_.comp_stats);
   double w_amp =
 #ifdef INDIRECT_VALUE_SUPPORT
-      (interval_stats.bytes_written+interval_stats.vlog_bytes_written_comp) / (static_cast<double>(interval_ingest)+static_cast<double>(interval_stats.vlog_bytes_written_raw));
+      (interval_stats.bytes_written+interval_stats.vlog_bytes_written_comp) / (static_cast<double>(interval_ingest));
 #else
       interval_stats.bytes_written / static_cast<double>(interval_ingest);
 #endif //INDIRECT_VALUE_SUPPORT
