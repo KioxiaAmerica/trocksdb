@@ -134,6 +134,10 @@ void PrepareLevelStats(std::map<LevelStatType, double>* level_stats,
                        const InternalStats::CompactionStats& stats) {
   uint64_t bytes_read =
       stats.bytes_read_non_output_levels + stats.bytes_read_output_level;
+#ifdef INDIRECT_VALUE_SUPPORT
+  // remapped bytes are both read and written
+  bytes_read += stats.vlog_bytes_remapped;
+#endif
   int64_t bytes_new = stats.bytes_written - stats.bytes_read_output_level;
   double elapsed = (stats.micros + 1) / kMicrosInSec;
 
