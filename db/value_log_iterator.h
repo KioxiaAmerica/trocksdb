@@ -128,6 +128,8 @@ struct VLogEditStats {
   uint64_t vlog_bytes_written_raw;  // bytes written before compression
   uint64_t vlog_bytes_remapped;  // bytes copied from one VLog file to its successor
   uint64_t vlog_files_created;     // # vlog files created
+
+  VLogEditStats() : vlog_bytes_written_comp(0), vlog_bytes_written_raw(0), vlog_bytes_remapped(0), vlog_files_created(0) {}
 };
 
 
@@ -210,12 +212,11 @@ printf("\n");
     uint64_t& vlog_files_created     // # vlog files created
   ) {
     result.clear();  // init result to empty (i. e. no changes)
+    vlog_bytes_written_comp = vlog_bytes_written_raw = vlog_bytes_remapped = vlog_files_created = 0;  // init to nothing was written
     if(!use_indirects_) return;  // return null value if no indirects
     // return with no stats if there was a write error.  The compaction should terminate
-    if(!status_.ok()) {
-      vlog_bytes_written_comp = vlog_bytes_written_raw = vlog_bytes_remapped = vlog_files_created = 0;  // nothing was written
-      return;
-    }
+    if(!status_.ok())return;
+
     result.resize(ref0_.size());  // reserve space for all the rings
     // account for size added to the output ring
     if(nfileswritten){   // if there are no files, output no record, since a 0 record is a delete

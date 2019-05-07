@@ -363,6 +363,7 @@ TEST_F(DBVLogTest, SequentialWriteTest) {
 
   options.vlog_direct_IO = false;
   options.merge_operator.reset(new StringAppendOperator(','));
+  options.stats_dump_period_sec=10;
 
   printf("Starting: #levels=%d, max_bytes_for_level_base=%zd target_file_size_base=%zd write_buffer_size=%zd vlogfile_max_size=%zd\n",options.num_levels,options.max_bytes_for_level_base, options.target_file_size_base,options.write_buffer_size,options.vlogfile_max_size[0]);
   DestroyAndReopen(options);

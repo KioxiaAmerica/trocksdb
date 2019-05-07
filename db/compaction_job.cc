@@ -449,7 +449,7 @@ void CompactionJob::Prepare() {
   AutoThreadOperationStageUpdater stage_updater(
       ThreadStatus::STAGE_COMPACTION_PREPARE);
 
-  // Generate file_levels_ for compaction berfore making Iterator
+  // Generate file_levels_ for compaction before making Iterator
   auto* c = compact_->compaction;
   assert(c->column_family_data() != nullptr);
   assert(c->column_family_data()->current()->storage_info()->NumLevelFiles(
@@ -1411,12 +1411,23 @@ Status CompactionJob::FinishCompactionOutputFile(
       tp = sub_compact->builder->GetTableProperties();
       sub_compact->current_output()->table_properties =
           std::make_shared<TableProperties>(tp);
+#ifdef INDIRECT_VALUE_SUPPORT
       ROCKS_LOG_INFO(db_options_.info_log,
                      "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
-                     " keys, %" PRIu64 " bytes%s",
-                     cfd->GetName().c_str(), job_id_, output_number,
+                     " keys, %" PRIu64 " bytes"
+                     ", Level %d" 
+                     "%s",cfd->GetName().c_str(), job_id_, output_number,
+                     current_entries, current_bytes,
+                     meta->level, 
+                     meta->marked_for_compaction ? " (need compaction)" : "");
+#else
+      ROCKS_LOG_INFO(db_options_.info_log,
+                     "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
+                     " keys, %" PRIu64 " bytes"
+                     "%s",cfd->GetName().c_str(), job_id_, output_number,
                      current_entries, current_bytes,
                      meta->marked_for_compaction ? " (need compaction)" : "");
+#endif
     }
   }
   std::string fname;

@@ -811,7 +811,7 @@ printf("file %s: %" PRIu64 " bytes\n",pathnames.back().c_str(), lenofthisfile);
 
       // Log writing the file
       ROCKS_LOG_INFO(
-        current_vlog->immdbopts_->info_log, "[%s] [JOB %d] wrote file# %" PRIu64 ": %" PRIu64 " values, %" PRIu64 " bytes",
+        current_vlog->immdbopts_->info_log, "[%s] [JOB %d] wrote VLog file# %" PRIu64 ": %" PRIu64 " values, %" PRIu64 " bytes",
         current_vlog->cfd_->GetName().c_str(), job_id,
         VLogRingRef(ringno_,(int)fileno_for_writing+i).FileNumber(), filecumreccnts[i]-(i?filecumreccnts[i-1]:0), filebufferx+padlen-filebufferalignoffset);
 
@@ -1311,7 +1311,8 @@ void VLogRing::VLogRingFindLaggingSsts(
 
       for(;chainptr!=nullptr&&laggingssts.size()<laggingssts.capacity();chainptr=chainptr->ringfwdchain[ringno_]) {
         // If the file is not marked as being compacted, copy it to the result area
-        if(!chainptr->being_compacted)laggingssts.emplace_back(*chainptr);
+        // But never recycle a file from L0, because it cannot be reinserted into the database in the correct order
+        if(!chainptr->being_compacted&&!(chainptr->level==0))laggingssts.emplace_back(*chainptr);
       }
       // at the end of the loop chainptr is null if we were able to visit all the SSTs for the file
 

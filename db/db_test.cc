@@ -1402,32 +1402,46 @@ TEST_F(DBTest, HiddenValuesAreRemoved) {
   do {
     Options options = CurrentOptions(options_override);
     CreateAndReopenWithCF({"pikachu"}, options);
+    bool values_are_indirect = false;  // Set if we are using VLogging.  We skip the vlogging tests but we do this anyway, for form
+#ifdef INDIRECT_VALUE_SUPPORT
+    values_are_indirect = options.vlogring_activation_level.size()!=0;
+#endif
+    static const int S1 = 50000;
+
     Random rnd(301);
     FillLevels("a", "z", 1);
 
-    std::string big = RandomString(&rnd, 50000);
-    Put(1, "foo", big);
+    std::string big = RandomString(&rnd, S1);
+    Put(1,  KeyInvInd("foo",S1,values_are_indirect), ValueInvInd(big,values_are_indirect));
     Put(1, "pastfoo", "v");
     const Snapshot* snapshot = db_->GetSnapshot();
-    Put(1, "foo", "tiny");
+    Put(1, KeyInvInd("foo",S1,values_are_indirect), "tiny");
     Put(1, "pastfoo2", "v2");  // Advance sequence number one more
 
     ASSERT_OK(Flush(1));
     ASSERT_GT(NumTableFilesAtLevel(0, 1), 0);
 
-    ASSERT_EQ(big, Get(1, "foo", snapshot));
-    ASSERT_TRUE(Between(Size("", "pastfoo", 1), 50000, 60000));
+    ASSERT_EQ(ValueInvInd(big,values_are_indirect), Get(1, KeyInvInd("foo",S1,values_are_indirect), snapshot));
+#ifdef INDIRECT_VALUE_SUPPORT
+    ASSERT_TRUE(Between(Size("", "pastfoo", 1), S1*(values_are_indirect+1), (S1*(values_are_indirect+1))+10000));
+#else
+    ASSERT_TRUE(Between(Size("", "pastfoo", 1), S1, S1+10000));
+#endif
     db_->ReleaseSnapshot(snapshot);
-    ASSERT_EQ(AllEntriesFor("foo", 1), "[ tiny, " + big + " ]");
+    ASSERT_EQ(AllEntriesFor(KeyInvInd("foo",S1,values_are_indirect), 1), "[ tiny, " + ValueInvInd(big,values_are_indirect) + " ]");
     Slice x("x");
     dbfull()->TEST_CompactRange(0, nullptr, &x, handles_[1]);
-    ASSERT_EQ(AllEntriesFor("foo", 1), "[ tiny ]");
+    ASSERT_EQ(AllEntriesFor(KeyInvInd("foo",S1,values_are_indirect), 1), "[ tiny ]");
     ASSERT_EQ(NumTableFilesAtLevel(0, 1), 0);
     ASSERT_GE(NumTableFilesAtLevel(1, 1), 1);
     dbfull()->TEST_CompactRange(1, nullptr, &x, handles_[1]);
-    ASSERT_EQ(AllEntriesFor("foo", 1), "[ tiny ]");
+    ASSERT_EQ(AllEntriesFor(KeyInvInd("foo",S1,values_are_indirect), 1), "[ tiny ]");
 
-    ASSERT_TRUE(Between(Size("", "pastfoo", 1), 0, 1000));
+#ifdef INDIRECT_VALUE_SUPPORT
+    ASSERT_TRUE(Between(Size("", "pastfoo", 1), S1*(values_are_indirect), (S1*(values_are_indirect))+1000));
+#else
+    ASSERT_TRUE(Between(Size("", "pastfoo", 1), 0,1000));
+#endif
     // ApproximateOffsetOf() is not yet implemented in plain table format,
     // which is used by Size().
     // skip HashCuckooRep as it does not support snapshot
@@ -1435,6 +1449,7 @@ TEST_F(DBTest, HiddenValuesAreRemoved) {
                          kSkipPlainTable | kSkipHashCuckoo));
 }
 #endif  // ROCKSDB_LITE
+
 
 TEST_F(DBTest, UnremovableSingleDelete) {
   // If we compact:
