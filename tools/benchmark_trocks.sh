@@ -66,16 +66,8 @@ if [ ! -z $SST_COMPRESSION ]; then
   sst_compression=$compression_type;
 fi
 
-# default to use db=DB_DIR unless RAM_DISK is defined
-database_path="--db=$DB_DIR"
-if [ ! -z $RAM_DISK ]; then
-  echo "Turning on RAM DISK for all tests"
-  database_path="--db_paths=/mnt/ram_disk/,10000000000:$DB_DIR,4000000000000 \
-	  --path_ids_per_level=0x5554"
-fi
-
 const_params="
-  $database_path \
+  --db=$DB_DIR \
   --wal_dir=$WAL_DIR \
   \
   --num=$num_keys \
