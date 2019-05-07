@@ -1812,6 +1812,12 @@ TEST_F(DBTest, SnapshotFiles) {
   do {
     Options options = CurrentOptions();
     options.write_buffer_size = 100000000;  // Large write buffer
+#ifdef INDIRECT_VALUE_SUPPORT
+    // This test creates a database and then copies it to a different directory.  For simplicity, the database is
+    // confined to L0.  The code doesn't understand that it needs to copy the VLog as well as the SSTs, so we have to make
+    // sure there aren't any VLog files for L0.  We take L0 out of the ring if rings are enabled.
+    if(options.vlogring_activation_level.size())options.vlogring_activation_level[0]=1;
+#endif
     CreateAndReopenWithCF({"pikachu"}, options);
 
     Random rnd(301);
