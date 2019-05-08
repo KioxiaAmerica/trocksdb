@@ -303,7 +303,11 @@ TEST_P(DBCompactionTestWithParam, CompactionDeletionTrigger) {
     db_size[1] = Size(Key(0), Key(kTestSize - 1));
 
     // must have much smaller db size.
-    ASSERT_GT(db_size[0] / 3, db_size[1]);
+    double expreduction = 3.0;
+    #ifdef INDIRECT_VALUE_SUPPORT
+    expreduction=num_vlog_rings_?2.0:3.0;  // with value logging, the size reduction is not as great, because values are only references
+    #endif
+    ASSERT_GT(db_size[0] / expreduction, db_size[1]);
   }
 }
 #endif  // ROCKSDB_VALGRIND_RUN
@@ -2889,10 +2893,13 @@ TEST_P(DBCompactionTestWithParam, CompressLevelCompaction) {
   // move to level 3 will not be allowed
   options.compression_per_level = {kNoCompression, kNoCompression,
                                    kZlibCompression};
+  int largevaluesize = 990;  // RandomFileInvInd produces value length of either 1 or this
+  bool values_are_indirect = false;
 #ifdef INDIRECT_VALUE_SUPPORT
   // Because this test relies on file sizes, don't VLog during Flush, and allow trivial moves to move files to other levels
   options.vlogring_activation_level.resize(num_vlog_rings_,1); options.min_indirect_val_size[0]=0;
   options.allow_trivial_move = true;
+    if(options.vlogring_activation_level.size()!=0){largevaluesize = 16; values_are_indirect=true;}  // If VLogging, set so
 #endif
   int matches = 0, didnt_match = 0, trivial_move = 0, non_trivial = 0;
 
@@ -2918,47 +2925,47 @@ TEST_P(DBCompactionTestWithParam, CompressLevelCompaction) {
   // First three 110KB files are going to level 0
   // After that, (100K, 200K)
   for (int num = 0; num < 3; num++) {
-    GenerateNewFile(&rnd, &key_idx);
+    GenerateNewFileInvInd(&rnd, &key_idx, values_are_indirect);
   }
 
   // Another 110KB triggers a compaction to 400K file to fill up level 0
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileInvInd(&rnd, &key_idx, values_are_indirect);
   ASSERT_EQ(4, GetSstFileCount(dbname_));
 
   // (1, 4)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileInvInd(&rnd, &key_idx, values_are_indirect);
   ASSERT_EQ("1,4", FilesPerLevel(0));
 
   // (1, 4, 1)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileInvInd(&rnd, &key_idx, values_are_indirect);
   ASSERT_EQ("1,4,1", FilesPerLevel(0));
 
   // (1, 4, 2)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileInvInd(&rnd, &key_idx, values_are_indirect);
   ASSERT_EQ("1,4,2", FilesPerLevel(0));
 
   // (1, 4, 3)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileInvInd(&rnd, &key_idx, values_are_indirect);
   ASSERT_EQ("1,4,3", FilesPerLevel(0));
 
   // (1, 4, 4)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileInvInd(&rnd, &key_idx, values_are_indirect);
   ASSERT_EQ("1,4,4", FilesPerLevel(0));
 
   // (1, 4, 5)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileInvInd(&rnd, &key_idx, values_are_indirect);
   ASSERT_EQ("1,4,5", FilesPerLevel(0));
 
   // (1, 4, 6)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileInvInd(&rnd, &key_idx, values_are_indirect);
   ASSERT_EQ("1,4,6", FilesPerLevel(0));
 
   // (1, 4, 7)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileInvInd(&rnd, &key_idx, values_are_indirect);
   ASSERT_EQ("1,4,7", FilesPerLevel(0));
 
   // (1, 4, 8)
-  GenerateNewFile(&rnd, &key_idx);
+  GenerateNewFileInvInd(&rnd, &key_idx, values_are_indirect);
   ASSERT_EQ("1,4,8", FilesPerLevel(0));
 
   ASSERT_EQ(matches, 12);
@@ -2972,17 +2979,17 @@ TEST_P(DBCompactionTestWithParam, CompressLevelCompaction) {
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
 
   for (int i = 0; i < key_idx; i++) {
-    auto v = Get(KeyNewFile(i));
+    auto v = Get(KeyInvIndNewFile(i,i%100,values_are_indirect));
     ASSERT_NE(v, "NOT_FOUND");
-    ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+    ASSERT_TRUE(v.size() == 1 || v.size() == size_t(largevaluesize));
   }
 
   Reopen(options);
 
   for (int i = 0; i < key_idx; i++) {
-    auto v = Get(KeyNewFile(i));
+    auto v = Get(KeyInvIndNewFile(i,i%100,values_are_indirect));
     ASSERT_NE(v, "NOT_FOUND");
-    ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+    ASSERT_TRUE(v.size() == 1 || v.size() == size_t(largevaluesize));
   }
 
   Destroy(options);
