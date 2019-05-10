@@ -1338,7 +1338,7 @@ TEST_F(DBVLogTest, VlogFileSizeTest) {
   const int32_t value_size = (1LL<<14);  // k+v=16KB
   options.target_file_size_base = 100LL << 20;  // high limit for compaction result, so we don't subcompact
 
-  options.vlogring_activation_level = std::vector<int32_t>({0});
+  options.vlogring_activation_level = std::vector<int32_t>({1});  // Don't write to VLog during Flush - it messes up our calculation
   options.min_indirect_val_size = std::vector<size_t>({0});
   options.fraction_remapped_during_compaction = std::vector<int32_t>({50});
   options.fraction_remapped_during_active_recycling = std::vector<int32_t>({25});

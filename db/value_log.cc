@@ -356,7 +356,7 @@ printf("VLogRing cfd_=%p\n",cfd_);
     allfnos.append(" "); allfnos.append(std::to_string(cfd_->vloginfo()[ringno_].valid_files[i]));  // write start value
     allfnos.append("-"); allfnos.append(std::to_string(cfd_->vloginfo()[ringno_].valid_files[i+1]));  // write end value
   }
-  ROCKS_LOG_INFO(immdbopts_->info_log,"Ring #%d initial files:%s\n",ringno_,allfnos.c_str());
+  ROCKS_LOG_INFO(immdbopts_->info_log,"Ring #%d expected initial files:%s\n",ringno_,allfnos.c_str());
   // For each file in this ring, open it (if its number is in the manifest) or delete it (if not)
   for(uint32_t i=0;i<filenames.size();++i) {
     ParsedFnameRing fnring = VlogFnametoRingFname(filenames[i]);
@@ -383,9 +383,12 @@ printf("Opening file %s\n",filenames[i].c_str());
 printf("Deleting file %s\n",filenames[i].c_str());
 #endif
         // The file is not referenced.  We must have crashed while deleting it, or before it was referenced.  Delete it now
-        if(!immdbopts_->env->DeleteFile(filenames[i]).ok()){ // scaf should be envopts_
+        if(immdbopts_->env->DeleteFile(filenames[i]).ok()){ // scaf should be envopts_
           ROCKS_LOG_WARN(immdbopts_->info_log,
                         "Unreferenced VLog file %s deleted",filenames[i].c_str());
+        }else{
+          ROCKS_LOG_WARN(immdbopts_->info_log,
+                        "Error deleting unreferenced VLog file %s",filenames[i].c_str());
         }
       }
     }
@@ -524,9 +527,11 @@ void VLogRing::ApplyDeletions(std::vector<VLogRingFileDeletion>& deleted_files) 
     deleted_files[i].DeleteFile(*this,immdbopts_,envopts_);
   }
   // Log deletion
-  ROCKS_LOG_INFO(
-      immdbopts_->info_log, "Deleting %" PRIu64 " VLog files: %s\n",
-      deleted_files.size(), dfstring.c_str());
+  if( deleted_files.size()){
+    ROCKS_LOG_INFO(
+        immdbopts_->info_log, "Deleting %" PRIu64 " VLog files: %s\n",
+        deleted_files.size(), dfstring.c_str());
+  }
 }
 
 
@@ -1447,7 +1452,7 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
 
     // Now that the ring hss all the files and all the references, verify that all the needed files are present
     Status s  = rings_[i]->VerifyFilesPresent();  // Verify initial validity
-    if(!s.ok())return s;   // abort if files missing.  Erro has beenn logged
+    if(!s.ok())return s;   // abort if files missing.  Error has beenn logged
   }
 
   return Status();

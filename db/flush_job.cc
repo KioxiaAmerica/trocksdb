@@ -391,7 +391,8 @@ Status FlushJob::WriteLevel0Table() {
   if (s.ok() && meta_.fd.GetFileSize() > 0) {
 #ifdef INDIRECT_VALUE_SUPPORT
     // vlog_flush_info contains info about the flush.  The list of files added goes into the edit; the rest go into the stats
-    Coalesce(edit_->VLogAdditions(),vlog_flush_info.restart_info,true /* allow_delete */);
+// obsolete     Coalesce(edit_->VLogAdditions(),vlog_flush_info.restart_info,true /* allow_delete */);
+    Coalesce(mems_[0]->GetEdits()->VLogAdditions(),vlog_flush_info.restart_info,true /* allow_delete */);
 #endif
 
     // if we have more than 1 background thread, then we cannot
