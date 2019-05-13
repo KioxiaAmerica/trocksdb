@@ -660,7 +660,10 @@ class Repairer {
         std::sort(info.valid_files.begin(),info.valid_files.end());
       }
       // Coalesce them into the initially-empty block for the CF, with no deletions allowed
-      Coalesce(cfd->vloginfo(),accum_vlog_edits,false);   // apply accum edits, including deletions, to database.  false means 'don't include the delete', used for the CF version
+ // obsolete     Coalesce(cfd->vloginfo(),accum_vlog_edits,false);   // apply accum edits, including deletions, to database.  false means 'don't include the delete', used for the CF version
+      // put the changes into the edit record.  That will ensure that they get written out as a change to the manifest AND installed into cfd.  If we just put them into cfd, reconstruction
+      // from the manifest will lose the changes
+      Coalesce(edit.VLogAdditions(),accum_vlog_edits,false);
 
 #endif
 
