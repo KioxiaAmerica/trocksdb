@@ -50,10 +50,11 @@ TEST_F(PlainTableKeyDecoderTest, ReadNonMmap) {
   test::StringSource* string_source =
       new test::StringSource(contents, 0, false);
 
-  unique_ptr<RandomAccessFileReader> file_reader(
+  std::unique_ptr<RandomAccessFileReader> file_reader(
       test::GetRandomAccessFileReader(string_source));
-  unique_ptr<PlainTableReaderFileInfo> file_info(new PlainTableReaderFileInfo(
-      std::move(file_reader), EnvOptions(), kLength));
+  std::unique_ptr<PlainTableReaderFileInfo> file_info(
+      new PlainTableReaderFileInfo(std::move(file_reader), EnvOptions(),
+                                   kLength));
 
   {
     PlainTableFileReader reader(file_info.get());
@@ -115,7 +116,7 @@ class PlainTableDBTest : public testing::Test,
 
   void SetUp() override {
     mmap_mode_ = GetParam();
-    dbname_ = test::TmpDir() + "/plain_table_db_test";
+    dbname_ = test::PerThreadDBPath("plain_table_db_test");
     EXPECT_OK(DestroyDB(dbname_, Options()));
     db_ = nullptr;
     Reopen();
@@ -260,7 +261,7 @@ class TestPlainTableReader : public PlainTableReader {
                        int bloom_bits_per_key, double hash_table_ratio,
                        size_t index_sparseness,
                        const TableProperties* table_properties,
-                       unique_ptr<RandomAccessFileReader>&& file,
+                       std::unique_ptr<RandomAccessFileReader>&& file,
                        const ImmutableCFOptions& ioptions,
                        const SliceTransform* prefix_extractor,
                        bool* expect_bloom_not_match, bool store_index_in_file,
@@ -327,27 +328,29 @@ class TestPlainTableFactory : public PlainTableFactory {
 
   Status NewTableReader(
       const TableReaderOptions& table_reader_options,
-      unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
-      unique_ptr<TableReader>* table,
+      std::unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
+      std::unique_ptr<TableReader>* table,
       bool /*prefetch_index_and_filter_in_cache*/) const override {
     TableProperties* props = nullptr;
     auto s =
         ReadTableProperties(file.get(), file_size, kPlainTableMagicNumber,
-                            table_reader_options.ioptions, &props);
+                            table_reader_options.ioptions, &props,
+                            true /* compression_type_missing */);
     EXPECT_TRUE(s.ok());
 
     if (store_index_in_file_) {
       BlockHandle bloom_block_handle;
       s = FindMetaBlock(file.get(), file_size, kPlainTableMagicNumber,
                         table_reader_options.ioptions,
-                        BloomBlockBuilder::kBloomBlock, &bloom_block_handle);
+                        BloomBlockBuilder::kBloomBlock, &bloom_block_handle,
+                        /* compression_type_missing */ true);
       EXPECT_TRUE(s.ok());
 
       BlockHandle index_block_handle;
       s = FindMetaBlock(file.get(), file_size, kPlainTableMagicNumber,
                         table_reader_options.ioptions,
                         PlainTableIndexBuilder::kPlainTableIndexBlock,
-                        &index_block_handle);
+                        &index_block_handle, /* compression_type_missing */ true);
       EXPECT_TRUE(s.ok());
     }
 

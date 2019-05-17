@@ -152,6 +152,12 @@ class Transaction {
   // If there is no previous call to SetSavePoint(), returns Status::NotFound()
   virtual Status RollbackToSavePoint() = 0;
 
+  // Pop the most recent save point.
+  // If there is no previous call to SetSavePoint(), Status::NotFound()
+  // will be returned.
+  // Otherwise returns Status::OK().
+  virtual Status PopSavePoint() = 0;
+
   // This function is similar to DB::Get() except it will also read pending
   // changes in this transaction.  Currently, this function will return
   // Status::MergeInProgress if the most recent write to the queried key in
@@ -238,9 +244,10 @@ class Transaction {
                               bool /*exclusive*/ = true) {
     if (pinnable_val == nullptr) {
       std::string* null_str = nullptr;
-      return GetForUpdate(options, key, null_str);
+      return GetForUpdate(options, column_family, key, null_str, exclusive);
     } else {
-      auto s = GetForUpdate(options, key, pinnable_val->GetSelf());
+      auto s = GetForUpdate(options, column_family, key,
+                            pinnable_val->GetSelf(), exclusive);
       pinnable_val->PinSelf();
       return s;
     }
@@ -488,6 +495,7 @@ class Transaction {
 
  private:
   friend class PessimisticTransactionDB;
+  friend class WriteUnpreparedTxnDB;
   // No copying allowed
   Transaction(const Transaction&);
   void operator=(const Transaction&);

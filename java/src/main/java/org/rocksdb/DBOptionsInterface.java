@@ -262,6 +262,8 @@ public interface DBOptionsInterface<T extends DBOptionsInterface> {
    * </p>
    * <p>If set to 0 (default), we will dynamically choose the WAL size limit to
    * be [sum of all write_buffer_size * max_write_buffer_number] * 2</p>
+   * <p>This option takes effect only when there are more than one column family as
+   * otherwise the wal size is dictated by the write_buffer_size.</p>
    * <p>Default: 0</p>
    *
    * @param maxTotalWalSize max total wal size.
@@ -988,6 +990,28 @@ public interface DBOptionsInterface<T extends DBOptionsInterface> {
    * @return the reference to the current options.
    */
   T setDbWriteBufferSize(long dbWriteBufferSize);
+
+  /**
+   * Use passed {@link WriteBufferManager} to control memory usage across
+   * multiple column families and/or DB instances.
+   *
+   * Check <a href="https://github.com/facebook/rocksdb/wiki/Write-Buffer-Manager">
+   *     https://github.com/facebook/rocksdb/wiki/Write-Buffer-Manager</a>
+   * for more details on when to use it
+   *
+   * @param writeBufferManager The WriteBufferManager to use
+   * @return the reference of the current options.
+   */
+  T setWriteBufferManager(final WriteBufferManager writeBufferManager);
+
+  /**
+   * Reference to {@link WriteBufferManager} used by it. <br>
+   *
+   * Default: null (Disabled)
+   *
+   * @return a reference to WriteBufferManager
+   */
+  WriteBufferManager writeBufferManager();
 
   /**
    * Amount of data to build up in memtables across all column

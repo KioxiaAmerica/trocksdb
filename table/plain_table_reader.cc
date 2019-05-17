@@ -91,14 +91,13 @@ class PlainTableIterator : public InternalIterator {
 };
 
 extern const uint64_t kPlainTableMagicNumber;
-PlainTableReader::PlainTableReader(const ImmutableCFOptions& ioptions,
-                                   unique_ptr<RandomAccessFileReader>&& file,
-                                   const EnvOptions& storage_options,
-                                   const InternalKeyComparator& icomparator,
-                                   EncodingType encoding_type,
-                                   uint64_t file_size,
-                                   const TableProperties* table_properties,
-                                   const SliceTransform* prefix_extractor)
+PlainTableReader::PlainTableReader(
+    const ImmutableCFOptions& ioptions,
+    std::unique_ptr<RandomAccessFileReader>&& file,
+    const EnvOptions& storage_options, const InternalKeyComparator& icomparator,
+    EncodingType encoding_type, uint64_t file_size,
+    const TableProperties* table_properties,
+    const SliceTransform* prefix_extractor)
     : internal_comparator_(icomparator),
       encoding_type_(encoding_type),
       full_scan_mode_(false),
@@ -118,8 +117,8 @@ PlainTableReader::~PlainTableReader() {
 Status PlainTableReader::Open(
     const ImmutableCFOptions& ioptions, const EnvOptions& env_options,
     const InternalKeyComparator& internal_comparator,
-    unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
-    unique_ptr<TableReader>* table_reader, const int bloom_bits_per_key,
+    std::unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
+    std::unique_ptr<TableReader>* table_reader, const int bloom_bits_per_key,
     double hash_table_ratio, size_t index_sparseness, size_t huge_page_tlb_size,
     bool full_scan_mode, const SliceTransform* prefix_extractor) {
   if (file_size > PlainTableIndex::kMaxFileSize) {
@@ -128,7 +127,8 @@ Status PlainTableReader::Open(
 
   TableProperties* props = nullptr;
   auto s = ReadTableProperties(file.get(), file_size, kPlainTableMagicNumber,
-                               ioptions, &props);
+                               ioptions, &props,
+                               true /* compression_type_missing */);
   if (!s.ok()) {
     return s;
   }
@@ -190,7 +190,7 @@ void PlainTableReader::SetupForCompaction() {
 
 InternalIterator* PlainTableReader::NewIterator(
     const ReadOptions& options, const SliceTransform* /* prefix_extractor */,
-    Arena* arena, bool /*skip_filters*/) {
+    Arena* arena, bool /*skip_filters*/, bool /*for_compaction*/) {
   bool use_prefix_seek = !IsTotalOrderMode() && !options.total_order_seek;
   if (arena == nullptr) {
     return new PlainTableIterator(this, use_prefix_seek);
@@ -276,7 +276,7 @@ void PlainTableReader::FillBloom(vector<uint32_t>* prefix_hashes) {
 Status PlainTableReader::MmapDataIfNeeded() {
   if (file_info_.is_mmap_mode) {
     // Get mmapped memory.
-    return file_info_.file->Read(0, file_size_, &file_info_.file_data, nullptr);
+    return file_info_.file->Read(0, static_cast<size_t>(file_size_), &file_info_.file_data, nullptr);
   }
   return Status::OK();
 }
@@ -293,7 +293,8 @@ Status PlainTableReader::PopulateIndex(TableProperties* props,
   Status s = ReadMetaBlock(file_info_.file.get(), nullptr /* prefetch_buffer */,
                            file_size_, kPlainTableMagicNumber, ioptions_,
                            PlainTableIndexBuilder::kPlainTableIndexBlock,
-                           &index_block_contents);
+                           &index_block_contents,
+                           true /* compression_type_missing */);
 
   bool index_in_file = s.ok();
 
@@ -303,7 +304,8 @@ Status PlainTableReader::PopulateIndex(TableProperties* props,
   if (index_in_file) {
     s = ReadMetaBlock(file_info_.file.get(), nullptr /* prefetch_buffer */,
                       file_size_, kPlainTableMagicNumber, ioptions_,
-                      BloomBlockBuilder::kBloomBlock, &bloom_block_contents);
+                      BloomBlockBuilder::kBloomBlock, &bloom_block_contents,
+                      true /* compression_type_missing */);
     bloom_in_file = s.ok() && bloom_block_contents.data.size() > 0;
   }
 

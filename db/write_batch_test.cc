@@ -51,7 +51,8 @@ static std::string PrintContents(WriteBatch* b) {
       iter = mem->NewIterator(ReadOptions(), &arena);
       arena_iter_guard.set(iter);
     } else {
-      iter = mem->NewRangeTombstoneIterator(ReadOptions());
+      iter = mem->NewRangeTombstoneIterator(ReadOptions(),
+                                            kMaxSequenceNumber /* read_seq */);
       iter_guard.reset(iter);
     }
     if (iter == nullptr) {
@@ -290,8 +291,9 @@ namespace {
     virtual void LogData(const Slice& blob) override {
       seen += "LogData(" + blob.ToString() + ")";
     }
-    virtual Status MarkBeginPrepare() override {
-      seen += "MarkBeginPrepare()";
+    virtual Status MarkBeginPrepare(bool unprepare) override {
+      seen +=
+          "MarkBeginPrepare(" + std::string(unprepare ? "true" : "false") + ")";
       return Status::OK();
     }
     virtual Status MarkEndPrepare(const Slice& xid) override {
@@ -403,7 +405,7 @@ TEST_F(WriteBatchTest, PrepareCommit) {
   TestHandler handler;
   batch.Iterate(&handler);
   ASSERT_EQ(
-      "MarkBeginPrepare()"
+      "MarkBeginPrepare(false)"
       "Put(k1, v1)"
       "Put(k2, v2)"
       "MarkEndPrepare(xid1)"

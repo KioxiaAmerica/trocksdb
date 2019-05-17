@@ -52,14 +52,15 @@ CompactionIterator::CompactionIterator(
     SequenceNumber last_sequence, std::vector<SequenceNumber>* snapshots,
     SequenceNumber earliest_write_conflict_snapshot,
     const SnapshotChecker* snapshot_checker, Env* env,
-    bool expect_valid_internal_key, RangeDelAggregator* range_del_agg,
-    const Compaction* compaction, const CompactionFilter* compaction_filter,
+    bool report_detailed_time, bool expect_valid_internal_key,
+    CompactionRangeDelAggregator* range_del_agg, const Compaction* compaction,
+    const CompactionFilter* compaction_filter,
     const std::atomic<bool>* shutting_down,
     const SequenceNumber preserve_deletes_seqnum)
     : CompactionIterator(
           input, cmp, merge_helper, last_sequence, snapshots,
           earliest_write_conflict_snapshot, snapshot_checker, env,
-          expect_valid_internal_key, range_del_agg,
+          report_detailed_time, expect_valid_internal_key, range_del_agg,
           std::unique_ptr<CompactionProxy>(
               compaction ? new CompactionProxy(compaction) : nullptr),
           compaction_filter, shutting_down, preserve_deletes_seqnum) {}
@@ -69,7 +70,8 @@ CompactionIterator::CompactionIterator(
     SequenceNumber /*last_sequence*/, std::vector<SequenceNumber>* snapshots,
     SequenceNumber earliest_write_conflict_snapshot,
     const SnapshotChecker* snapshot_checker, Env* env,
-    bool expect_valid_internal_key, RangeDelAggregator* range_del_agg,
+    bool report_detailed_time, bool expect_valid_internal_key,
+    CompactionRangeDelAggregator* range_del_agg,
     std::unique_ptr<CompactionProxy> compaction,
     const CompactionFilter* compaction_filter,
     const std::atomic<bool>* shutting_down,
@@ -87,6 +89,7 @@ CompactionIterator::CompactionIterator(
       earliest_write_conflict_snapshot_(earliest_write_conflict_snapshot),
       snapshot_checker_(snapshot_checker),
       env_(env),
+      report_detailed_time_(report_detailed_time),
       expect_valid_internal_key_(expect_valid_internal_key),
       range_del_agg_(range_del_agg),
       compaction_(std::move(compaction)),
@@ -119,6 +122,12 @@ CompactionIterator::CompactionIterator(
     earliest_snapshot_ = snapshots_->at(0);
     latest_snapshot_ = snapshots_->back();
   }
+#ifndef NDEBUG
+  // findEarliestVisibleSnapshot assumes this ordering.
+  for (size_t i = 1; i < snapshots_->size(); ++i) {
+    assert(snapshots_->at(i - 1) <= snapshots_->at(i));
+  }
+#endif
   if (compaction_filter_ != nullptr) {
     if (compaction_filter_->IgnoreSnapshots()) {
       ignore_snapshots_ = true;
@@ -242,7 +251,7 @@ void CompactionIterator::InvokeFilterIfNeeded(bool* need_skip,
     // to get sequence number.
     Slice& filter_key = IsTypeValueNonBlob(ikey_.type) ? ikey_.user_key : key_;
     {
-      StopWatchNano timer(env_, true);
+      StopWatchNano timer(env_, report_detailed_time_);
 #ifdef INDIRECT_VALUE_SUPPORT
       // By default we assume the compaction filter understands only direct values.  We must then convert any indirect reference to a direct one.
       // This could be slow, so if the user has told us by option that they understand indirects, we don't do it.  If the user doesn't
@@ -277,7 +286,7 @@ void CompactionIterator::InvokeFilterIfNeeded(bool* need_skip,
 #undef value_into_filter
 #endif
       iter_stats_.total_filter_time +=
-          env_ != nullptr ? timer.ElapsedNanos() : 0;
+          env_ != nullptr && report_detailed_time_ ? timer.ElapsedNanos() : 0;
     }
 
     if (filter == CompactionFilter::Decision::kRemoveAndSkipUntil &&
@@ -637,6 +646,31 @@ void CompactionIterator::NextFromInput() {
         ++iter_stats_.num_optimized_del_drop_obsolete;
       }
       input_->Next();
+    } else if ((ikey_.type == kTypeDeletion) && bottommost_level_ &&
+               ikeyNotNeededForIncrementalSnapshot()) {
+      // Handle the case where we have a delete key at the bottom most level
+      // We can skip outputting the key iff there are no subsequent puts for this
+      // key
+      ParsedInternalKey next_ikey;
+      input_->Next();
+      // Skip over all versions of this key that happen to occur in the same snapshot
+      // range as the delete
+      while (input_->Valid() &&
+             ParseInternalKey(input_->key(), &next_ikey) &&
+             cmp_->Equal(ikey_.user_key, next_ikey.user_key) &&
+             (prev_snapshot == 0 || next_ikey.sequence > prev_snapshot ||
+              (snapshot_checker_ != nullptr &&
+               UNLIKELY(!snapshot_checker_->IsInSnapshot(next_ikey.sequence,
+                                                         prev_snapshot))))) {
+        input_->Next();
+      }
+      // If you find you still need to output a row with this key, we need to output the
+      // delete too
+      if (input_->Valid() && ParseInternalKey(input_->key(), &next_ikey) &&
+          cmp_->Equal(ikey_.user_key, next_ikey.user_key)) {
+        valid_ = true;
+        at_next_ = true;
+      }
     } else if (IsTypeMerge(ikey_.type)) {
       if (!merge_helper_->HasOperator()) {
         status_ = Status::InvalidArgument(
@@ -686,7 +720,7 @@ void CompactionIterator::NextFromInput() {
       // 1. new user key -OR-
       // 2. different snapshot stripe
       bool should_delete = range_del_agg_->ShouldDelete(
-          key_, RangeDelAggregator::RangePositioningMode::kForwardTraversal);
+          key_, RangeDelPositioningMode::kForwardTraversal);
       if (should_delete) {
         ++iter_stats_.num_record_drop_hidden;
         ++iter_stats_.num_record_drop_range_del;
@@ -740,18 +774,23 @@ void CompactionIterator::PrepareOutput() {
 inline SequenceNumber CompactionIterator::findEarliestVisibleSnapshot(
     SequenceNumber in, SequenceNumber* prev_snapshot) {
   assert(snapshots_->size());
-  SequenceNumber prev = kMaxSequenceNumber;
-  for (const auto cur : *snapshots_) {
-    assert(prev == kMaxSequenceNumber || prev <= cur);
-    if (cur >= in && (snapshot_checker_ == nullptr ||
-                      snapshot_checker_->IsInSnapshot(in, cur))) {
-      *prev_snapshot = prev == kMaxSequenceNumber ? 0 : prev;
+  auto snapshots_iter = std::lower_bound(
+      snapshots_->begin(), snapshots_->end(), in);
+  if (snapshots_iter == snapshots_->begin()) {
+    *prev_snapshot = 0;
+  } else {
+    *prev_snapshot = *std::prev(snapshots_iter);
+    assert(*prev_snapshot < in);
+  }
+  for (; snapshots_iter != snapshots_->end(); ++snapshots_iter) {
+    auto cur = *snapshots_iter;
+    assert(in <= cur);
+    if (snapshot_checker_ == nullptr ||
+        snapshot_checker_->IsInSnapshot(in, cur)) {
       return cur;
     }
-    prev = cur;
-    assert(prev < kMaxSequenceNumber);
+    *prev_snapshot = cur;
   }
-  *prev_snapshot = prev;
   return kMaxSequenceNumber;
 }
 

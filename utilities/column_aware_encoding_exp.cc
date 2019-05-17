@@ -92,7 +92,7 @@ class ColumnAwareEncodingExp {
     EnvOptions env_options;
     if (CompressionTypeSupported(compression_type)) {
       fprintf(stdout, "[%s]\n", FLAGS_compression_type.c_str());
-      unique_ptr<WritableFile> encoded_out_file;
+      std::unique_ptr<WritableFile> encoded_out_file;
 
       std::unique_ptr<Env> env(NewMemEnv(Env::Default()));
       if (!FLAGS_encoded_file.empty()) {
@@ -120,7 +120,7 @@ class ColumnAwareEncodingExp {
       uint64_t encode_time = sw.ElapsedNanosSafe(false /* reset */);
       fprintf(stdout, "Encode time: %" PRIu64 "\n", encode_time);
       if (decode) {
-        unique_ptr<WritableFile> decoded_out_file;
+        std::unique_ptr<WritableFile> decoded_out_file;
         if (!FLAGS_decoded_file.empty()) {
           env->NewWritableFile(FLAGS_decoded_file, &decoded_out_file,
                                env_options);

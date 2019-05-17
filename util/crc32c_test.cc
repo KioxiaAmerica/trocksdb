@@ -8,6 +8,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 #include "util/crc32c.h"
 #include "util/testharness.h"
+#include "util/coding.h"
 
 namespace rocksdb {
 namespace crc32c {
@@ -63,6 +64,7 @@ ExpectedResult expectedResults[] = {
 };
 
 TEST(CRC, StandardResults) {
+
   // Original Fast_CRC32 tests.
   // From rfc3720 section B.4.
   char buf[32];
@@ -164,7 +166,8 @@ int main(int argc, char** argv) {
   const uint64_t* end = (const uint64_t*)(rocksdb::crc32c::buffer + rocksdb::crc32c::BUFFER_SIZE);
   *dst++ = 0;
   while (dst < end) {
-    *dst++ = fnv64_buf((const char*)src, sizeof(uint64_t));
+    rocksdb::EncodeFixed64(reinterpret_cast<char*>(dst), fnv64_buf((const char*)src, sizeof(uint64_t)));
+    dst++;
     src += sizeof(uint64_t);
   }
 

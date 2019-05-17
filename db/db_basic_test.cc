@@ -803,7 +803,7 @@ TEST_F(DBBasicTest, ChecksumTest) {
   BlockBasedTableOptions table_options;
   Options options = CurrentOptions();
   // change when new checksum type added
-  int max_checksum = static_cast<int>(kxxHash);
+  int max_checksum = static_cast<int>(kxxHash64);
   const int kNumPerFile = 2;
 
   // generate one table with each type of checksum
@@ -818,7 +818,7 @@ TEST_F(DBBasicTest, ChecksumTest) {
   }
 
   // verify data with each type of checksum
-  for (int i = 0; i <= kxxHash; ++i) {
+  for (int i = 0; i <= kxxHash64; ++i) {
     table_options.checksum = static_cast<ChecksumType>(i);
     options.table_factory.reset(NewBlockBasedTableFactory(table_options));
     Reopen(options);
@@ -890,7 +890,7 @@ class TestEnv : public EnvWrapper {
     int GetCloseCount() { return close_count; }
 
     virtual Status NewLogger(const std::string& /*fname*/,
-                             shared_ptr<Logger>* result) {
+                             std::shared_ptr<Logger>* result) {
       result->reset(new TestLogger(this));
       return Status::OK();
     }
@@ -901,7 +901,7 @@ class TestEnv : public EnvWrapper {
 
 TEST_F(DBBasicTest, DBClose) {
   Options options = GetDefaultOptions();
-  std::string dbname = test::TmpDir(env_) + "/db_close_test";
+  std::string dbname = test::PerThreadDBPath("db_close_test");
   ASSERT_OK(DestroyDB(dbname, options));
 
   DB* db = nullptr;

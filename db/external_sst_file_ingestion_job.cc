@@ -29,7 +29,8 @@
 namespace rocksdb {
 
 Status ExternalSstFileIngestionJob::Prepare(
-    const std::vector<std::string>& external_files_paths, SuperVersion* sv) {
+    const std::vector<std::string>& external_files_paths,
+    uint64_t next_file_number, SuperVersion* sv) {
   Status status;
 
   // Read the information of files we are ingesting
@@ -78,7 +79,7 @@ Status ExternalSstFileIngestionJob::Prepare(
   }
 
   for (IngestedFileInfo& f : files_to_ingest_) {
-    if (f.num_entries == 0) {
+    if (f.num_entries == 0 && f.num_range_deletions == 0) {
       return Status::InvalidArgument("File contain no entries");
     }
 
@@ -90,8 +91,7 @@ Status ExternalSstFileIngestionJob::Prepare(
 
   // Copy/Move external files into DB
   for (IngestedFileInfo& f : files_to_ingest_) {
-    // Get the path ID as if for L0
-    f.fd = FileDescriptor(versions_->NewFileNumber(), 0, f.file_size);
+    f.fd = FileDescriptor(next_file_number++, 0, f.file_size);
 
     const std::string path_outside_db = f.external_file_path;
     const std::string path_inside_db =
@@ -228,7 +228,7 @@ void ExternalSstFileIngestionJob::UpdateStats() {
   for (IngestedFileInfo& f : files_to_ingest_) {
     InternalStats::CompactionStats stats(CompactionReason::kExternalSstIngestion, 1);
     stats.micros = total_time;
-    // If actual copy occured for this file, then we need to count the file
+    // If actual copy occurred for this file, then we need to count the file
     // size as the actual bytes written. If the file was linked, then we ignore
     // the bytes written for file metadata.
     // TODO (yanqin) maybe account for file metadata bytes for exact accuracy?
@@ -340,12 +340,14 @@ Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
 
     // Set the global sequence number
     file_to_ingest->original_seqno = DecodeFixed64(seqno_iter->second.c_str());
-    file_to_ingest->global_seqno_offset = props->properties_offsets.at(
+    auto offsets_iter = props->properties_offsets.find(
         ExternalSstFilePropertyNames::kGlobalSeqno);
-
-    if (file_to_ingest->global_seqno_offset == 0) {
+    if (offsets_iter == props->properties_offsets.end() ||
+        offsets_iter->second == 0) {
+      file_to_ingest->global_seqno_offset = 0;
       return Status::Corruption("Was not able to find file global seqno field");
     }
+    file_to_ingest->global_seqno_offset = static_cast<size_t>(offsets_iter->second);
   } else if (file_to_ingest->version == 1) {
     // SST file V1 should not have global seqno field
     assert(seqno_iter == uprops.end());
@@ -360,6 +362,7 @@ Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
   }
   // Get number of entries in table
   file_to_ingest->num_entries = props->num_entries;
+  file_to_ingest->num_range_deletions = props->num_range_deletions;
 
   ParsedInternalKey key;
   ReadOptions ro;
@@ -371,9 +374,13 @@ Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
   ro.fill_cache = false;
   std::unique_ptr<InternalIterator> iter(table_reader->NewIterator(
       ro, sv->mutable_cf_options.prefix_extractor.get()));
+  std::unique_ptr<InternalIterator> range_del_iter(
+      table_reader->NewRangeTombstoneIterator(ro));
 
-  // Get first (smallest) key from file
+  // Get first (smallest) and last (largest) key from file.
+  bool bounds_set = false;
   iter->SeekToFirst();
+  if (iter->Valid()) {
   if (!ParseInternalKey(iter->key(), &key)) {
     return Status::Corruption("external file have corrupted keys");
   }
@@ -382,7 +389,6 @@ Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
   }
   file_to_ingest->smallest_user_key = key.user_key.ToString();
 
-  // Get last (largest) key from file
   iter->SeekToLast();
   if (!ParseInternalKey(iter->key(), &key)) {
     return Status::Corruption("external file have corrupted keys");
@@ -391,6 +397,32 @@ Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
     return Status::Corruption("external file have non zero sequence number");
   }
   file_to_ingest->largest_user_key = key.user_key.ToString();
+
+    bounds_set = true;
+}
+
+  // We may need to adjust these key bounds, depending on whether any range
+  // deletion tombstones extend past them.
+  const Comparator* ucmp = cfd_->internal_comparator().user_comparator();
+  if (range_del_iter != nullptr) {
+    for (range_del_iter->SeekToFirst(); range_del_iter->Valid();
+         range_del_iter->Next()) {
+      if (!ParseInternalKey(range_del_iter->key(), &key)) {
+        return Status::Corruption("external file have corrupted keys");
+      }
+      RangeTombstone tombstone(key, range_del_iter->value());
+
+      if (!bounds_set || ucmp->Compare(tombstone.start_key_,
+                                       file_to_ingest->smallest_user_key) < 0) {
+        file_to_ingest->smallest_user_key = tombstone.start_key_.ToString();
+      }
+      if (!bounds_set || ucmp->Compare(tombstone.end_key_,
+                                       file_to_ingest->largest_user_key) > 0) {
+        file_to_ingest->largest_user_key = tombstone.end_key_.ToString();
+      }
+      bounds_set = true;
+    }
+  }
 
   file_to_ingest->cf_id = static_cast<uint32_t>(props->column_family_id);
 
@@ -447,9 +479,9 @@ Status ExternalSstFileIngestionJob::AssignLevelAndSeqnoForIngestedFile(
         const SequenceNumber level_largest_seqno =
             (*max_element(level_files.begin(), level_files.end(),
                           [](FileMetaData* f1, FileMetaData* f2) {
-                            return f1->largest_seqno < f2->largest_seqno;
+                            return f1->fd.largest_seqno < f2->fd.largest_seqno;
                           }))
-                ->largest_seqno;
+                ->fd.largest_seqno;
         // should only assign seqno to current level's largest seqno when
         // the file fits
         if (level_largest_seqno != 0 &&
@@ -494,7 +526,7 @@ Status ExternalSstFileIngestionJob::CheckLevelForIngestedBehindFile(
   // at some upper level
   for (int lvl = 0; lvl < cfd_->NumberLevels() - 1; lvl++) {
     for (auto file : vstorage->LevelFiles(lvl)) {
-      if (file->smallest_seqno == 0) {
+      if (file->fd.smallest_seqno == 0) {
         return Status::InvalidArgument(
           "Can't ingest_behind file as despite allow_ingest_behind=true "
           "there are files with 0 seqno in database at upper levels!");
@@ -519,24 +551,27 @@ Status ExternalSstFileIngestionJob::AssignGlobalSeqnoForIngestedFile(
         "field");
   }
 
+  if (ingestion_options_.write_global_seqno) {
+    // Determine if we can write global_seqno to a given offset of file.
+    // If the file system does not support random write, then we should not.
+    // Otherwise we should.
   std::unique_ptr<RandomRWFile> rwfile;
   Status status = env_->NewRandomRWFile(file_to_ingest->internal_file_path,
                                         &rwfile, env_options_);
-  if (!status.ok()) {
-    return status;
-  }
-
-  // Write the new seqno in the global sequence number field in the file
+    if (status.ok()) {
   std::string seqno_val;
   PutFixed64(&seqno_val, seqno);
   status = rwfile->Write(file_to_ingest->global_seqno_offset, seqno_val);
-  if (status.ok()) {
-    status = rwfile->Fsync();
+      if (!status.ok()) {
+        return status;
   }
-  if (status.ok()) {
-    file_to_ingest->assigned_seqno = seqno;
-  }
+    } else if (!status.IsNotSupported()) {
   return status;
+}
+  }
+
+  file_to_ingest->assigned_seqno = seqno;
+  return Status::OK();
 }
 
 bool ExternalSstFileIngestionJob::IngestedFileFitInLevel(

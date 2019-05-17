@@ -10,6 +10,8 @@
 #include "rocksdb/comparator.h"
 #include "rocksdb/iterator.h"
 #include "rocksdb/status.h"
+#include "table/format.h"
+
 #ifdef INDIRECT_VALUE_SUPPORT
 #include <memory>
 #include "db/value_log.h"
@@ -18,10 +20,11 @@ namespace rocksdb {
 
 class PinnedIteratorsManager;
 
-class InternalIterator : public Cleanable {
+template <class TValue>
+class InternalIteratorBase : public Cleanable {
  public:
-  InternalIterator() {}
-  virtual ~InternalIterator() {}
+  InternalIteratorBase() {}
+  virtual ~InternalIteratorBase() {}
 
   // An iterator is either positioned at a key/value pair, or
   // not valid.  This method returns true iff the iterator is valid.
@@ -69,7 +72,7 @@ class InternalIterator : public Cleanable {
   // the returned slice is valid only until the next modification of
   // the iterator.
   // REQUIRES: Valid()
-  virtual Slice value() const = 0;
+  virtual TValue value() const = 0;
 
   // If an error has occurred, return it.  Else return an ok status.
   // If non-blocking IO is requested and this operation cannot be
@@ -133,14 +136,24 @@ class InternalIterator : public Cleanable {
 #endif
 
   // No copying allowed
-  InternalIterator(const InternalIterator&) = delete;
-  InternalIterator& operator=(const InternalIterator&) = delete;
+  InternalIteratorBase(const InternalIteratorBase&) = delete;
+  InternalIteratorBase& operator=(const InternalIteratorBase&) = delete;
 };
 
+using InternalIterator = InternalIteratorBase<Slice>;
+
 // Return an empty iterator (yields nothing).
-extern InternalIterator* NewEmptyInternalIterator();
+template <class TValue = Slice>
+extern InternalIteratorBase<TValue>* NewEmptyInternalIterator();
 
 // Return an empty iterator with the specified status.
-extern InternalIterator* NewErrorInternalIterator(const Status& status);
+template <class TValue = Slice>
+extern InternalIteratorBase<TValue>* NewErrorInternalIterator(
+    const Status& status);
+
+// Return an empty iterator with the specified status, allocated arena.
+template <class TValue = Slice>
+extern InternalIteratorBase<TValue>* NewErrorInternalIterator(
+    const Status& status, Arena* arena);
 
 }  // namespace rocksdb

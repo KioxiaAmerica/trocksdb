@@ -9,6 +9,7 @@
 
 #pragma once
 #include <memory>
+#include "db/range_tombstone_fragmenter.h"
 #include "rocksdb/slice_transform.h"
 #include "table/internal_iterator.h"
 
@@ -21,7 +22,6 @@ class Arena;
 struct ReadOptions;
 struct TableProperties;
 class GetContext;
-class InternalIterator;
 
 // A Table is a sorted map from strings to strings.  Tables are
 // immutable and persistent.  A Table may be safely accessed from
@@ -42,9 +42,10 @@ class TableReader {
   virtual InternalIterator* NewIterator(const ReadOptions&,
                                         const SliceTransform* prefix_extractor,
                                         Arena* arena = nullptr,
-                                        bool skip_filters = false) = 0;
+                                        bool skip_filters = false,
+                                        bool for_compaction = false) = 0;
 
-  virtual InternalIterator* NewRangeTombstoneIterator(
+  virtual FragmentedRangeTombstoneIterator* NewRangeTombstoneIterator(
       const ReadOptions& /*read_options*/) {
     return nullptr;
   }

@@ -20,11 +20,12 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#ifdef OS_LINUX
+#if defined(OS_LINUX) || defined(OS_SOLARIS) || defined(OS_ANDROID)
 #include <sys/statfs.h>
 #include <sys/syscall.h>
 #include <sys/sysmacros.h>
 #endif
+#include <sys/statvfs.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <time.h>
@@ -83,28 +84,7 @@ inline mode_t GetDBFileMode(bool allow_non_owner_access) {
 static std::set<std::string> lockedFiles;
 static port::Mutex mutex_lockedFiles;
 
-static int LockOrUnlock(const std::string& fname, int fd, bool lock) {
-  mutex_lockedFiles.Lock();
-  if (lock) {
-    // If it already exists in the lockedFiles set, then it is already locked,
-    // and fail this lock attempt. Otherwise, insert it into lockedFiles.
-    // This check is needed because fcntl() does not detect lock conflict
-    // if the fcntl is issued by the same thread that earlier acquired
-    // this lock.
-    if (lockedFiles.insert(fname).second == false) {
-      mutex_lockedFiles.Unlock();
-      errno = ENOLCK;
-      return -1;
-    }
-  } else {
-    // If we are unlocking, then verify that we had locked it earlier,
-    // it should already exist in lockedFiles. Remove it from lockedFiles.
-    if (lockedFiles.erase(fname) != 1) {
-      mutex_lockedFiles.Unlock();
-      errno = ENOLCK;
-      return -1;
-    }
-  }
+static int LockOrUnlock(int fd, bool lock) {
   errno = 0;
   struct flock f;
   memset(&f, 0, sizeof(f));
@@ -113,11 +93,7 @@ static int LockOrUnlock(const std::string& fname, int fd, bool lock) {
   f.l_start = 0;
   f.l_len = 0;        // Lock/unlock entire file
   int value = fcntl(fd, F_SETLK, &f);
-  if (value == -1 && lock) {
-    // if there is an error in locking, then remove the pathname from lockedfiles
-    lockedFiles.erase(fname);
-  }
-  mutex_lockedFiles.Unlock();
+
   return value;
 }
 
@@ -126,6 +102,18 @@ class PosixFileLock : public FileLock {
   int fd_;
   std::string filename;
 };
+
+int cloexec_flags(int flags, const EnvOptions* options) {
+  // If the system supports opening the file with cloexec enabled,
+  // do so, as this avoids a race condition if a db is opened around
+  // the same time that a child process is forked
+#ifdef O_CLOEXEC
+  if (options == nullptr || options->set_fd_cloexec) {
+    flags |= O_CLOEXEC;
+  }
+#endif
+  return flags;
+}
 
 class PosixEnv : public Env {
  public:
@@ -154,11 +142,11 @@ class PosixEnv : public Env {
   }
 
   virtual Status NewSequentialFile(const std::string& fname,
-                                   unique_ptr<SequentialFile>* result,
+                                   std::unique_ptr<SequentialFile>* result,
                                    const EnvOptions& options) override {
     result->reset();
     int fd = -1;
-    int flags = O_RDONLY;
+    int flags = cloexec_flags(O_RDONLY, &options);
     FILE* file = nullptr;
 
     if (options.use_direct_reads && !options.use_mmap_reads) {
@@ -204,12 +192,13 @@ class PosixEnv : public Env {
   }
 
   virtual Status NewRandomAccessFile(const std::string& fname,
-                                     unique_ptr<RandomAccessFile>* result,
+                                     std::unique_ptr<RandomAccessFile>* result,
                                      const EnvOptions& options) override {
     result->reset();
     Status s;
     int fd;
-    int flags = O_RDONLY;
+    int flags = cloexec_flags(O_RDONLY, &options);
+
     if (options.use_direct_reads && !options.use_mmap_reads) {
 #ifdef ROCKSDB_LITE
       return Status::IOError(fname, "Direct I/O not supported in RocksDB lite");
@@ -260,7 +249,7 @@ class PosixEnv : public Env {
   }
 
   virtual Status OpenWritableFile(const std::string& fname,
-                                  unique_ptr<WritableFile>* result,
+                                  std::unique_ptr<WritableFile>* result,
                                   const EnvOptions& options,
                                   bool reopen = false) {
     result->reset();
@@ -290,6 +279,8 @@ class PosixEnv : public Env {
     } else {
       flags |= O_WRONLY;
     }
+
+    flags = cloexec_flags(flags, &options);
 
     do {
       IOSTATS_TIMER_GUARD(open_nanos);
@@ -342,20 +333,20 @@ class PosixEnv : public Env {
   }
 
   virtual Status NewWritableFile(const std::string& fname,
-                                 unique_ptr<WritableFile>* result,
+                                 std::unique_ptr<WritableFile>* result,
                                  const EnvOptions& options) override {
     return OpenWritableFile(fname, result, options, false);
   }
 
   virtual Status ReopenWritableFile(const std::string& fname,
-                                    unique_ptr<WritableFile>* result,
+                                    std::unique_ptr<WritableFile>* result,
                                     const EnvOptions& options) override {
     return OpenWritableFile(fname, result, options, true);
   }
 
   virtual Status ReuseWritableFile(const std::string& fname,
                                    const std::string& old_fname,
-                                   unique_ptr<WritableFile>* result,
+                                   std::unique_ptr<WritableFile>* result,
                                    const EnvOptions& options) override {
     result->reset();
     Status s;
@@ -378,6 +369,8 @@ class PosixEnv : public Env {
     } else {
       flags |= O_WRONLY;
     }
+
+    flags = cloexec_flags(flags, &options);
 
     do {
       IOSTATS_TIMER_GUARD(open_nanos);
@@ -437,12 +430,15 @@ class PosixEnv : public Env {
   }
 
   virtual Status NewRandomRWFile(const std::string& fname,
-                                 unique_ptr<RandomRWFile>* result,
+                                 std::unique_ptr<RandomRWFile>* result,
                                  const EnvOptions& options) override {
     int fd = -1;
+    int flags = cloexec_flags(O_RDWR, &options);
+
     while (fd < 0) {
       IOSTATS_TIMER_GUARD(open_nanos);
-      fd = open(fname.c_str(), O_RDWR, GetDBFileMode(allow_non_owner_access_));
+
+      fd = open(fname.c_str(), flags, GetDBFileMode(allow_non_owner_access_));
       if (fd < 0) {
         // Error while opening the file
         if (errno == EINTR) {
@@ -459,12 +455,14 @@ class PosixEnv : public Env {
 
   virtual Status NewMemoryMappedFileBuffer(
       const std::string& fname,
-      unique_ptr<MemoryMappedFileBuffer>* result) override {
+      std::unique_ptr<MemoryMappedFileBuffer>* result) override {
     int fd = -1;
     Status status;
+    int flags = cloexec_flags(O_RDWR, nullptr);
+
     while (fd < 0) {
       IOSTATS_TIMER_GUARD(open_nanos);
-      fd = open(fname.c_str(), O_RDWR, 0644);
+      fd = open(fname.c_str(), flags, 0644);
       if (fd < 0) {
         // Error while opening the file
         if (errno == EINTR) {
@@ -499,12 +497,13 @@ class PosixEnv : public Env {
   }
 
   virtual Status NewDirectory(const std::string& name,
-                              unique_ptr<Directory>* result) override {
+                              std::unique_ptr<Directory>* result) override {
     result->reset();
     int fd;
+    int flags = cloexec_flags(0, nullptr);
     {
       IOSTATS_TIMER_GUARD(open_nanos);
-      fd = open(name.c_str(), 0);
+      fd = open(name.c_str(), flags);
     }
     if (fd < 0) {
       return IOError("While open directory", name, errno);
@@ -521,7 +520,8 @@ class PosixEnv : public Env {
       return Status::OK();
     }
 
-    switch (errno) {
+    int err = errno;
+    switch (err) {
       case EACCES:
       case ELOOP:
       case ENAMETOOLONG:
@@ -529,8 +529,8 @@ class PosixEnv : public Env {
       case ENOTDIR:
         return Status::NotFound();
       default:
-        assert(result == EIO || result == ENOMEM);
-        return Status::IOError("Unexpected error(" + ToString(result) +
+        assert(err == EIO || err == ENOMEM);
+        return Status::IOError("Unexpected error(" + ToString(err) +
                                ") accessing file `" + fname + "' ");
     }
   }
@@ -638,6 +638,15 @@ class PosixEnv : public Env {
     return result;
   }
 
+  Status NumFileLinks(const std::string& fname, uint64_t* count) override {
+    struct stat s;
+    if (stat(fname.c_str(), &s) != 0) {
+      return IOError("while stat a file for num file links", fname, errno);
+    }
+    *count = static_cast<uint64_t>(s.st_nlink);
+    return Status::OK();
+  }
+
   virtual Status AreFilesSame(const std::string& first,
                               const std::string& second, bool* res) override {
     struct stat statbuf[2];
@@ -661,14 +670,35 @@ class PosixEnv : public Env {
   virtual Status LockFile(const std::string& fname, FileLock** lock) override {
     *lock = nullptr;
     Status result;
+
+    mutex_lockedFiles.Lock();
+    // If it already exists in the lockedFiles set, then it is already locked,
+    // and fail this lock attempt. Otherwise, insert it into lockedFiles.
+    // This check is needed because fcntl() does not detect lock conflict
+    // if the fcntl is issued by the same thread that earlier acquired
+    // this lock.
+    // We must do this check *before* opening the file:
+    // Otherwise, we will open a new file descriptor. Locks are associated with
+    // a process, not a file descriptor and when *any* file descriptor is closed,
+    // all locks the process holds for that *file* are released
+    if (lockedFiles.insert(fname).second == false) {
+      mutex_lockedFiles.Unlock();
+      errno = ENOLCK;
+      return IOError("lock ", fname, errno);
+    }
+
     int fd;
+    int flags = cloexec_flags(O_RDWR | O_CREAT, nullptr);
+
     {
       IOSTATS_TIMER_GUARD(open_nanos);
-      fd = open(fname.c_str(), O_RDWR | O_CREAT, 0644);
+      fd = open(fname.c_str(), flags, 0644);
     }
     if (fd < 0) {
       result = IOError("while open a file for lock", fname, errno);
-    } else if (LockOrUnlock(fname, fd, true) == -1) {
+    } else if (LockOrUnlock(fd, true) == -1) {
+      // if there is an error in locking, then remove the pathname from lockedfiles
+      lockedFiles.erase(fname);
       result = IOError("While lock file", fname, errno);
       close(fd);
     } else {
@@ -678,17 +708,26 @@ class PosixEnv : public Env {
       my_lock->filename = fname;
       *lock = my_lock;
     }
+
+    mutex_lockedFiles.Unlock();
     return result;
   }
 
   virtual Status UnlockFile(FileLock* lock) override {
     PosixFileLock* my_lock = reinterpret_cast<PosixFileLock*>(lock);
     Status result;
-    if (LockOrUnlock(my_lock->filename, my_lock->fd_, false) == -1) {
+    mutex_lockedFiles.Lock();
+    // If we are unlocking, then verify that we had locked it earlier,
+    // it should already exist in lockedFiles. Remove it from lockedFiles.
+    if (lockedFiles.erase(my_lock->filename) != 1) {
+      errno = ENOLCK;
+      result = IOError("unlock", my_lock->filename, errno);
+    } else if (LockOrUnlock(my_lock->fd_, false) == -1) {
       result = IOError("unlock", my_lock->filename, errno);
     }
     close(my_lock->fd_);
     delete my_lock;
+    mutex_lockedFiles.Unlock();
     return result;
   }
 
@@ -739,12 +778,30 @@ class PosixEnv : public Env {
     return gettid(pthread_self());
   }
 
+  virtual Status GetFreeSpace(const std::string& fname,
+                              uint64_t* free_space) override {
+    struct statvfs sbuf;
+
+    if (statvfs(fname.c_str(), &sbuf) < 0) {
+      return IOError("While doing statvfs", fname, errno);
+    }
+
+    *free_space = ((uint64_t)sbuf.f_bsize * sbuf.f_bfree);
+    return Status::OK();
+  }
+
   virtual Status NewLogger(const std::string& fname,
-                           shared_ptr<Logger>* result) override {
+                           std::shared_ptr<Logger>* result) override {
     FILE* f;
     {
       IOSTATS_TIMER_GUARD(open_nanos);
-      f = fopen(fname.c_str(), "w");
+      f = fopen(fname.c_str(), "w"
+#ifdef __GLIBC_PREREQ
+#if __GLIBC_PREREQ(2, 7)
+          "e" // glibc extension to enable O_CLOEXEC
+#endif
+#endif
+          );
     }
     if (f == nullptr) {
       result->reset();

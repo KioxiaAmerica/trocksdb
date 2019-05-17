@@ -224,10 +224,15 @@ class CompactionIteratorTest : public testing::TestWithParam<bool> {
       MergeOperator* merge_op = nullptr, CompactionFilter* filter = nullptr,
       bool bottommost_level = false,
       SequenceNumber earliest_write_conflict_snapshot = kMaxSequenceNumber) {
-    std::unique_ptr<InternalIterator> range_del_iter(
+    std::unique_ptr<InternalIterator> unfragmented_range_del_iter(
         new test::VectorIterator(range_del_ks, range_del_vs));
-    range_del_agg_.reset(new RangeDelAggregator(icmp_, snapshots_));
-    ASSERT_OK(range_del_agg_->AddTombstones(std::move(range_del_iter)));
+    auto tombstone_list = std::make_shared<FragmentedRangeTombstoneList>(
+        std::move(unfragmented_range_del_iter), icmp_);
+    std::unique_ptr<FragmentedRangeTombstoneIterator> range_del_iter(
+        new FragmentedRangeTombstoneIterator(tombstone_list, icmp_,
+                                             kMaxSequenceNumber));
+    range_del_agg_.reset(new CompactionRangeDelAggregator(&icmp_, snapshots_));
+    range_del_agg_->AddTombstones(std::move(range_del_iter));
 
     std::unique_ptr<CompactionIterator::CompactionProxy> compaction;
     if (filter || bottommost_level) {
@@ -253,8 +258,8 @@ class CompactionIteratorTest : public testing::TestWithParam<bool> {
     c_iter_.reset(new CompactionIterator(
         iter_.get(), cmp_, merge_helper_.get(), last_sequence, &snapshots_,
         earliest_write_conflict_snapshot, snapshot_checker_.get(),
-        Env::Default(), false, range_del_agg_.get(), std::move(compaction),
-        filter, &shutting_down_));
+        Env::Default(), false /* report_detailed_time */, false,
+        range_del_agg_.get(), std::move(compaction), filter, &shutting_down_));
   }
 
   void AddSnapshot(SequenceNumber snapshot,
@@ -298,7 +303,8 @@ class CompactionIteratorTest : public testing::TestWithParam<bool> {
   std::unique_ptr<MergeHelper> merge_helper_;
   std::unique_ptr<LoggingForwardVectorIterator> iter_;
   std::unique_ptr<CompactionIterator> c_iter_;
-  std::unique_ptr<RangeDelAggregator> range_del_agg_;
+  std::unique_ptr<CompactionRangeDelAggregator> range_del_agg_;
+  std::unique_ptr<SnapshotChecker> snapshot_checker_;
   std::unique_ptr<SnapshotChecker> snapshot_checker_;
   std::atomic<bool> shutting_down_{false};
   FakeCompaction* compaction_proxy_;
@@ -689,8 +695,12 @@ TEST_P(CompactionIteratorTest, ZeroOutSequenceAtBottomLevel) {
 TEST_P(CompactionIteratorTest, RemoveDeletionAtBottomLevel) {
   AddSnapshot(1);
   RunTest({test::KeyStr("a", 1, kTypeDeletion),
-           test::KeyStr("b", 2, kTypeDeletion)},
-          {"", ""}, {test::KeyStr("b", 2, kTypeDeletion)}, {""},
+           test::KeyStr("b", 3, kTypeDeletion),
+           test::KeyStr("b", 1, kTypeValue)},
+          {"", "", ""},
+          {test::KeyStr("b", 3, kTypeDeletion),
+           test::KeyStr("b", 0, kTypeValue)},
+          {"", ""},
           kMaxSequenceNumber /*last_commited_seq*/, nullptr /*merge_operator*/,
           nullptr /*compaction_filter*/, true /*bottommost_level*/);
 }
@@ -859,9 +869,22 @@ TEST_F(CompactionIteratorWithSnapshotCheckerTest,
       {test::KeyStr("a", 1, kTypeDeletion), test::KeyStr("b", 2, kTypeDeletion),
        test::KeyStr("c", 3, kTypeDeletion)},
       {"", "", ""},
-      {test::KeyStr("b", 2, kTypeDeletion),
-       test::KeyStr("c", 3, kTypeDeletion)},
+      {},
       {"", ""}, kMaxSequenceNumber /*last_commited_seq*/,
+      nullptr /*merge_operator*/, nullptr /*compaction_filter*/,
+      true /*bottommost_level*/);
+}
+
+TEST_F(CompactionIteratorWithSnapshotCheckerTest,
+       NotRemoveDeletionIfValuePresentToEarlierSnapshot) {
+  AddSnapshot(2,1);
+  RunTest(
+      {test::KeyStr("a", 4, kTypeDeletion), test::KeyStr("a", 1, kTypeValue),
+          test::KeyStr("b", 3, kTypeValue)},
+      {"", "", ""},
+      {test::KeyStr("a", 4, kTypeDeletion), test::KeyStr("a", 0, kTypeValue),
+            test::KeyStr("b", 3, kTypeValue)},
+      {"", "", ""}, kMaxSequenceNumber /*last_commited_seq*/,
       nullptr /*merge_operator*/, nullptr /*compaction_filter*/,
       true /*bottommost_level*/);
 }

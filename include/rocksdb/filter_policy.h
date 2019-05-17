@@ -17,8 +17,7 @@
 // Most people will want to use the builtin bloom filter support (see
 // NewBloomFilterPolicy() below).
 
-#ifndef STORAGE_ROCKSDB_INCLUDE_FILTER_POLICY_H_
-#define STORAGE_ROCKSDB_INCLUDE_FILTER_POLICY_H_
+#pragma once
 
 #include <memory>
 #include <stdexcept>
@@ -146,8 +145,6 @@ class FilterPolicy {
 // ignores trailing spaces, it would be incorrect to use a
 // FilterPolicy (like NewBloomFilterPolicy) that does not ignore
 // trailing spaces in keys.
-extern const FilterPolicy* NewBloomFilterPolicy(int bits_per_key,
-    bool use_block_based_builder = true);
+extern const FilterPolicy* NewBloomFilterPolicy(
+    int bits_per_key, bool use_block_based_builder = false);
 }
-
-#endif  // STORAGE_ROCKSDB_INCLUDE_FILTER_POLICY_H_

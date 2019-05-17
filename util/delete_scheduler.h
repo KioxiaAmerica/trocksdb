@@ -46,8 +46,11 @@ class DeleteScheduler {
     rate_bytes_per_sec_.store(bytes_per_sec);
   }
 
-  // Mark file as trash directory and schedule it's deletion
-  Status DeleteFile(const std::string& fname, const std::string& dir_to_sync);
+  // Mark file as trash directory and schedule it's deletion. If force_bg is
+  // set, it forces the file to always be deleted in the background thread,
+  // except when rate limiting is disabled
+  Status DeleteFile(const std::string& fname, const std::string& dir_to_sync,
+      const bool force_bg = false);
 
   // Wait for all files being deleteing in the background to finish or for
   // destructor to be called.
@@ -108,6 +111,8 @@ class DeleteScheduler {
   uint64_t bytes_max_delete_chunk_;
   // Errors that happened in BackgroundEmptyTrash (file_path => error)
   std::map<std::string, Status> bg_errors_;
+
+  bool num_link_error_printed_ = false;
   // Set to true in ~DeleteScheduler() to force BackgroundEmptyTrash to stop
   bool closing_;
   // Condition variable signaled in these conditions

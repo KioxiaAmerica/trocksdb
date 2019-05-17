@@ -34,7 +34,7 @@ class OptionsUtilTest : public testing::Test {
  public:
   OptionsUtilTest() : rnd_(0xFB) {
     env_.reset(new test::StringEnv(Env::Default()));
-    dbname_ = test::TmpDir() + "/options_util_test";
+    dbname_ = test::PerThreadDBPath("options_util_test");
   }
 
  protected:
@@ -104,8 +104,8 @@ class DummyTableFactory : public TableFactory {
 
   virtual Status NewTableReader(
       const TableReaderOptions& /*table_reader_options*/,
-      unique_ptr<RandomAccessFileReader>&& /*file*/, uint64_t /*file_size*/,
-      unique_ptr<TableReader>* /*table_reader*/,
+      std::unique_ptr<RandomAccessFileReader>&& /*file*/,
+      uint64_t /*file_size*/, std::unique_ptr<TableReader>* /*table_reader*/,
       bool /*prefetch_index_and_filter_in_cache*/) const override {
     return Status::NotSupported();
   }

@@ -43,7 +43,7 @@ class TtlTest : public testing::Test {
  public:
   TtlTest() {
     env_.reset(new SpecialTimeEnv(Env::Default()));
-    dbname_ = test::TmpDir() + "/db_ttl";
+    dbname_ = test::PerThreadDBPath("db_ttl");
     options_.create_if_missing = true;
     options_.env = env_.get();
     // ensure that compaction is kicked in to always strip timestamp from kvs
@@ -370,14 +370,14 @@ class TtlTest : public testing::Test {
   static const int64_t kSampleSize_ = 100;
   std::string dbname_;
   DBWithTTL* db_ttl_;
-  unique_ptr<SpecialTimeEnv> env_;
+  std::unique_ptr<SpecialTimeEnv> env_;
 
  private:
   Options options_;
   KVMap kvmap_;
   KVMap::iterator kv_it_;
   const std::string kNewValue_ = "new_value";
-  unique_ptr<CompactionFilter> test_comp_filter_;
+  std::unique_ptr<CompactionFilter> test_comp_filter_;
 }; // class TtlTest
 
 // If TTL is non positive or not provided, the behaviour is TTL = infinity

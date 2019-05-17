@@ -73,9 +73,12 @@ struct SstFileMetaData {
         smallestkey(""),
         largestkey(""),
         num_reads_sampled(0),
-        being_compacted(false) {}
+        being_compacted(false),
+        num_entries(0),
+        num_deletions(0) {}
+
   SstFileMetaData(const std::string& _file_name, const std::string& _path,
-                  uint64_t _size, SequenceNumber _smallest_seqno,
+                  size_t _size, SequenceNumber _smallest_seqno,
                   SequenceNumber _largest_seqno,
                   const std::string& _smallestkey,
                   const std::string& _largestkey, uint64_t _num_reads_sampled,
@@ -88,7 +91,9 @@ struct SstFileMetaData {
         smallestkey(_smallestkey),
         largestkey(_largestkey),
         num_reads_sampled(_num_reads_sampled),
-        being_compacted(_being_compacted)
+        being_compacted(_being_compacted),
+        num_entries(0),
+        num_deletions(0)
 #ifdef INDIRECT_VALUE_SUPPORT   // add earliest_ref to SstFileMetaData
         ,indirect_ref_0(std::vector<uint64_t>()) // default to 'omitted' 
 #endif
@@ -109,12 +114,14 @@ struct SstFileMetaData {
         largestkey(_largestkey),
         num_reads_sampled(_num_reads_sampled),
         being_compacted(_being_compacted),
+        num_entries(0),
+        num_deletions(0),
         indirect_ref_0(indirect_ref_0_) // install input
         {}
 #endif
 
   // File size in bytes.
-  uint64_t size;
+  size_t size;
   // The name of the file.
   std::string name;
   // The full path where the file locates.
@@ -126,6 +133,9 @@ struct SstFileMetaData {
   std::string largestkey;      // Largest user defined key in the file.
   uint64_t num_reads_sampled;  // How many times the file is read.
   bool being_compacted;  // true if the file is currently being compacted.
+
+  uint64_t num_entries;
+  uint64_t num_deletions;
 #ifdef INDIRECT_VALUE_SUPPORT   // declare the fields added to SstFileMetaData
   std::vector<uint64_t> indirect_ref_0;  // for each ring, file# of the oldest value referred to in this SST.  Set to HIGH-VALUE (~0>>1) if there are no indirect references
      // set to 0 to mean 'indirect value omitted'
@@ -137,5 +147,6 @@ struct SstFileMetaData {
 struct LiveFileMetaData : SstFileMetaData {
   std::string column_family_name;  // Name of the column family
   int level;               // Level at which this file resides.
+  LiveFileMetaData() : column_family_name(), level(0) {}
 };
 }  // namespace rocksdb

@@ -154,8 +154,8 @@ function summarize_result {
   mb_sec=$( grep ^${bench_name} $test_out | awk '{ print $7 }' )
   lo_wgb=$( grep "^  L0" $test_out | tail -1 | awk '{ print $9 }' )
   sum_wgb=$( grep "^ Sum" $test_out | tail -1 | awk '{ print $9 }' )
-  sum_size=$( grep "^ Sum" $test_out | tail -1 | awk '{ printf "%.1f", $3 }' )
-  wamp=$( grep "^ Sum" $test_out | tail -1 | awk '{ print $12 }' )
+  sum_size=$( grep "^ Sum" $test_out | tail -1 | awk '{ printf "%.1f", $3 / 1024.0 }' )
+  wamp=$( echo "scale=1; $sum_wgb / $lo_wgb" | bc )
   wmb_ps=$( echo "scale=1; ( $sum_wgb * 1024.0 ) / $uptime" | bc )
   usecs_op=$( grep ^${bench_name} $test_out | awk '{ printf "%.1f", $3 }' )
   p50=$( grep "^Percentiles:" $test_out | tail -1 | awk '{ printf "%.1f", $3 }' )
@@ -178,6 +178,7 @@ function run_bulkload {
        $params_bulkload \
        --threads=1 \
        --memtablerep=vector \
+       --allow_concurrent_memtable_write=false \
        --disable_wal=1 \
        --seed=$( date +%s ) \
        2>&1 | tee -a $output_dir/benchmark_bulkload_fillrandom.log"
@@ -230,6 +231,7 @@ function run_manual_compaction_worker {
        --compaction_style=$2 \
        --subcompactions=$3 \
        --memtablerep=vector \
+       --allow_concurrent_memtable_write=false \
        --disable_wal=1 \
        --max_background_jobs=$4 \
        --seed=$( date +%s ) \
@@ -314,6 +316,7 @@ function run_fillseq {
        --min_level_to_compress=0 \
        --threads=1 \
        --memtablerep=vector \
+       --allow_concurrent_memtable_write=false \
        --disable_wal=$1 \
        --seed=$( date +%s ) \
        2>&1 | tee -a $log_file_name"

@@ -16,6 +16,7 @@
 #include <wmmintrin.h>
 #endif
 #include "util/coding.h"
+#include "util/util.h"
 
 #ifdef __powerpc64__
 #include "util/crc32c_ppc.h"

@@ -186,7 +186,7 @@ TEST(WriteBatchWithIndex, SubBatchCnt) {
   DB* db;
   Options options;
   options.create_if_missing = true;
-  const std::string dbname = test::TmpDir() + "/transaction_testdb";
+  const std::string dbname = test::PerThreadDBPath("transaction_testdb");
   DestroyDB(dbname, options);
   ASSERT_OK(DB::Open(options, dbname, &db));
   ColumnFamilyHandle* cf_handle = nullptr;
@@ -493,8 +493,10 @@ class WritePreparedTransactionTestBase : public TransactionTestBase {
   // Verify all versions of keys.
   void VerifyInternalKeys(const std::vector<KeyVersion>& expected_versions) {
     std::vector<KeyVersion> versions;
+    const size_t kMaxKeys = 100000;
     ASSERT_OK(GetAllKeyVersions(db, expected_versions.front().user_key,
-                                expected_versions.back().user_key, &versions));
+                                expected_versions.back().user_key, kMaxKeys,
+                                &versions));
     ASSERT_EQ(expected_versions.size(), versions.size());
     for (size_t i = 0; i < versions.size(); i++) {
       ASSERT_EQ(expected_versions[i].user_key, versions[i].user_key);
@@ -524,6 +526,7 @@ class WritePreparedTransactionTest
                                          std::get<1>(GetParam()),
                                          std::get<2>(GetParam())){};
 };
+
 #ifndef ROCKSDB_VALGRIND_RUN
 class SnapshotConcurrentAccessTest
     : public WritePreparedTransactionTestBase,
@@ -732,6 +735,71 @@ TEST_P(WritePreparedTransactionTest, MaybeUpdateOldCommitMap) {
   MaybeUpdateOldCommitMapTestWithNext(p, c, s, ns, false);
 }
 
+// Reproduce the bug with two snapshots with the same seuqence number and test
+// that the release of the first snapshot will not affect the reads by the other
+// snapshot
+TEST_P(WritePreparedTransactionTest, DoubleSnapshot) {
+  TransactionOptions txn_options;
+  Status s;
+
+  // Insert initial value
+  ASSERT_OK(db->Put(WriteOptions(), "key", "value1"));
+
+  WritePreparedTxnDB* wp_db = dynamic_cast<WritePreparedTxnDB*>(db);
+  Transaction* txn =
+      wp_db->BeginTransaction(WriteOptions(), txn_options, nullptr);
+  ASSERT_OK(txn->SetName("txn"));
+  ASSERT_OK(txn->Put("key", "value2"));
+  ASSERT_OK(txn->Prepare());
+  // Three snapshots with the same seq number
+  const Snapshot* snapshot0 = wp_db->GetSnapshot();
+  const Snapshot* snapshot1 = wp_db->GetSnapshot();
+  const Snapshot* snapshot2 = wp_db->GetSnapshot();
+  ASSERT_OK(txn->Commit());
+  SequenceNumber cache_size = wp_db->COMMIT_CACHE_SIZE;
+  SequenceNumber overlap_seq = txn->GetId() + cache_size;
+  delete txn;
+
+  // 4th snapshot with a larger seq
+  const Snapshot* snapshot3 = wp_db->GetSnapshot();
+  // Cause an eviction to advance max evicted seq number
+  // This also fetches the 4 snapshots from db since their seq is lower than the
+  // new max
+  wp_db->AddCommitted(overlap_seq, overlap_seq);
+
+  ReadOptions ropt;
+  // It should see the value before commit
+  ropt.snapshot = snapshot2;
+  PinnableSlice pinnable_val;
+  s = wp_db->Get(ropt, wp_db->DefaultColumnFamily(), "key", &pinnable_val);
+  ASSERT_OK(s);
+  ASSERT_TRUE(pinnable_val == "value1");
+  pinnable_val.Reset();
+
+  wp_db->ReleaseSnapshot(snapshot1);
+
+  // It should still see the value before commit
+  s = wp_db->Get(ropt, wp_db->DefaultColumnFamily(), "key", &pinnable_val);
+  ASSERT_OK(s);
+  ASSERT_TRUE(pinnable_val == "value1");
+  pinnable_val.Reset();
+
+  // Cause an eviction to advance max evicted seq number and trigger updating
+  // the snapshot list
+  overlap_seq += cache_size;
+  wp_db->AddCommitted(overlap_seq, overlap_seq);
+
+  // It should still see the value before commit
+  s = wp_db->Get(ropt, wp_db->DefaultColumnFamily(), "key", &pinnable_val);
+  ASSERT_OK(s);
+  ASSERT_TRUE(pinnable_val == "value1");
+  pinnable_val.Reset();
+
+  wp_db->ReleaseSnapshot(snapshot0);
+  wp_db->ReleaseSnapshot(snapshot2);
+  wp_db->ReleaseSnapshot(snapshot3);
+}
+
 // Test that the entries in old_commit_map_ get garbage collected properly
 TEST_P(WritePreparedTransactionTest, OldCommitMapGC) {
   const size_t snapshot_cache_bits = 0;
@@ -817,6 +885,7 @@ TEST_P(WritePreparedTransactionTest, CheckAgainstSnapshotsTest) {
   std::vector<SequenceNumber> snapshots = {100l, 200l, 300l, 400l, 500l,
                                            600l, 700l, 800l, 900l};
   const size_t snapshot_cache_bits = 2;
+  const uint64_t cache_size = 1ul << snapshot_cache_bits;
   // Safety check to express the intended size in the test. Can be adjusted if
   // the snapshots lists changed.
   assert((1ul << snapshot_cache_bits) * 2 + 1 == snapshots.size());
@@ -843,6 +912,57 @@ TEST_P(WritePreparedTransactionTest, CheckAgainstSnapshotsTest) {
                          commit_entry.commit_seq >= snapshots.front() &&
                          commit_entry.prep_seq <= snapshots.back();
     ASSERT_EQ(expect_update, !wp_db->old_commit_map_empty_);
+  }
+
+  // Test that search will include multiple snapshot from snapshot cache
+  {
+    // exclude first and last item in the cache
+    CommitEntry commit_entry = {snapshots.front() + 1,
+                                snapshots[cache_size - 1] - 1};
+    wp_db->old_commit_map_empty_ = true;  // reset
+    wp_db->old_commit_map_.clear();
+    wp_db->CheckAgainstSnapshots(commit_entry);
+    ASSERT_EQ(wp_db->old_commit_map_.size(), cache_size - 2);
+}
+
+  // Test that search will include multiple snapshot from old snapshots
+  {
+    // include two in the middle
+    CommitEntry commit_entry = {snapshots[cache_size] + 1,
+                                snapshots[cache_size + 2] + 1};
+    wp_db->old_commit_map_empty_ = true;  // reset
+    wp_db->old_commit_map_.clear();
+    wp_db->CheckAgainstSnapshots(commit_entry);
+    ASSERT_EQ(wp_db->old_commit_map_.size(), 2);
+  }
+
+  // Test that search will include both snapshot cache and old snapshots
+  // Case 1: includes all in snapshot cache
+  {
+    CommitEntry commit_entry = {snapshots.front() - 1, snapshots.back() + 1};
+    wp_db->old_commit_map_empty_ = true;  // reset
+    wp_db->old_commit_map_.clear();
+    wp_db->CheckAgainstSnapshots(commit_entry);
+    ASSERT_EQ(wp_db->old_commit_map_.size(), snapshots.size());
+  }
+
+  // Case 2: includes all snapshot caches except the smallest
+  {
+    CommitEntry commit_entry = {snapshots.front() + 1, snapshots.back() + 1};
+    wp_db->old_commit_map_empty_ = true;  // reset
+    wp_db->old_commit_map_.clear();
+    wp_db->CheckAgainstSnapshots(commit_entry);
+    ASSERT_EQ(wp_db->old_commit_map_.size(), snapshots.size() - 1);
+  }
+
+  // Case 3: includes only the largest of snapshot cache
+  {
+    CommitEntry commit_entry = {snapshots[cache_size - 1] - 1,
+                                snapshots.back() + 1};
+    wp_db->old_commit_map_empty_ = true;  // reset
+    wp_db->old_commit_map_.clear();
+    wp_db->CheckAgainstSnapshots(commit_entry);
+    ASSERT_EQ(wp_db->old_commit_map_.size(), snapshots.size() - cache_size + 1);
   }
 }
 
@@ -1015,7 +1135,8 @@ TEST_P(WritePreparedTransactionTest, AdvanceMaxEvictedSeqWithDuplicatesTest) {
 
   wp_db->db_impl_->FlushWAL(true);
   wp_db->TEST_Crash();
-      ReOpenNoDelete();
+  ReOpenNoDelete();
+  assert(db != nullptr);
   wp_db = dynamic_cast<WritePreparedTxnDB*>(db);
   wp_db->AdvanceMaxEvictedSeq(0, new_max);
   s = db->Get(ropt, db->DefaultColumnFamily(), "key", &pinnable_val);
@@ -1147,6 +1268,7 @@ TEST_P(SeqAdvanceConcurrentTest, SeqAdvanceConcurrentTest) {
     // Check if recovery preserves the last sequence number
     db_impl->FlushWAL(true);
     ReOpenNoDelete();
+    assert(db != nullptr);
     db_impl = reinterpret_cast<DBImpl*>(db->GetRootDB());
     seq = db_impl->TEST_GetLastVisibleSequence();
     ASSERT_EQ(exp_seq, seq);
@@ -1159,6 +1281,7 @@ TEST_P(SeqAdvanceConcurrentTest, SeqAdvanceConcurrentTest) {
     // Check if recovery after flush preserves the last sequence number
     db_impl->FlushWAL(true);
     ReOpenNoDelete();
+    assert(db != nullptr);
     db_impl = reinterpret_cast<DBImpl*>(db->GetRootDB());
     seq = db_impl->GetLatestSequenceNumber();
     ASSERT_EQ(exp_seq, seq);
@@ -1213,6 +1336,7 @@ TEST_P(WritePreparedTransactionTest, BasicRecoveryTest) {
   wp_db->db_impl_->FlushWAL(true);
   wp_db->TEST_Crash();
   ReOpenNoDelete();
+  assert(db != nullptr);
   wp_db = dynamic_cast<WritePreparedTxnDB*>(db);
   // After recovery, all the uncommitted txns (0 and 1) should be inserted into
   // delayed_prepared_
@@ -1257,6 +1381,7 @@ TEST_P(WritePreparedTransactionTest, BasicRecoveryTest) {
   wp_db->db_impl_->FlushWAL(true);
   wp_db->TEST_Crash();
   ReOpenNoDelete();
+  assert(db != nullptr);
   wp_db = dynamic_cast<WritePreparedTxnDB*>(db);
   ASSERT_TRUE(wp_db->prepared_txns_.empty());
   ASSERT_FALSE(wp_db->delayed_prepared_empty_);
@@ -1291,6 +1416,7 @@ TEST_P(WritePreparedTransactionTest, BasicRecoveryTest) {
   delete txn2;
   wp_db->db_impl_->FlushWAL(true);
   ReOpenNoDelete();
+  assert(db != nullptr);
   wp_db = dynamic_cast<WritePreparedTxnDB*>(db);
   ASSERT_TRUE(wp_db->prepared_txns_.empty());
   ASSERT_TRUE(wp_db->delayed_prepared_empty_);
@@ -1300,55 +1426,6 @@ TEST_P(WritePreparedTransactionTest, BasicRecoveryTest) {
   ASSERT_TRUE(s.ok());
   ASSERT_TRUE(pinnable_val == ("bar0" + istr0));
   pinnable_val.Reset();
-}
-
-// After recovery the new transactions should still conflict with recovered
-// transactions.
-TEST_P(WritePreparedTransactionTest, ConflictDetectionAfterRecoveryTest) {
-  options.disable_auto_compactions = true;
-  ReOpen();
-
-  TransactionOptions txn_options;
-  WriteOptions write_options;
-  size_t index = 0;
-  Transaction* txn0 = db->BeginTransaction(write_options, txn_options);
-  auto istr0 = std::to_string(index);
-  auto s = txn0->SetName("xid" + istr0);
-  ASSERT_OK(s);
-  s = txn0->Put(Slice("key" + istr0), Slice("bar0" + istr0));
-  ASSERT_OK(s);
-  s = txn0->Prepare();
-
-  // With the same index 0 and key prefix, txn_t0 should conflict with txn0
-  txn_t0_with_status(0, Status::TimedOut());
-  delete txn0;
-
-  auto db_impl = reinterpret_cast<DBImpl*>(db->GetRootDB());
-  db_impl->FlushWAL(true);
-  dynamic_cast<WritePreparedTxnDB*>(db)->TEST_Crash();
-  ReOpenNoDelete();
-
-  // It should still conflict after the recovery
-  txn_t0_with_status(0, Status::TimedOut());
-
-  db_impl = reinterpret_cast<DBImpl*>(db->GetRootDB());
-  db_impl->FlushWAL(true);
-  ReOpenNoDelete();
-
-  // Check that a recovered txn will still cause conflicts after 2nd recovery
-  txn_t0_with_status(0, Status::TimedOut());
-
-  txn0 = db->GetTransactionByName("xid" + istr0);
-  ASSERT_NE(txn0, nullptr);
-  txn0->Commit();
-  delete txn0;
-
-  db_impl = reinterpret_cast<DBImpl*>(db->GetRootDB());
-  db_impl->FlushWAL(true);
-  ReOpenNoDelete();
-
-  // tnx0 is now committed and should no longer cause a conflict
-  txn_t0_with_status(0, Status::OK());
 }
 
 // After recovery the commit map is empty while the max is set. The code would
@@ -1591,6 +1668,7 @@ TEST_P(WritePreparedTransactionTest, RollbackTest) {
           db_impl->FlushWAL(true);
           dynamic_cast<WritePreparedTxnDB*>(db)->TEST_Crash();
           ReOpenNoDelete();
+          assert(db != nullptr);
           wp_db = dynamic_cast<WritePreparedTxnDB*>(db);
           txn = db->GetTransactionByName("xid0");
           ASSERT_FALSE(wp_db->delayed_prepared_empty_);

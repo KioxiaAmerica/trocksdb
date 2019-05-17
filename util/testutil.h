@@ -64,7 +64,7 @@ class ErrorEnv : public EnvWrapper {
                num_writable_file_errors_(0) { }
 
   virtual Status NewWritableFile(const std::string& fname,
-                                 unique_ptr<WritableFile>* result,
+                                 std::unique_ptr<WritableFile>* result,
                                  const EnvOptions& soptions) override {
     result->reset();
     if (writable_file_error_) {
@@ -183,11 +183,13 @@ class VectorIterator : public InternalIterator {
   std::vector<std::string> values_;
   size_t current_;
 };
-extern WritableFileWriter* GetWritableFileWriter(WritableFile* wf);
+extern WritableFileWriter* GetWritableFileWriter(WritableFile* wf,
+                                                 const std::string& fname);
 
 extern RandomAccessFileReader* GetRandomAccessFileReader(RandomAccessFile* raf);
 
-extern SequentialFileReader* GetSequentialFileReader(SequentialFile* se);
+extern SequentialFileReader* GetSequentialFileReader(SequentialFile* se,
+                                                     const std::string& fname);
 
 class StringSink: public WritableFile {
  public:
@@ -246,9 +248,9 @@ class RandomRWStringSink : public RandomRWFile {
  public:
   explicit RandomRWStringSink(StringSink* ss) : ss_(ss) {}
 
-  Status Write(uint64_t offset, const Slice& data) {
+  Status Write(uint64_t offset, const Slice& data) override {
     if (offset + data.size() > ss_->contents_.size()) {
-      ss_->contents_.resize(offset + data.size(), '\0');
+      ss_->contents_.resize(static_cast<size_t>(offset) + data.size(), '\0');
     }
 
     char* pos = const_cast<char*>(ss_->contents_.data() + offset);
@@ -257,7 +259,7 @@ class RandomRWStringSink : public RandomRWFile {
   }
 
   Status Read(uint64_t offset, size_t n, Slice* result,
-              char* /*scratch*/) const {
+              char* /*scratch*/) const override {
     *result = Slice(nullptr, 0);
     if (offset < ss_->contents_.size()) {
       size_t str_res_sz =
@@ -267,11 +269,11 @@ class RandomRWStringSink : public RandomRWFile {
     return Status::OK();
   }
 
-  Status Flush() { return Status::OK(); }
+  Status Flush() override { return Status::OK(); }
 
-  Status Sync() { return Status::OK(); }
+  Status Sync() override { return Status::OK(); }
 
-  Status Close() { return Status::OK(); }
+  Status Close() override { return Status::OK(); }
 
   const std::string& contents() const { return ss_->contents(); }
 
@@ -516,7 +518,7 @@ class StringEnv : public EnvWrapper {
             "Attemp to read when it already reached eof.");
       }
       // TODO(yhchiang): Currently doesn't handle the overflow case.
-      offset_ += n;
+      offset_ += static_cast<size_t>(n);
       return Status::OK();
     }
 
@@ -530,7 +532,7 @@ class StringEnv : public EnvWrapper {
     explicit StringSink(std::string* contents)
         : WritableFile(), contents_(contents) {}
     virtual Status Truncate(uint64_t size) override {
-      contents_->resize(size);
+      contents_->resize(static_cast<size_t>(size));
       return Status::OK();
     }
     virtual Status Close() override { return Status::OK(); }
@@ -552,7 +554,7 @@ class StringEnv : public EnvWrapper {
 
   const Status WriteToNewFile(const std::string& file_name,
                               const std::string& content) {
-    unique_ptr<WritableFile> r;
+    std::unique_ptr<WritableFile> r;
     auto s = NewWritableFile(file_name, &r, EnvOptions());
     if (!s.ok()) {
       return s;
@@ -565,7 +567,8 @@ class StringEnv : public EnvWrapper {
   }
 
   // The following text is boilerplate that forwards all methods to target()
-  Status NewSequentialFile(const std::string& f, unique_ptr<SequentialFile>* r,
+  Status NewSequentialFile(const std::string& f,
+                           std::unique_ptr<SequentialFile>* r,
                            const EnvOptions& /*options*/) override {
     auto iter = files_.find(f);
     if (iter == files_.end()) {
@@ -575,11 +578,11 @@ class StringEnv : public EnvWrapper {
     return Status::OK();
   }
   Status NewRandomAccessFile(const std::string& /*f*/,
-                             unique_ptr<RandomAccessFile>* /*r*/,
+                             std::unique_ptr<RandomAccessFile>* /*r*/,
                              const EnvOptions& /*options*/) override {
     return Status::NotSupported();
   }
-  Status NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
+  Status NewWritableFile(const std::string& f, std::unique_ptr<WritableFile>* r,
                          const EnvOptions& /*options*/) override {
     auto iter = files_.find(f);
     if (iter != files_.end()) {
@@ -589,7 +592,7 @@ class StringEnv : public EnvWrapper {
     return Status::OK();
   }
   virtual Status NewDirectory(const std::string& /*name*/,
-                              unique_ptr<Directory>* /*result*/) override {
+                              std::unique_ptr<Directory>* /*result*/) override {
     return Status::NotSupported();
   }
   Status FileExists(const std::string& f) override {
@@ -744,6 +747,8 @@ TableFactory* RandomTableFactory(Random* rnd, int pre_defined = -1);
 std::string RandomName(Random* rnd, const size_t len);
 
 Status DestroyDir(Env* env, const std::string& dir);
+
+bool IsDirectIOSupported(Env* env, const std::string& dir);
 
 }  // namespace test
 }  // namespace rocksdb

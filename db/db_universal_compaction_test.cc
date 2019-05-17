@@ -1398,8 +1398,6 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
   options.level0_file_num_compaction_trigger = 2;
   options.num_levels = 1;
 
-  const int allowedvlen1 = 1;   const int allowedvlen2 = 990;  // possible lengths for values
-
   std::vector<Options> option_vector;
   option_vector.emplace_back(options);
   ColumnFamilyOptions cf_opt1(options), cf_opt2(options);
@@ -1420,12 +1418,6 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
   CreateColumnFamilies({"two"},option_vector[2]);
 
   ReopenWithColumnFamilies({"default", "one", "two"}, option_vector);
-  bool values_are_indirect = false;  // Set if we are using VLogging
-  int allowedvlen3 = 1;
-#ifdef INDIRECT_VALUE_SUPPORT
-  values_are_indirect = options.vlogring_activation_level.size()!=0;
-  if(values_are_indirect)allowedvlen3 = 16;
-#endif
 
   Random rnd(301);
   int key_idx = 0;
@@ -1433,9 +1425,9 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
   int key_idx2 = 0;
 
   auto generate_file = [&]() {
-    GenerateNewFileInvInd(0, &rnd, &key_idx,values_are_indirect);
-    GenerateNewFileInvInd(1, &rnd, &key_idx1,values_are_indirect);
-    GenerateNewFileInvInd(2, &rnd, &key_idx2,values_are_indirect);
+    GenerateNewFile(0, &rnd, &key_idx);
+    GenerateNewFile(1, &rnd, &key_idx1);
+    GenerateNewFile(2, &rnd, &key_idx2);
   };
 
   auto check_sstfilecount = [&](int path_id, int expected) {
@@ -1446,21 +1438,21 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
 
   auto check_getvalues = [&]() {
     for (int i = 0; i < key_idx; i++) {
-      auto v = Get(0, KeyInvIndNewFile(i,i%100,values_are_indirect));
+      auto v = Get(0, Key(i));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == allowedvlen1 || v.size() == (size_t)allowedvlen2 || v.size() == (size_t)allowedvlen3);
+      ASSERT_TRUE(v.size() == 1 || v.size() == 990);
     }
 
     for (int i = 0; i < key_idx1; i++) {
-      auto v = Get(1, KeyInvIndNewFile(i,i%100,values_are_indirect));
+      auto v = Get(1, Key(i));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == allowedvlen1 || v.size() == (size_t)allowedvlen2 || v.size() == (size_t)allowedvlen3);
+      ASSERT_TRUE(v.size() == 1 || v.size() == 990);
     }
 
     for (int i = 0; i < key_idx2; i++) {
-      auto v = Get(2, KeyInvIndNewFile(i,i%100,values_are_indirect));
+      auto v = Get(2, Key(i));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == allowedvlen1 || v.size() == (size_t)allowedvlen2 || v.size() == (size_t)allowedvlen3);
+      ASSERT_TRUE(v.size() == 1 || v.size() == 990);
     }
   };
 
@@ -1738,6 +1730,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionSecondPathRatio) {
 
   Destroy(options);
 }
+
 TEST_P(DBTestUniversalCompaction, ConcurrentBottomPriLowPriCompactions) {
   if (num_levels_ == 1) {
     // for single-level universal, everything's bottom level so nothing should
@@ -1834,6 +1827,63 @@ TEST_P(DBTestUniversalCompaction, RecalculateScoreAfterPicking) {
   // there's no need to schedule any more compactions.
   ASSERT_EQ(1, num_compactions_attempted);
   ASSERT_EQ(NumSortedRuns(), 5);
+}
+
+TEST_P(DBTestUniversalCompaction, FinalSortedRunCompactFilesConflict) {
+  // Regression test for conflict between:
+  // (1) Running CompactFiles including file in the final sorted run; and
+  // (2) Picking universal size-amp-triggered compaction, which always includes
+  //     the final sorted run.
+  if (exclusive_manual_compaction_) {
+    return;
+  }
+
+  Options opts = CurrentOptions();
+  opts.compaction_style = kCompactionStyleUniversal;
+  opts.compaction_options_universal.max_size_amplification_percent = 50;
+  opts.compaction_options_universal.min_merge_width = 2;
+  opts.compression = kNoCompression;
+  opts.level0_file_num_compaction_trigger = 2;
+  opts.max_background_compactions = 2;
+  opts.num_levels = num_levels_;
+  Reopen(opts);
+
+  // make sure compaction jobs can be parallelized
+  auto stop_token =
+      dbfull()->TEST_write_controler().GetCompactionPressureToken();
+
+  Put("key", "val");
+  Flush();
+  dbfull()->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+  ASSERT_EQ(NumTableFilesAtLevel(num_levels_ - 1), 1);
+  ColumnFamilyMetaData cf_meta;
+  ColumnFamilyHandle* default_cfh = db_->DefaultColumnFamily();
+  dbfull()->GetColumnFamilyMetaData(default_cfh, &cf_meta);
+  ASSERT_EQ(1, cf_meta.levels[num_levels_ - 1].files.size());
+  std::string first_sst_filename =
+      cf_meta.levels[num_levels_ - 1].files[0].name;
+
+  rocksdb::SyncPoint::GetInstance()->LoadDependency(
+      {{"CompactFilesImpl:0",
+        "DBTestUniversalCompaction:FinalSortedRunCompactFilesConflict:0"},
+       {"DBImpl::BackgroundCompaction():AfterPickCompaction",
+        "CompactFilesImpl:1"}});
+  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+
+  port::Thread compact_files_thread([&]() {
+    ASSERT_OK(dbfull()->CompactFiles(CompactionOptions(), default_cfh,
+                                     {first_sst_filename}, num_levels_ - 1));
+  });
+
+  TEST_SYNC_POINT(
+      "DBTestUniversalCompaction:FinalSortedRunCompactFilesConflict:0");
+  for (int i = 0; i < 2; ++i) {
+    Put("key", "val");
+    Flush();
+  }
+  dbfull()->TEST_WaitForCompact();
+
+  compact_files_thread.join();
 }
 
 INSTANTIATE_TEST_CASE_P(UniversalCompactionNumLevels, DBTestUniversalCompaction,

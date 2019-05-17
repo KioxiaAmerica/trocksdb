@@ -21,7 +21,7 @@ namespace rocksdb {
 namespace cassandra {
 
 // Path to the database on file system
-const std::string kDbName = test::TmpDir() + "/cassandra_functional_test";
+const std::string kDbName = test::PerThreadDBPath("cassandra_functional_test");
 
 class CassandraStore {
  public:
@@ -101,7 +101,7 @@ public:
 
  virtual std::unique_ptr<CompactionFilter> CreateCompactionFilter(
      const CompactionFilter::Context& /*context*/) override {
-   return unique_ptr<CompactionFilter>(new CassandraCompactionFilter(
+   return std::unique_ptr<CompactionFilter>(new CassandraCompactionFilter(
        purge_ttl_on_expiration_, gc_grace_period_in_seconds_));
   }
 

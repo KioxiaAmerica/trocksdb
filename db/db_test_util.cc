@@ -63,7 +63,7 @@ DBTestBase::DBTestBase(const std::string path)
       option_config_(kDefault) {
   env_->SetBackgroundThreads(1, Env::LOW);
   env_->SetBackgroundThreads(1, Env::HIGH);
-  dbname_ = test::TmpDir(env_) + path;
+  dbname_ = test::PerThreadDBPath(env_, path);
   alternative_wal_dir_ = dbname_ + "/wal";
   alternative_db_log_dir_ = dbname_ + "/db_log_dir";
   auto options = CurrentOptions();
@@ -126,7 +126,8 @@ bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
         option_config == kUniversalCompactionMultiLevelInd ||
         option_config == kUniversalCompactionInd ||
 #endif
-         option_config == kUniversalCompactionMultiLevel)) {
+        option_config == kUniversalCompactionMultiLevel ||
+        option_config == kUniversalSubcompactions)) {
       return true;
     }
     if ((skip_mask & kSkipMergePut) && (option_config == kMergePut
@@ -253,6 +254,47 @@ bool DBTestBase::ChangeFilterOptions(int skip_mask) {return CycleThroughOptions(
 bool DBTestBase::ChangeIndirectOptions(int skip_mask) {return CycleThroughOptions(ind_cycle,ind_actions,false,skip_mask);}
 
 
+// Switch between different DB options for file ingestion tests.
+bool DBTestBase::ChangeOptionsForFileIngestionTest() {
+  if (option_config_ == kDefault) {
+    option_config_ = kUniversalCompaction;
+    Destroy(last_options_);
+    auto options = CurrentOptions();
+    options.create_if_missing = true;
+    TryReopen(options);
+    return true;
+  } else if (option_config_ == kUniversalCompaction) {
+    option_config_ = kUniversalCompactionMultiLevel;
+    Destroy(last_options_);
+    auto options = CurrentOptions();
+    options.create_if_missing = true;
+    TryReopen(options);
+    return true;
+  } else if (option_config_ == kUniversalCompactionMultiLevel) {
+    option_config_ = kLevelSubcompactions;
+    Destroy(last_options_);
+    auto options = CurrentOptions();
+    assert(options.max_subcompactions > 1);
+    TryReopen(options);
+    return true;
+  } else if (option_config_ == kLevelSubcompactions) {
+    option_config_ = kUniversalSubcompactions;
+    Destroy(last_options_);
+    auto options = CurrentOptions();
+    assert(options.max_subcompactions > 1);
+    TryReopen(options);
+    return true;
+  } else if (option_config_ == kUniversalSubcompactions) {
+    option_config_ = kDirectIO;
+    Destroy(last_options_);
+    auto options = CurrentOptions();
+    TryReopen(options);
+    return true;
+  } else {
+    return false;
+  }
+}
+
 // Return the current option configuration.
 Options DBTestBase::CurrentOptions(
     const anon::OptionsOverride& options_override) const {
@@ -342,10 +384,10 @@ Options DBTestBase::GetOptions(
       options.allow_concurrent_memtable_write = false;
       break;
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kDirectIOInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
+      case kDirectIOInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
         options.vlog_direct_IO = true;
 #endif
-    case kDirectIO: {
+      case kDirectIO: {
         options.use_direct_reads = true;
         options.use_direct_io_for_flush_and_compaction = true;
         options.compaction_readahead_size = 2 * 1024 * 1024;
@@ -464,6 +506,10 @@ Options DBTestBase::GetOptions(
       table_options.checksum = kxxHash;
       break;
     }
+    case kxxHash64Checksum: {
+      table_options.checksum = kxxHash64;
+      break;
+    }
     case kFIFOCompaction: {
       options.compaction_style = kCompactionStyleFIFO;
       break;
@@ -491,22 +537,24 @@ Options DBTestBase::GetOptions(
       break;
     }
 #ifdef INDIRECT_VALUE_SUPPORT
-    case kBlockBasedTableWithPartitionedIndexFormat3Ind: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
+    case kBlockBasedTableWithPartitionedIndexFormat4Ind: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
-    case kBlockBasedTableWithPartitionedIndexFormat3: {
-      table_options.format_version = 3;
-      // Format 3 changes the binary index format. Since partitioned index is a
+    case kBlockBasedTableWithPartitionedIndexFormat4: {
+      table_options.format_version = 4;
+      // Format 4 changes the binary index format. Since partitioned index is a
       // super-set of simple indexes, we are also using kTwoLevelIndexSearch to
       // test this format.
       table_options.index_type = BlockBasedTableOptions::kTwoLevelIndexSearch;
-      // The top-level index in partition filters are also affected by format 3.
+      // The top-level index in partition filters are also affected by format 4.
       table_options.filter_policy.reset(NewBloomFilterPolicy(10, false));
       table_options.partition_filters = true;
+      table_options.index_block_restart_interval = 8;
       break;
     }
 #ifdef INDIRECT_VALUE_SUPPORT
     case kBlockBasedTableWithIndexRestartIntervalInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
+
     case kBlockBasedTableWithIndexRestartInterval: {
       table_options.index_block_restart_interval = 8;
       break;
@@ -663,31 +711,20 @@ Status DBTestBase::ReadOnlyReopen(const Options& options) {
 Status DBTestBase::TryReopen(const Options& options) {
   Close();
   last_options_.table_factory.reset();
-  // Note: operator= is an unsafe approach here since it destructs shared_ptr in
-  // the same order of their creation, in contrast to destructors which
-  // destructs them in the opposite order of creation. One particular problme is
-  // that the cache destructor might invoke callback functions that use Option
-  // members such as statistics. To work around this problem, we manually call
-  // destructor of table_facotry which eventually clears the block cache.
+  // Note: operator= is an unsafe approach here since it destructs
+  // std::shared_ptr in the same order of their creation, in contrast to
+  // destructors which destructs them in the opposite order of creation. One
+  // particular problme is that the cache destructor might invoke callback
+  // functions that use Option members such as statistics. To work around this
+  // problem, we manually call destructor of table_facotry which eventually
+  // clears the block cache.
   last_options_ = options;
   return DB::Open(options, dbname_, &db_);
 }
 
 bool DBTestBase::IsDirectIOSupported() {
-  EnvOptions env_options;
-  env_options.use_mmap_writes = false;
-  env_options.use_direct_writes = true;
-  std::string tmp = TempFileName(dbname_, 999);
-  Status s;
-  {
-    unique_ptr<WritableFile> file;
-    s = env_->NewWritableFile(tmp, &file, env_options);
+  return test::IsDirectIOSupported(env_, dbname_);
   }
-  if (s.ok()) {
-    s = env_->DeleteFile(tmp);
-  }
-  return s.ok();
-}
 
 bool DBTestBase::IsMemoryMappedAccessSupported() const {
   return (!encrypted_env_);
@@ -699,6 +736,13 @@ Status DBTestBase::Flush(int cf) {
   } else {
     return db_->Flush(FlushOptions(), handles_[cf]);
   }
+}
+
+Status DBTestBase::Flush(const std::vector<int>& cf_ids) {
+  std::vector<ColumnFamilyHandle*> cfhs;
+  std::for_each(cf_ids.begin(), cf_ids.end(),
+                [&cfhs, this](int id) { cfhs.emplace_back(handles_[id]); });
+  return db_->Flush(FlushOptions(), cfhs);
 }
 
 
@@ -876,13 +920,15 @@ std::string DBTestBase::AllEntriesFor(const Slice& user_key, int cf) {
   Arena arena;
   auto options = CurrentOptions();
   InternalKeyComparator icmp(options.comparator);
-  RangeDelAggregator range_del_agg(icmp, {} /* snapshots */);
+  ReadRangeDelAggregator range_del_agg(&icmp,
+                                       kMaxSequenceNumber /* upper_bound */);
   ScopedArenaIterator iter;
   if (cf == 0) {
-    iter.set(dbfull()->NewInternalIterator(&arena, &range_del_agg));
+    iter.set(dbfull()->NewInternalIterator(&arena, &range_del_agg,
+                                           kMaxSequenceNumber));
   } else {
-    iter.set(
-        dbfull()->NewInternalIterator(&arena, &range_del_agg, handles_[cf]));
+    iter.set(dbfull()->NewInternalIterator(&arena, &range_del_agg,
+                                           kMaxSequenceNumber, handles_[cf]));
   }
   InternalKey target(user_key, kMaxSequenceNumber, kTypeValue);
   iter->Seek(target.Encode());
@@ -1351,15 +1397,20 @@ void DBTestBase::validateNumberOfEntries(int numValues, int cf) {
   Arena arena;
   auto options = CurrentOptions();
   InternalKeyComparator icmp(options.comparator);
-  RangeDelAggregator range_del_agg(icmp, {} /* snapshots */);
+  ReadRangeDelAggregator range_del_agg(&icmp,
+                                       kMaxSequenceNumber /* upper_bound */);
+  // This should be defined after range_del_agg so that it destructs the
+  // assigned iterator before it range_del_agg is already destructed.
+  ScopedArenaIterator iter;
   // This should be defined after range_del_agg so that it destructs the
   // assigned iterator before it range_del_agg is already destructed.
   ScopedArenaIterator iter;
   if (cf != 0) {
-    iter.set(
-        dbfull()->NewInternalIterator(&arena, &range_del_agg, handles_[cf]));
+    iter.set(dbfull()->NewInternalIterator(&arena, &range_del_agg,
+                                           kMaxSequenceNumber, handles_[cf]));
   } else {
-    iter.set(dbfull()->NewInternalIterator(&arena, &range_del_agg));
+    iter.set(dbfull()->NewInternalIterator(&arena, &range_del_agg,
+                                           kMaxSequenceNumber));
   }
   iter->SeekToFirst();
   ASSERT_EQ(iter->status().ok(), true);
@@ -1379,9 +1430,9 @@ void DBTestBase::validateNumberOfEntries(int numValues, int cf) {
 void DBTestBase::CopyFile(const std::string& source,
                           const std::string& destination, uint64_t size) {
   const EnvOptions soptions;
-  unique_ptr<SequentialFile> srcfile;
+  std::unique_ptr<SequentialFile> srcfile;
   ASSERT_OK(env_->NewSequentialFile(source, &srcfile, soptions));
-  unique_ptr<WritableFile> destfile;
+  std::unique_ptr<WritableFile> destfile;
   ASSERT_OK(env_->NewWritableFile(destination, &destfile, soptions));
 
   if (size == 0) {
@@ -1559,8 +1610,10 @@ void DBTestBase::VerifyDBInternal(
     std::vector<std::pair<std::string, std::string>> true_data) {
   Arena arena;
   InternalKeyComparator icmp(last_options_.comparator);
-  RangeDelAggregator range_del_agg(icmp, {});
-  auto iter = dbfull()->NewInternalIterator(&arena, &range_del_agg);
+  ReadRangeDelAggregator range_del_agg(&icmp,
+                                       kMaxSequenceNumber /* upper_bound */);
+  auto iter =
+      dbfull()->NewInternalIterator(&arena, &range_del_agg, kMaxSequenceNumber);
   iter->SeekToFirst();
   for (auto p : true_data) {
     ASSERT_TRUE(iter->Valid());

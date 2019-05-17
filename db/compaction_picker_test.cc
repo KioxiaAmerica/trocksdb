@@ -4,10 +4,12 @@
 //  (found in the LICENSE.Apache file in the root directory).
 
 #include "db/compaction_picker.h"
+
 #include <limits>
 #include <string>
 #include <utility>
 #include "db/compaction.h"
+#include "db/compaction_picker_fifo.h"
 #include "db/compaction_picker_universal.h"
 
 #include "util/logging.h"
@@ -94,8 +96,8 @@ class CompactionPickerTest : public testing::Test {
     f->fd = FileDescriptor(file_number, path_id, file_size);
     f->smallest = InternalKey(smallest, smallest_seq, kTypeValue);
     f->largest = InternalKey(largest, largest_seq, kTypeValue);
-    f->smallest_seqno = smallest_seq;
-    f->largest_seqno = largest_seq;
+    f->fd.smallest_seqno = smallest_seq;
+    f->fd.largest_seqno = largest_seq;
     f->compensated_file_size = file_size;
     f->refs = 0;
     vstorage_->AddFile(level, f);

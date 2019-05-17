@@ -18,7 +18,7 @@ namespace rocksdb {
 // ImmutableCFOptions is a data struct used by RocksDB internal. It contains a
 // subset of Options that should not be changed during the entire lifetime
 // of DB. Raw pointers defined in this struct do not have ownership to the data
-// they point to. Options contains shared_ptr to these data.
+// they point to. Options contains std::shared_ptr to these data.
 struct ImmutableCFOptions {
   ImmutableCFOptions();
   explicit ImmutableCFOptions(const Options& options);
@@ -89,6 +89,8 @@ struct ImmutableCFOptions {
 
   CompressionType bottommost_compression;
 
+  CompressionOptions bottommost_compression_opts;
+
   CompressionOptions compression_opts;
 
   bool level_compaction_dynamic_level_bytes;
@@ -116,8 +118,6 @@ struct ImmutableCFOptions {
   uint32_t max_subcompactions;
 
   const SliceTransform* memtable_insert_with_hint_prefix_extractor;
-
-  uint64_t ttl;
 
   std::vector<DbPath> cf_paths;
 };
@@ -147,6 +147,7 @@ struct MutableCFOptions {
         target_file_size_multiplier(options.target_file_size_multiplier),
         max_bytes_for_level_base(options.max_bytes_for_level_base),
         max_bytes_for_level_multiplier(options.max_bytes_for_level_multiplier),
+        ttl(options.ttl),
         max_bytes_for_level_multiplier_additional(
             options.max_bytes_for_level_multiplier_additional),
         compaction_options_fifo(options.compaction_options_fifo),
@@ -200,6 +201,7 @@ struct MutableCFOptions {
         target_file_size_multiplier(0),
         max_bytes_for_level_base(0),
         max_bytes_for_level_multiplier(0),
+        ttl(0),
         compaction_options_fifo(),
 #ifdef INDIRECT_VALUE_SUPPORT   // initialize mutable options
 // Tuning parameters are mutable
@@ -268,6 +270,7 @@ struct MutableCFOptions {
   int target_file_size_multiplier;
   uint64_t max_bytes_for_level_base;
   double max_bytes_for_level_multiplier;
+  uint64_t ttl;
   std::vector<int> max_bytes_for_level_multiplier_additional;
   CompactionOptionsFIFO compaction_options_fifo;
   CompactionOptionsUniversal compaction_options_universal;

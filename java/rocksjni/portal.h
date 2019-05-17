@@ -26,6 +26,7 @@
 #include "rocksdb/rate_limiter.h"
 #include "rocksdb/status.h"
 #include "rocksdb/utilities/backupable_db.h"
+#include "rocksdb/utilities/memory_util.h"
 #include "rocksdb/utilities/transaction_db.h"
 #include "rocksdb/utilities/write_batch_with_index.h"
 #include "rocksjni/compaction_filter_factory_jnicallback.h"
@@ -2251,7 +2252,7 @@ class ByteJni : public JavaClass {
    * @param env A pointer to the Java environment
    *
    * @return The Java Method ID or nullptr if the class or method id could not
-   *     be retieved
+   *     be retrieved
    */
   static jmethodID getByteValueMethod(JNIEnv* env) {
     jclass clazz = getJClass(env);
@@ -2264,6 +2265,39 @@ class ByteJni : public JavaClass {
     assert(mid != nullptr);
     return mid;
   }
+
+  /**
+   * Calls the Java Method: Byte#valueOf, returning a constructed Byte jobject
+   *
+   * @param env A pointer to the Java environment
+   *
+   * @return A constructing Byte object or nullptr if the class or method id could not
+   *     be retrieved, or an exception occurred
+   */
+  static jobject valueOf(JNIEnv* env, jbyte jprimitive_byte) {
+    jclass clazz = getJClass(env);
+    if (clazz == nullptr) {
+      // exception occurred accessing class
+      return nullptr;
+    }
+
+    static jmethodID mid =
+        env->GetStaticMethodID(clazz, "valueOf", "(B)Ljava/lang/Byte;");
+    if (mid == nullptr) {
+      // exception thrown: NoSuchMethodException or OutOfMemoryError
+      return nullptr;
+    }
+
+    const jobject jbyte_obj =
+        env->CallStaticObjectMethod(clazz, mid, jprimitive_byte);
+    if (env->ExceptionCheck()) {
+      // exception occurred
+      return nullptr;
+    }
+
+    return jbyte_obj;
+  }
+
 };
 
 // The portal class for java.lang.StringBuilder
@@ -2364,27 +2398,40 @@ class BackupInfoJni : public JavaClass {
    * @param timestamp timestamp of the backup
    * @param size size of the backup
    * @param number_files number of files related to the backup
+   * @param app_metadata application specific metadata
    *
    * @return A reference to a Java BackupInfo object, or a nullptr if an
    *     exception occurs
    */
   static jobject construct0(JNIEnv* env, uint32_t backup_id, int64_t timestamp,
-      uint64_t size, uint32_t number_files) {
+                            uint64_t size, uint32_t number_files,
+                            const std::string& app_metadata) {
     jclass jclazz = getJClass(env);
     if(jclazz == nullptr) {
       // exception occurred accessing class
       return nullptr;
     }
 
-    static jmethodID mid = env->GetMethodID(jclazz, "<init>", "(IJJI)V");
+    static jmethodID mid =
+        env->GetMethodID(jclazz, "<init>", "(IJJILjava/lang/String;)V");
     if(mid == nullptr) {
       // exception occurred accessing method
       return nullptr;
     }
 
-    jobject jbackup_info =
-        env->NewObject(jclazz, mid, backup_id, timestamp, size, number_files);
+    jstring japp_metadata = nullptr;
+    if (app_metadata != nullptr) {
+      japp_metadata = env->NewStringUTF(app_metadata.c_str());
+      if (japp_metadata == nullptr) {
+        // exception occurred creating java string
+        return nullptr;
+      }
+    }
+
+    jobject jbackup_info = env->NewObject(jclazz, mid, backup_id, timestamp,
+                                          size, number_files, japp_metadata);
     if(env->ExceptionCheck()) {
+      env->DeleteLocalRef(japp_metadata);
       return nullptr;
     }
 
@@ -2437,11 +2484,9 @@ class BackupInfoListJni {
     for (auto it = backup_infos.begin(); it != end; ++it) {
       auto backup_info = *it;
 
-      jobject obj = rocksdb::BackupInfoJni::construct0(env,
-          backup_info.backup_id,
-          backup_info.timestamp,
-          backup_info.size,
-          backup_info.number_files);
+      jobject obj = rocksdb::BackupInfoJni::construct0(
+          env, backup_info.backup_id, backup_info.timestamp, backup_info.size,
+          backup_info.number_files, backup_info.app_metadata);
       if(env->ExceptionCheck()) {
         // exception occurred constructing object
         if(obj != nullptr) {
@@ -2885,6 +2930,43 @@ class BatchResultJni : public JavaClass {
   }
 };
 
+// The portal class for org.rocksdb.BottommostLevelCompaction
+class BottommostLevelCompactionJni {
+ public:
+  // Returns the equivalent org.rocksdb.BottommostLevelCompaction for the provided
+  // C++ rocksdb::BottommostLevelCompaction enum
+  static jint toJavaBottommostLevelCompaction(
+      const rocksdb::BottommostLevelCompaction& bottommost_level_compaction) {
+    switch(bottommost_level_compaction) {
+      case rocksdb::BottommostLevelCompaction::kSkip:
+        return 0x0;
+      case rocksdb::BottommostLevelCompaction::kIfHaveCompactionFilter:
+        return 0x1;
+      case rocksdb::BottommostLevelCompaction::kForce:
+        return 0x2;
+      default:
+        return 0x7F;  // undefined
+    }
+  }
+
+  // Returns the equivalent C++ rocksdb::BottommostLevelCompaction enum for the
+  // provided Java org.rocksdb.BottommostLevelCompaction
+  static rocksdb::BottommostLevelCompaction toCppBottommostLevelCompaction(
+      jint bottommost_level_compaction) {
+    switch(bottommost_level_compaction) {
+      case 0x0:
+        return rocksdb::BottommostLevelCompaction::kSkip;
+      case 0x1:
+        return rocksdb::BottommostLevelCompaction::kIfHaveCompactionFilter;
+      case 0x2:
+        return rocksdb::BottommostLevelCompaction::kForce;
+      default:
+        // undefined/default
+        return rocksdb::BottommostLevelCompaction::kIfHaveCompactionFilter;
+    }
+  }
+};
+
 // The portal class for org.rocksdb.CompactionStopStyle
 class CompactionStopStyleJni {
  public:
@@ -3297,8 +3379,12 @@ class TickerTypeJni {
         return 0x5D;
       case rocksdb::Tickers::NUMBER_MULTIGET_KEYS_FOUND:
         return 0x5E;
-      case rocksdb::Tickers::TICKER_ENUM_MAX:
+      case rocksdb::Tickers::NO_ITERATOR_CREATED:
         return 0x5F;
+      case rocksdb::Tickers::NO_ITERATOR_DELETED:
+        return 0x60;
+      case rocksdb::Tickers::TICKER_ENUM_MAX:
+        return 0x61;
 
       default:
         // undefined/default
@@ -3501,6 +3587,10 @@ class TickerTypeJni {
       case 0x5E:
         return rocksdb::Tickers::NUMBER_MULTIGET_KEYS_FOUND;
       case 0x5F:
+        return rocksdb::Tickers::NO_ITERATOR_CREATED;
+      case 0x60:
+        return rocksdb::Tickers::NO_ITERATOR_DELETED;
+      case 0x61:
         return rocksdb::Tickers::TICKER_ENUM_MAX;
 
       default:
@@ -3743,6 +3833,48 @@ class RateLimiterModeJni {
       default:
         // undefined/default
         return rocksdb::RateLimiter::Mode::kWritesOnly;
+    }
+  }
+};
+
+// The portal class for org.rocksdb.MemoryUsageType
+class MemoryUsageTypeJni {
+public:
+  // Returns the equivalent org.rocksdb.MemoryUsageType for the provided
+  // C++ rocksdb::MemoryUtil::UsageType enum
+  static jbyte toJavaMemoryUsageType(
+      const rocksdb::MemoryUtil::UsageType& usage_type) {
+    switch(usage_type) {
+      case rocksdb::MemoryUtil::UsageType::kMemTableTotal:
+        return 0x0;
+      case rocksdb::MemoryUtil::UsageType::kMemTableUnFlushed:
+        return 0x1;
+      case rocksdb::MemoryUtil::UsageType::kTableReadersTotal:
+        return 0x2;
+      case rocksdb::MemoryUtil::UsageType::kCacheTotal:
+        return 0x3;
+      default:
+        // undefined: use kNumUsageTypes
+        return 0x4;
+    }
+  }
+
+  // Returns the equivalent C++ rocksdb::MemoryUtil::UsageType enum for the
+  // provided Java org.rocksdb.MemoryUsageType
+  static rocksdb::MemoryUtil::UsageType toCppMemoryUsageType(
+      jbyte usage_type) {
+    switch(usage_type) {
+      case 0x0:
+        return rocksdb::MemoryUtil::UsageType::kMemTableTotal;
+      case 0x1:
+        return rocksdb::MemoryUtil::UsageType::kMemTableUnFlushed;
+      case 0x2:
+        return rocksdb::MemoryUtil::UsageType::kTableReadersTotal;
+      case 0x3:
+        return rocksdb::MemoryUtil::UsageType::kCacheTotal;
+      default:
+        // undefined/default: use kNumUsageTypes
+        return rocksdb::MemoryUtil::UsageType::kNumUsageTypes;
     }
   }
 };
@@ -4292,26 +4424,13 @@ class JniUtil {
      * @param bytes The bytes to copy
      *
      * @return the Java byte[] or nullptr if an exception occurs
+     * 
+     * @throws RocksDBException thrown 
+     *   if memory size to copy exceeds general java specific array size limitation.
      */
     static jbyteArray copyBytes(JNIEnv* env, std::string bytes) {
-      const jsize jlen = static_cast<jsize>(bytes.size());
-
-      jbyteArray jbytes = env->NewByteArray(jlen);
-      if(jbytes == nullptr) {
-        // exception thrown: OutOfMemoryError
-        return nullptr;
+      return createJavaByteArrayWithSizeCheck(env, bytes.c_str(), bytes.size());
       }
-
-      env->SetByteArrayRegion(jbytes, 0, jlen,
-        const_cast<jbyte*>(reinterpret_cast<const jbyte*>(bytes.c_str())));
-      if(env->ExceptionCheck()) {
-        // exception thrown: ArrayIndexOutOfBoundsException
-        env->DeleteLocalRef(jbytes);
-        return nullptr;
-      }
-
-      return jbytes;
-    }
 
     /**
      * Given a Java byte[][] which is an array of java.lang.Strings
@@ -4475,24 +4594,37 @@ class JniUtil {
     }
 
     /**
-     * Copies bytes from a rocksdb::Slice to a jByteArray
-     *
-     * @param env A pointer to the java environment
-     * @param bytes The bytes to copy
-     *
-     * @return the Java byte[] or nullptr if an exception occurs
-     */
-    static jbyteArray copyBytes(JNIEnv* env, const Slice& bytes) {
-      const jsize jlen = static_cast<jsize>(bytes.size());
-
-      jbyteArray jbytes = env->NewByteArray(jlen);
-      if(jbytes == nullptr) {
-        // exception thrown: OutOfMemoryError
+      * Copies bytes to a new jByteArray with the check of java array size limitation.
+      *
+      * @param bytes pointer to memory to copy to a new jByteArray
+      * @param size number of bytes to copy
+      *
+      * @return the Java byte[] or nullptr if an exception occurs
+      * 
+      * @throws RocksDBException thrown 
+      *   if memory size to copy exceeds general java array size limitation to avoid overflow.
+      */
+    static jbyteArray createJavaByteArrayWithSizeCheck(JNIEnv* env, const char* bytes, const size_t size) {
+      // Limitation for java array size is vm specific
+      // In general it cannot exceed Integer.MAX_VALUE (2^31 - 1)
+      // Current HotSpot VM limitation for array size is Integer.MAX_VALUE - 5 (2^31 - 1 - 5)
+      // It means that the next call to env->NewByteArray can still end with 
+      // OutOfMemoryError("Requested array size exceeds VM limit") coming from VM
+      static const size_t MAX_JARRAY_SIZE = (static_cast<size_t>(1)) << 31;
+      if(size > MAX_JARRAY_SIZE) {
+        rocksdb::RocksDBExceptionJni::ThrowNew(env, "Requested array size exceeds VM limit");
         return nullptr;
       }
-
+      
+      const jsize jlen = static_cast<jsize>(size);
+      jbyteArray jbytes = env->NewByteArray(jlen);
+      if(jbytes == nullptr) {
+        // exception thrown: OutOfMemoryError	
+        return nullptr;
+      }
+      
       env->SetByteArrayRegion(jbytes, 0, jlen,
-        const_cast<jbyte*>(reinterpret_cast<const jbyte*>(bytes.data())));
+        const_cast<jbyte*>(reinterpret_cast<const jbyte*>(bytes)));
       if(env->ExceptionCheck()) {
         // exception thrown: ArrayIndexOutOfBoundsException
         env->DeleteLocalRef(jbytes);
@@ -4500,6 +4632,21 @@ class JniUtil {
       }
 
       return jbytes;
+    }
+
+    /**
+     * Copies bytes from a rocksdb::Slice to a jByteArray
+     *
+     * @param env A pointer to the java environment
+     * @param bytes The bytes to copy
+     *
+     * @return the Java byte[] or nullptr if an exception occurs
+     * 
+     * @throws RocksDBException thrown 
+     *   if memory size to copy exceeds general java specific array size limitation.
+     */
+    static jbyteArray copyBytes(JNIEnv* env, const Slice& bytes) {
+      return createJavaByteArrayWithSizeCheck(env, bytes.data(), bytes.size());
     }
 
     /*

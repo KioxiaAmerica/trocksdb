@@ -137,6 +137,29 @@ struct TransactionOptions {
 
   // The maximum number of bytes used for the write batch. 0 means no limit.
   size_t max_write_batch_size = 0;
+
+  // Skip Concurrency Control. This could be as an optimization if the
+  // application knows that the transaction would not have any conflict with
+  // concurrent transactions. It could also be used during recovery if (i)
+  // application guarantees no conflict between prepared transactions in the WAL
+  // (ii) application guarantees that recovered transactions will be rolled
+  // back/commit before new transactions start.
+  // Default: false
+  bool skip_concurrency_control = false;
+};
+
+// The per-write optimizations that do not involve transactions. TransactionDB
+// implementation might or might not make use of the specified optimizations.
+struct TransactionDBWriteOptimizations {
+  // If it is true it means that the application guarantees that the
+  // key-set in the write batch do not conflict with any concurrent transaction
+  // and hence the concurrency control mechanism could be skipped for this
+  // write.
+  bool skip_concurrency_control = false;
+  // If true, the application guarantees that there is no duplicate <column
+  // family, key> in the write batch and any employed mechanism to handle
+  // duplicate keys could be skipped.
+  bool skip_duplicate_key_check = false;
 };
 
 // The per-write optimizations that do not involve transactions. TransactionDB
@@ -162,19 +185,22 @@ struct KeyLockInfo {
 struct DeadlockInfo {
   TransactionID m_txn_id;
   uint32_t m_cf_id;
-  std::string m_waiting_key;
   bool m_exclusive;
+  std::string m_waiting_key;
 };
 
 struct DeadlockPath {
   std::vector<DeadlockInfo> path;
   bool limit_exceeded;
+  int64_t deadlock_time;
 
-  explicit DeadlockPath(std::vector<DeadlockInfo> path_entry)
-      : path(path_entry), limit_exceeded(false) {}
+  explicit DeadlockPath(std::vector<DeadlockInfo> path_entry,
+                        const int64_t& dl_time)
+      : path(path_entry), limit_exceeded(false), deadlock_time(dl_time) {}
 
   // empty path, limit exceeded constructor and default constructor
-  explicit DeadlockPath(bool limit = false) : path(0), limit_exceeded(limit) {}
+  explicit DeadlockPath(const int64_t& dl_time = 0, bool limit = false)
+      : path(0), limit_exceeded(limit), deadlock_time(dl_time) {}
 
   bool empty() { return path.empty() && !limit_exceeded; }
 };

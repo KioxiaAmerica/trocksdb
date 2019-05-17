@@ -156,8 +156,11 @@ class TransactionTestBase : public ::testing::Test {
     const bool use_seq_per_batch =
         txn_db_options.write_policy == WRITE_PREPARED ||
         txn_db_options.write_policy == WRITE_UNPREPARED;
+    const bool use_batch_per_txn =
+        txn_db_options.write_policy == WRITE_COMMITTED ||
+        txn_db_options.write_policy == WRITE_PREPARED;
     Status s = DBImpl::Open(options_copy, dbname, cfs, handles, &root_db,
-                            use_seq_per_batch);
+                            use_seq_per_batch, use_batch_per_txn);
     StackableDB* stackable_db = new StackableDB(root_db);
     if (s.ok()) {
       assert(root_db != nullptr);
@@ -186,21 +189,27 @@ class TransactionTestBase : public ::testing::Test {
     const bool use_seq_per_batch =
         txn_db_options.write_policy == WRITE_PREPARED ||
         txn_db_options.write_policy == WRITE_UNPREPARED;
+    const bool use_batch_per_txn =
+        txn_db_options.write_policy == WRITE_COMMITTED ||
+        txn_db_options.write_policy == WRITE_PREPARED;
     Status s = DBImpl::Open(options_copy, dbname, column_families, &handles,
-                            &root_db, use_seq_per_batch);
+                            &root_db, use_seq_per_batch, use_batch_per_txn);
     if (!s.ok()) {
       delete root_db;
       return s;
     }
-
     StackableDB* stackable_db = new StackableDB(root_db);
-    if (s.ok()) {
-      assert(root_db != nullptr);
+    assert(root_db != nullptr);
+     assert(root_db != nullptr);
       assert(handles.size() == 1);
-      s = TransactionDB::WrapStackableDB(stackable_db, txn_db_options,
-                                         compaction_enabled_cf_indices, handles,
-                                         &db);
+    s = TransactionDB::WrapStackableDB(stackable_db, txn_db_options,
+                                       compaction_enabled_cf_indices, handles,
+                                       &db);
       delete handles[0];
+    if (!s.ok()) {
+      delete stackable_db;
+      // just in case it was not deleted (and not set to nullptr).
+      delete root_db;
     }
     if (!s.ok()) {
       delete stackable_db;
@@ -281,8 +290,6 @@ class TransactionTestBase : public ::testing::Test {
         exp_seq++;
       }
     }
-    auto pdb = reinterpret_cast<PessimisticTransactionDB*>(db);
-    pdb->UnregisterTransaction(txn);
     delete txn;
   };
   std::function<void(size_t)> txn_t3 = [&](size_t index) {
@@ -396,12 +403,6 @@ class TransactionTestBase : public ::testing::Test {
             ASSERT_OK(txn->Prepare());
           }
           ASSERT_OK(txn->Commit());
-          if (type == 2) {
-            auto pdb = reinterpret_cast<PessimisticTransactionDB*>(db);
-            // TODO(myabandeh): this is counter-intuitive. The destructor should
-            // also do the unregistering.
-            pdb->UnregisterTransaction(txn);
-          }
           delete txn;
           break;
         default:
@@ -423,7 +424,7 @@ class TransactionTestBase : public ::testing::Test {
     if (empty_wal) {
       ASSERT_OK(s);
     } else {
-      // Test that we can detect the WAL that is produced by an incompatbile
+      // Test that we can detect the WAL that is produced by an incompatible
       // WritePolicy and fail fast before mis-interpreting the WAL.
       ASSERT_TRUE(s.IsNotSupported());
       return;

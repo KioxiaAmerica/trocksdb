@@ -126,6 +126,7 @@ DBOptions BuildDBOptions(const ImmutableDBOptions& immutable_db_options,
       immutable_db_options.preserve_deletes;
   options.two_write_queues = immutable_db_options.two_write_queues;
   options.manual_wal_flush = immutable_db_options.manual_wal_flush;
+  options.atomic_flush = immutable_db_options.atomic_flush;
 
   return options;
 }
@@ -168,6 +169,7 @@ ColumnFamilyOptions BuildColumnFamilyOptions(
       mutable_cf_options.max_bytes_for_level_base;
   cf_opts.max_bytes_for_level_multiplier =
       mutable_cf_options.max_bytes_for_level_multiplier;
+  cf_opts.ttl = mutable_cf_options.ttl;
 #ifdef INDIRECT_VALUE_SUPPORT
   cf_opts.allow_trivial_move =
       mutable_cf_options.allow_trivial_move;
@@ -288,7 +290,8 @@ std::map<CompactionStopStyle, std::string>
 std::unordered_map<std::string, ChecksumType>
     OptionsHelper::checksum_type_string_map = {{"kNoChecksum", kNoChecksum},
                                                {"kCRC32c", kCRC32c},
-                                               {"kxxHash", kxxHash}};
+                                               {"kxxHash", kxxHash},
+                                               {"kxxHash64", kxxHash64}};
 
 std::unordered_map<std::string, CompressionType>
     OptionsHelper::compression_type_string_map = {
@@ -453,6 +456,7 @@ bool ParseStructOptions(
   }
   return true;
 }
+}  // anonymouse namespace
 
 bool ParseSliceTransformHelper(
     const std::string& kFixedPrefixName, const std::string& kCappedPrefixName,
@@ -508,7 +512,6 @@ bool ParseSliceTransform(
   //                 SliceTransforms here.
   return false;
 }
-}  // anonymouse namespace
 
 bool ParseOptionHelper(char* opt_address, const OptionType& opt_type,
                        const std::string& value) {
@@ -567,6 +570,11 @@ bool ParseOptionHelper(char* opt_address, const OptionType& opt_type,
       return ParseEnum<BlockBasedTableOptions::IndexType>(
           block_base_table_index_type_string_map, value,
           reinterpret_cast<BlockBasedTableOptions::IndexType*>(opt_address));
+    case OptionType::kBlockBasedTableDataBlockIndexType:
+      return ParseEnum<BlockBasedTableOptions::DataBlockIndexType>(
+          block_base_table_data_block_index_type_string_map, value,
+          reinterpret_cast<BlockBasedTableOptions::DataBlockIndexType*>(
+              opt_address));
     case OptionType::kEncodingType:
       return ParseEnum<EncodingType>(
           encoding_type_string_map, value,
@@ -752,6 +760,12 @@ bool SerializeSingleOptionHelper(const char* opt_address,
       return SerializeEnum<BlockBasedTableOptions::IndexType>(
           block_base_table_index_type_string_map,
           *reinterpret_cast<const BlockBasedTableOptions::IndexType*>(
+              opt_address),
+          value);
+    case OptionType::kBlockBasedTableDataBlockIndexType:
+      return SerializeEnum<BlockBasedTableOptions::DataBlockIndexType>(
+          block_base_table_data_block_index_type_string_map,
+          *reinterpret_cast<const BlockBasedTableOptions::DataBlockIndexType*>(
               opt_address),
           value);
     case OptionType::kFlushBlockPolicyFactory: {
@@ -948,6 +962,65 @@ Status StringToMap(const std::string& opts_str,
   return Status::OK();
 }
 
+Status ParseCompressionOptions(const std::string& value, const std::string& name,
+                              CompressionOptions& compression_opts) {
+  size_t start = 0;
+  size_t end = value.find(':');
+  if (end == std::string::npos) {
+    return Status::InvalidArgument("unable to parse the specified CF option " +
+                                   name);
+  }
+  compression_opts.window_bits = ParseInt(value.substr(start, end - start));
+  start = end + 1;
+  end = value.find(':', start);
+  if (end == std::string::npos) {
+    return Status::InvalidArgument("unable to parse the specified CF option " +
+                                   name);
+  }
+  compression_opts.level = ParseInt(value.substr(start, end - start));
+  start = end + 1;
+  if (start >= value.size()) {
+    return Status::InvalidArgument("unable to parse the specified CF option " +
+                                   name);
+  }
+  end = value.find(':', start);
+  compression_opts.strategy =
+      ParseInt(value.substr(start, value.size() - start));
+  // max_dict_bytes is optional for backwards compatibility
+  if (end != std::string::npos) {
+    start = end + 1;
+    if (start >= value.size()) {
+      return Status::InvalidArgument(
+          "unable to parse the specified CF option " + name);
+    }
+    compression_opts.max_dict_bytes =
+        ParseInt(value.substr(start, value.size() - start));
+    end = value.find(':', start);
+  }
+  // zstd_max_train_bytes is optional for backwards compatibility
+  if (end != std::string::npos) {
+    start = end + 1;
+    if (start >= value.size()) {
+      return Status::InvalidArgument(
+          "unable to parse the specified CF option " + name);
+    }
+    compression_opts.zstd_max_train_bytes =
+        ParseInt(value.substr(start, value.size() - start));
+    end = value.find(':', start);
+  }
+  // enabled is optional for backwards compatibility
+  if (end != std::string::npos) {
+    start = end + 1;
+    if (start >= value.size()) {
+      return Status::InvalidArgument(
+          "unable to parse the specified CF option " + name);
+    }
+    compression_opts.enabled =
+        ParseBoolean("", value.substr(start, value.size() - start));
+  }
+  return Status::OK();
+}
+
 Status ParseColumnFamilyOption(const std::string& name,
                                const std::string& org_value,
                                ColumnFamilyOptions* new_options,
@@ -996,41 +1069,17 @@ Status ParseColumnFamilyOption(const std::string& name,
             "unable to parse the specified CF option " + name);
       }
       new_options->memtable_factory.reset(new_mem_factory.release());
+    } else if (name == "bottommost_compression_opts") {
+      Status s = ParseCompressionOptions(
+          value, name, new_options->bottommost_compression_opts);
+      if (!s.ok()) {
+        return s;
+      }
     } else if (name == "compression_opts") {
-      size_t start = 0;
-      size_t end = value.find(':');
-      if (end == std::string::npos) {
-        return Status::InvalidArgument(
-            "unable to parse the specified CF option " + name);
-      }
-      new_options->compression_opts.window_bits =
-          ParseInt(value.substr(start, end - start));
-      start = end + 1;
-      end = value.find(':', start);
-      if (end == std::string::npos) {
-        return Status::InvalidArgument(
-            "unable to parse the specified CF option " + name);
-      }
-      new_options->compression_opts.level =
-          ParseInt(value.substr(start, end - start));
-      start = end + 1;
-      if (start >= value.size()) {
-        return Status::InvalidArgument(
-            "unable to parse the specified CF option " + name);
-      }
-      end = value.find(':', start);
-      new_options->compression_opts.strategy =
-          ParseInt(value.substr(start, value.size() - start));
-      // max_dict_bytes is optional for backwards compatibility
-      if (end != std::string::npos) {
-        start = end + 1;
-        if (start >= value.size()) {
-          return Status::InvalidArgument(
-              "unable to parse the specified CF option " + name);
-        }
-        new_options->compression_opts.max_dict_bytes =
-            ParseInt(value.substr(start, value.size() - start));
-        end = value.find(':', start);
+      Status s =
+          ParseCompressionOptions(value, name, new_options->compression_opts);
+      if (!s.ok()) {
+        return s;
       }
       // zstd_max_train_bytes is optional for backwards compatibility
       if (end != std::string::npos) {
@@ -1609,7 +1658,11 @@ std::unordered_map<std::string, OptionTypeInfo>
           offsetof(struct ImmutableDBOptions, manual_wal_flush)}},
         {"seq_per_batch",
          {0, OptionType::kBoolean, OptionVerificationType::kDeprecated, false,
-          0}}};
+          0}},
+        {"atomic_flush",
+         {offsetof(struct DBOptions, atomic_flush), OptionType::kBoolean,
+          OptionVerificationType::kNormal, false,
+          offsetof(struct ImmutableDBOptions, atomic_flush)}}};
 
 std::unordered_map<std::string, BlockBasedTableOptions::IndexType>
     OptionsHelper::block_base_table_index_type_string_map = {
@@ -1617,6 +1670,13 @@ std::unordered_map<std::string, BlockBasedTableOptions::IndexType>
         {"kHashSearch", BlockBasedTableOptions::IndexType::kHashSearch},
         {"kTwoLevelIndexSearch",
          BlockBasedTableOptions::IndexType::kTwoLevelIndexSearch}};
+
+std::unordered_map<std::string, BlockBasedTableOptions::DataBlockIndexType>
+    OptionsHelper::block_base_table_data_block_index_type_string_map = {
+        {"kDataBlockBinarySearch",
+         BlockBasedTableOptions::DataBlockIndexType::kDataBlockBinarySearch},
+        {"kDataBlockBinaryAndHash",
+         BlockBasedTableOptions::DataBlockIndexType::kDataBlockBinaryAndHash}};
 
 std::unordered_map<std::string, EncodingType>
     OptionsHelper::encoding_type_string_map = {{"kPlain", kPlain},
@@ -1726,70 +1786,70 @@ std::unordered_map<std::string, OptionTypeInfo>
           OptionType::kBoolean, OptionVerificationType::kNormal, true,
           offsetof(struct MutableCFOptions, disable_auto_compactions)}},
 #ifdef INDIRECT_VALUE_SUPPORT
-    {"allow_trivial_move",
-     {offset_of(&ColumnFamilyOptions::allow_trivial_move),
-      OptionType::kBoolean, OptionVerificationType::kNormal, true,
-      offsetof(struct MutableCFOptions, allow_trivial_move)}},
-    {"vlog_direct_IO",
-     {offset_of(&ColumnFamilyOptions::vlog_direct_IO),
-      OptionType::kBoolean, OptionVerificationType::kNormal, true,
-      offsetof(struct MutableCFOptions, vlog_direct_IO)}},
-    {"compaction_score_limit_L0",
-     {offset_of(&ColumnFamilyOptions::compaction_score_limit_L0),
-      OptionType::kDouble, OptionVerificationType::kNormal, true,
-      offsetof(struct MutableCFOptions, compaction_score_limit_L0)}},
-    {"vlogring_activation_level",
-     {offset_of(&ColumnFamilyOptions::vlogring_activation_level),
-      OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
-      offsetof(struct MutableCFOptions, vlogring_activation_level)}},
-    {"min_indirect_val_size",
-     {offset_of(&ColumnFamilyOptions::min_indirect_val_size),
-      OptionType::kVectorInt64, OptionVerificationType::kNormal, true,
-      offsetof(struct MutableCFOptions, min_indirect_val_size)}},
-    {"fraction_remapped_during_compaction",
-     {offset_of(&ColumnFamilyOptions::fraction_remapped_during_compaction),
-      OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
-      offsetof(struct MutableCFOptions, fraction_remapped_during_compaction)}},
-    {"fraction_remapped_during_active_recycling",
-     {offset_of(&ColumnFamilyOptions::fraction_remapped_during_active_recycling),
-      OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
-      offsetof(struct MutableCFOptions, fraction_remapped_during_active_recycling)}},
-    {"fragmentation_active_recycling_trigger",
-     {offset_of(&ColumnFamilyOptions::fragmentation_active_recycling_trigger),
-      OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
-      offsetof(struct MutableCFOptions, fragmentation_active_recycling_trigger)}},
-    {"fragmentation_active_recycling_klaxon",
-     {offset_of(&ColumnFamilyOptions::fragmentation_active_recycling_klaxon),
-      OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
-      offsetof(struct MutableCFOptions, fragmentation_active_recycling_klaxon)}},
-    {"active_recycling_sst_minct",
-     {offset_of(&ColumnFamilyOptions::active_recycling_sst_minct),
-      OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
-      offsetof(struct MutableCFOptions, active_recycling_sst_minct)}},
-    {"active_recycling_sst_maxct",
-     {offset_of(&ColumnFamilyOptions::active_recycling_sst_maxct),
-      OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
-      offsetof(struct MutableCFOptions, active_recycling_sst_maxct)}},
-    {"active_recycling_vlogfile_freed_min",
-     {offset_of(&ColumnFamilyOptions::active_recycling_vlogfile_freed_min),
-      OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
-      offsetof(struct MutableCFOptions, active_recycling_vlogfile_freed_min)}},
-    {"active_recycling_size_trigger",
-     {offset_of(&ColumnFamilyOptions::active_recycling_size_trigger),
-      OptionType::kVectorInt64, OptionVerificationType::kNormal, true,
-      offsetof(struct MutableCFOptions, active_recycling_size_trigger)}},
-    {"vlogfile_max_size",
-     {offset_of(&ColumnFamilyOptions::vlogfile_max_size),
-      OptionType::kVectorInt64, OptionVerificationType::kNormal, true,
-      offsetof(struct MutableCFOptions, vlogfile_max_size)}},
-    {"compaction_picker_age_importance",
-     {offset_of(&ColumnFamilyOptions::compaction_picker_age_importance),
-      OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
-      offsetof(struct MutableCFOptions, compaction_picker_age_importance)}},
-    {"ring_compression_style",
-     {offset_of(&ColumnFamilyOptions::ring_compression_style),
-      OptionType::kVectorCompressionType, OptionVerificationType::kNormal, true,
-      offsetof(struct MutableCFOptions, ring_compression_style)}},
+        {"allow_trivial_move",
+         {offset_of(&ColumnFamilyOptions::allow_trivial_move),
+          OptionType::kBoolean, OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, allow_trivial_move)}},
+        {"vlog_direct_IO",
+         {offset_of(&ColumnFamilyOptions::vlog_direct_IO),
+          OptionType::kBoolean, OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, vlog_direct_IO)}},
+        {"compaction_score_limit_L0",
+         {offset_of(&ColumnFamilyOptions::compaction_score_limit_L0),
+          OptionType::kDouble, OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, compaction_score_limit_L0)}},
+        {"vlogring_activation_level",
+         {offset_of(&ColumnFamilyOptions::vlogring_activation_level),
+          OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, vlogring_activation_level)}},
+        {"min_indirect_val_size",
+         {offset_of(&ColumnFamilyOptions::min_indirect_val_size),
+          OptionType::kVectorInt64, OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, min_indirect_val_size)}},
+        {"fraction_remapped_during_compaction",
+         {offset_of(&ColumnFamilyOptions::fraction_remapped_during_compaction),
+          OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, fraction_remapped_during_compaction)}},
+        {"fraction_remapped_during_active_recycling",
+         {offset_of(&ColumnFamilyOptions::fraction_remapped_during_active_recycling),
+          OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, fraction_remapped_during_active_recycling)}},
+        {"fragmentation_active_recycling_trigger",
+         {offset_of(&ColumnFamilyOptions::fragmentation_active_recycling_trigger),
+          OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, fragmentation_active_recycling_trigger)}},
+        {"fragmentation_active_recycling_klaxon",
+         {offset_of(&ColumnFamilyOptions::fragmentation_active_recycling_klaxon),
+          OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, fragmentation_active_recycling_klaxon)}},
+        {"active_recycling_sst_minct",
+         {offset_of(&ColumnFamilyOptions::active_recycling_sst_minct),
+          OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, active_recycling_sst_minct)}},
+        {"active_recycling_sst_maxct",
+         {offset_of(&ColumnFamilyOptions::active_recycling_sst_maxct),
+          OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, active_recycling_sst_maxct)}},
+        {"active_recycling_vlogfile_freed_min",
+         {offset_of(&ColumnFamilyOptions::active_recycling_vlogfile_freed_min),
+          OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, active_recycling_vlogfile_freed_min)}},
+        {"active_recycling_size_trigger",
+         {offset_of(&ColumnFamilyOptions::active_recycling_size_trigger),
+          OptionType::kVectorInt64, OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, active_recycling_size_trigger)}},
+        {"vlogfile_max_size",
+         {offset_of(&ColumnFamilyOptions::vlogfile_max_size),
+          OptionType::kVectorInt64, OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, vlogfile_max_size)}},
+        {"compaction_picker_age_importance",
+         {offset_of(&ColumnFamilyOptions::compaction_picker_age_importance),
+          OptionType::kVectorInt32, OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, compaction_picker_age_importance)}},
+        {"ring_compression_style",
+         {offset_of(&ColumnFamilyOptions::ring_compression_style),
+          OptionType::kVectorCompressionType, OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, ring_compression_style)}},
 #endif
         {"filter_deletes",
          {0, OptionType::kBoolean, OptionVerificationType::kDeprecated, true,
@@ -2000,7 +2060,8 @@ std::unordered_map<std::string, OptionTypeInfo>
           offsetof(struct MutableCFOptions, compaction_options_universal)}},
         {"ttl",
          {offset_of(&ColumnFamilyOptions::ttl), OptionType::kUInt64T,
-          OptionVerificationType::kNormal, false, 0}}};
+          OptionVerificationType::kNormal, true,
+          offsetof(struct MutableCFOptions, ttl)}}};
 
 std::unordered_map<std::string, OptionTypeInfo>
     OptionsHelper::fifo_compaction_options_type_info = {
@@ -2049,8 +2110,7 @@ std::unordered_map<std::string, OptionTypeInfo>
         {"allow_trivial_move",
          {offset_of(&CompactionOptionsUniversal::allow_trivial_move),
           OptionType::kBoolean, OptionVerificationType::kNormal, true,
-          offsetof(class CompactionOptionsUniversal, allow_trivial_move)}}
-      };
+          offsetof(class CompactionOptionsUniversal, allow_trivial_move)}}};
 
 std::unordered_map<std::string, CompactionStopStyle>
     OptionsHelper::compaction_stop_style_string_map = {

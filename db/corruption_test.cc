@@ -48,7 +48,7 @@ class CorruptionTest : public testing::Test {
  public:
   test::ErrorEnv env_;
   std::string dbname_;
-  shared_ptr<Cache> tiny_cache_;
+  std::shared_ptr<Cache> tiny_cache_;
   Options options_;
   DB* db_;
 
@@ -62,7 +62,7 @@ class CorruptionTest : public testing::Test {
     tiny_cache_ = NewLRUCache(100, 4);
     options_.wal_recovery_mode = WALRecoveryMode::kTolerateCorruptedTailRecords;
     options_.env = &env_;
-    dbname_ = test::TmpDir() + "/corruption_test";
+    dbname_ = test::PerThreadDBPath("corruption_test");
     DestroyDB(dbname_, options_);
 
     db_ = nullptr;
@@ -530,7 +530,7 @@ TEST_F(CorruptionTest, FileSystemStateCorrupted) {
     db_ = nullptr;
 
     if (iter == 0) {  // corrupt file size
-      unique_ptr<WritableFile> file;
+      std::unique_ptr<WritableFile> file;
       env_.NewWritableFile(filename, &file, EnvOptions());
       file->Append(Slice("corrupted sst"));
       file.reset();

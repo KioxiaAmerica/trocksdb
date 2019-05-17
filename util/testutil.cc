@@ -20,7 +20,7 @@ namespace rocksdb {
 namespace test {
 
 const uint32_t kDefaultFormatVersion = BlockBasedTableOptions().format_version;
-const uint32_t kLatestFormatVersion = 3u;
+const uint32_t kLatestFormatVersion = 4u;
 
 Slice RandomString(Random* rnd, int len, std::string* dst) {
   dst->resize(len);
@@ -124,20 +124,22 @@ const Comparator* Uint64Comparator() {
   return &uint64comp;
 }
 
-WritableFileWriter* GetWritableFileWriter(WritableFile* wf) {
-  unique_ptr<WritableFile> file(wf);
-  return new WritableFileWriter(std::move(file), EnvOptions());
+WritableFileWriter* GetWritableFileWriter(WritableFile* wf,
+                                          const std::string& fname) {
+  std::unique_ptr<WritableFile> file(wf);
+  return new WritableFileWriter(std::move(file), fname, EnvOptions());
 }
 
 RandomAccessFileReader* GetRandomAccessFileReader(RandomAccessFile* raf) {
-  unique_ptr<RandomAccessFile> file(raf);
+  std::unique_ptr<RandomAccessFile> file(raf);
   return new RandomAccessFileReader(std::move(file),
                                     "[test RandomAccessFileReader]");
 }
 
-SequentialFileReader* GetSequentialFileReader(SequentialFile* se) {
-  unique_ptr<SequentialFile> file(se);
-  return new SequentialFileReader(std::move(file));
+SequentialFileReader* GetSequentialFileReader(SequentialFile* se,
+                                              const std::string& fname) {
+  std::unique_ptr<SequentialFile> file(se);
+  return new SequentialFileReader(std::move(file), fname);
 }
 
 void CorruptKeyType(InternalKey* ikey) {
@@ -194,6 +196,7 @@ BlockBasedTableOptions RandomBlockBasedTableOptions(Random* rnd) {
   BlockBasedTableOptions opt;
   opt.cache_index_and_filter_blocks = rnd->Uniform(2);
   opt.pin_l0_filter_and_index_blocks_in_cache = rnd->Uniform(2);
+  opt.pin_top_level_index_and_filter = rnd->Uniform(2);
   opt.index_type = rnd->Uniform(2) ? BlockBasedTableOptions::kBinarySearch
                                    : BlockBasedTableOptions::kHashSearch;
   opt.hash_index_allow_collision = rnd->Uniform(2);
@@ -396,6 +399,22 @@ Status DestroyDir(Env* env, const std::string& dir) {
     s = env->DeleteDir(dir);
   }
   return s;
+}
+
+bool IsDirectIOSupported(Env* env, const std::string& dir) {
+  EnvOptions env_options;
+  env_options.use_mmap_writes = false;
+  env_options.use_direct_writes = true;
+  std::string tmp = TempFileName(dir, 999);
+  Status s;
+  {
+    std::unique_ptr<WritableFile> file;
+    s = env->NewWritableFile(tmp, &file, env_options);
+  }
+  if (s.ok()) {
+    s = env->DeleteFile(tmp);
+  }
+  return s.ok();
 }
 
 }  // namespace test

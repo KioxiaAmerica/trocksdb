@@ -1,15 +1,111 @@
 # Rocksdb Change Log
-## Unreleased
-### Public API Change
-* For users of `Statistics` objects created via `CreateDBStatistics()`, the format of the string returned by its `ToString()` method has changed.
-* With LRUCache, when high_pri_pool_ratio > 0, midpoint insertion strategy will be enabled to put low-pri items to the tail of low-pri list (the midpoint) when they first inserted into the cache. This is to make cache entries never get hit age out faster, improving cache efficiency when large background scan presents.
+## 5.18.3 (2/11/2019)
+### Bug Fixes
+* Fix possible LSM corruption when both range deletions and subcompactions are used. The symptom of this corruption is L1+ files overlapping in the user key space.
 
+## 5.18.2 (01/31/2019)
+### Public API Change
+* Change time resolution in FileOperationInfo.
+* Deleting Blob files also go through SStFileManager.
+
+## 5.18.0 (11/30/2018)
 ### New Features
-* Changes the format of index blocks by storing the key in their raw form rather than converting them to InternalKey. This saves 8 bytes per index key. The feature is backward compatbile but not forward compatible. It is disabled by default unless format_version 3 or above is used.
+* Introduced `JemallocNodumpAllocator` memory allocator. When being use, block cache will be excluded from core dump.
+* Introduced `PerfContextByLevel` as part of `PerfContext` which allows storing perf context at each level. Also replaced `__thread` with `thread_local` keyword for perf_context. Added per-level perf context for bloom filter and `Get` query.
+* With level_compaction_dynamic_level_bytes = true, level multiplier may be adjusted automatically when Level 0 to 1 compaction is lagged behind.
+* Introduced DB option `atomic_flush`. If true, RocksDB supports flushing multiple column families and atomically committing the result to MANIFEST. Useful when WAL is disabled.
+* Added `num_deletions` and `num_merge_operands` members to `TableProperties`.
+* Added "rocksdb.min-obsolete-sst-number-to-keep" DB property that reports the lower bound on SST file numbers that are being kept from deletion, even if the SSTs are obsolete.
+* Add xxhash64 checksum support
+* Introduced `MemoryAllocator`, which lets the user specify custom memory allocator for block based table.
+* Improved `DeleteRange` to prevent read performance degradation. The feature is no longer marked as experimental.
+* Enabled checkpoint on readonly db (DBImplReadOnly).
+
+### Public API Change
+* `DBOptions::use_direct_reads` now affects reads issued by `BackupEngine` on the database's SSTs.
+* `NO_ITERATORS` is divided into two counters `NO_ITERATOR_CREATED` and `NO_ITERATOR_DELETE`. Both of them are only increasing now, just as other counters.
 
 ### Bug Fixes
-* fix deadlock with enable_pipelined_write=true and max_successive_merges > 0
+* Fix corner case where a write group leader blocked due to write stall blocks other writers in queue with WriteOptions::no_slowdown set.
+* Fix in-memory range tombstone truncation to avoid erroneously covering newer keys at a lower level, and include range tombstones in compacted files whose largest key is the range tombstone's start key.
+* Properly set the stop key for a truncated manual CompactRange
+* Fix slow flush/compaction when DB contains many snapshots. The problem became noticeable to us in DBs with 100,000+ snapshots, though it will affect others at different thresholds.
+* Fix the bug that WriteBatchWithIndex's SeekForPrev() doesn't see the entries with the same key.
+* Fix the bug where user comparator was sometimes fed with InternalKey instead of the user key. The bug manifests when during GenerateBottommostFiles.
+* Fix a bug in WritePrepared txns where if the number of old snapshots goes beyond the snapshot cache size (128 default) the rest will not be checked when evicting a commit entry from the commit cache.
+* Fixed Get correctness bug in the presence of range tombstones where merge operands covered by a range tombstone always result in NotFound.
+* Start populating `NO_FILE_CLOSES` ticker statistic, which was always zero previously.
+* The default value of NewBloomFilterPolicy()'s argument use_block_based_builder is changed to false. Note that this new default may cause large temp memory usage when building very large SST files.
+* Fix a deadlock caused by compaction and file ingestion waiting for each other in the event of write stalls.
+* Make DB ignore dropped column families while committing results of atomic flush.
+
+## 5.17.0 (10/05/2018)
+### Public API Change
+* `OnTableFileCreated` will now be called for empty files generated during compaction. In that case, `TableFileCreationInfo::file_path` will be "(nil)" and `TableFileCreationInfo::file_size` will be zero.
+* Add `FlushOptions::allow_write_stall`, which controls whether Flush calls start working immediately, even if it causes user writes to stall, or will wait until flush can be performed without causing write stall (similar to `CompactRangeOptions::allow_write_stall`). Note that the default value is false, meaning we add delay to Flush calls until stalling can be avoided when possible. This is behavior change compared to previous RocksDB versions, where Flush calls didn't check if they might cause stall or not.
+* Application using PessimisticTransactionDB is expected to rollback/commit recovered transactions before starting new ones. This assumption is used to skip concurrency control during recovery.
+* Expose column family id to `OnCompactionCompleted`.
+
+### New Features
+* TransactionOptions::skip_concurrency_control allows pessimistic transactions to skip the overhead of concurrency control. Could be used for optimizing certain transactions or during recovery.
+
+### Bug Fixes
+* Avoid creating empty SSTs and subsequently deleting them in certain cases during compaction.
+* Sync CURRENT file contents during checkpoint.
+
+## 5.16.3 (10/1/2018)
+### Bug Fixes
+* Fix crash caused when `CompactFiles` run with `CompactionOptions::compression == CompressionType::kDisableCompressionOption`. Now that setting causes the compression type to be chosen according to the column family-wide compression options.
+
+## 5.16.2 (9/21/2018)
+### Bug Fixes
+* Fix bug in partition filters with format_version=4.
+
+## 5.16.1 (9/17/2018)
+### Bug Fixes
+* Remove trace_analyzer_tool from rocksdb_lib target in TARGETS file.
+* Fix RocksDB Java build and tests.
+* Remove sync point in Block destructor.
+
+## 5.16.0 (8/21/2018)
+### Public API Change
+* The merge operands are passed to `MergeOperator::ShouldMerge` in the reversed order relative to how they were merged (passed to FullMerge or FullMergeV2) for performance reasons
+* GetAllKeyVersions() to take an extra argument of `max_num_ikeys`.
+* Using ZSTD dictionary trainer (i.e., setting `CompressionOptions::zstd_max_train_bytes` to a nonzero value) now requires ZSTD version 1.1.3 or later.
+
+### New Features
+* Changes the format of index blocks by delta encoding the index values, which are the block handles. This saves the encoding of BlockHandle::offset of the non-head index entries in each restart interval. The feature is backward compatible but not forward compatible. It is disabled by default unless format_version 4 or above is used.
+* Add a new tool: trace_analyzer. Trace_analyzer analyzes the trace file generated by using trace_replay API. It can convert the binary format trace file to a human readable txt file, output the statistics of the analyzed query types such as access statistics and size statistics, combining the dumped whole key space file to analyze, support query correlation analyzing, and etc. Current supported query types are: Get, Put, Delete, SingleDelete, DeleteRange, Merge, Iterator (Seek, SeekForPrev only).
+* Add hash index support to data blocks, which helps reducing the cpu utilization of point-lookup operations. This feature is backward compatible with the data block created without the hash index. It is disabled by default unless BlockBasedTableOptions::data_block_index_type is set to data_block_index_type = kDataBlockBinaryAndHash.
+
+### Bug Fixes
+* Fix a bug in misreporting the estimated partition index size in properties block.
+
+## 5.15.0 (7/17/2018)
+### Public API Change
+* Remove managed iterator. ReadOptions.managed is not effective anymore.
+* For bottommost_compression, a compatible CompressionOptions is added via `bottommost_compression_opts`. To keep backward compatible, a new boolean `enabled` is added to CompressionOptions. For compression_opts, it will be always used no matter what value of `enabled` is. For bottommost_compression_opts, it will only be used when user set `enabled=true`, otherwise, compression_opts will be used for bottommost_compression as default.
+* With LRUCache, when high_pri_pool_ratio > 0, midpoint insertion strategy will be enabled to put low-pri items to the tail of low-pri list (the midpoint) when they first inserted into the cache. This is to make cache entries never get hit age out faster, improving cache efficiency when large background scan presents.
+* For users of `Statistics` objects created via `CreateDBStatistics()`, the format of the string returned by its `ToString()` method has changed.
+* The "rocksdb.num.entries" table property no longer counts range deletion tombstones as entries.
+
+### New Features
+* Changes the format of index blocks by storing the key in their raw form rather than converting them to InternalKey. This saves 8 bytes per index key. The feature is backward compatible but not forward compatible. It is disabled by default unless format_version 3 or above is used.
+* Avoid memcpy when reading mmap files with OpenReadOnly and max_open_files==-1.
+* Support dynamically changing `ColumnFamilyOptions::ttl` via `SetOptions()`.
+* Add a new table property, "rocksdb.num.range-deletions", which counts the number of range deletion tombstones in the table.
+* Improve the performance of iterators doing long range scans by using readahead, when using direct IO.
+* pin_top_level_index_and_filter (default true) in BlockBasedTableOptions can be used in combination with cache_index_and_filter_blocks to prefetch and pin the top-level index of partitioned index and filter blocks in cache. It has no impact when cache_index_and_filter_blocks is false.
+* Write properties meta-block at the end of block-based table to save read-ahead IO.
+
+### Bug Fixes
+* Fix deadlock with enable_pipelined_write=true and max_successive_merges > 0
+* Check conflict at output level in CompactFiles.
 * Fix corruption in non-iterator reads when mmap is used for file reads
+* Fix bug with prefix search in partition filters where a shared prefix would be ignored from the later partitions. The bug could report an eixstent key as missing. The bug could be triggered if prefix_extractor is set and partition filters is enabled.
+* Change default value of `bytes_max_delete_chunk` to 0 in NewSstFileManager() as it doesn't work well with checkpoints.
+* Fix a bug caused by not copying the block trailer with compressed SST file, direct IO, prefetcher and no compressed block cache.
+* Fix write can stuck indefinitely if enable_pipelined_write=true. The issue exists since pipelined write was introduced in 5.5.0.
 
 ## 5.14.0 (5/16/2018)
 ### Public API Change
@@ -119,7 +215,8 @@
 * `BackupableDBOptions::max_valid_backups_to_open == 0` now means no backups will be opened during BackupEngine initialization. Previously this condition disabled limiting backups opened.
 * `DBOptions::preserve_deletes` is a new option that allows one to specify that DB should not drop tombstones for regular deletes if they have sequence number larger than what was set by the new API call `DB::SetPreserveDeletesSequenceNumber(SequenceNumber seqnum)`. Disabled by default.
 * API call `DB::SetPreserveDeletesSequenceNumber(SequenceNumber seqnum)` was added, users who wish to preserve deletes are expected to periodically call this function to advance the cutoff seqnum (all deletes made before this seqnum can be dropped by DB). It's user responsibility to figure out how to advance the seqnum in the way so the tombstones are kept for the desired period of time, yet are eventually processed in time and don't eat up too much space.
-* `ReadOptions::iter_start_seqnum` was added; if set to something > 0 user will see 2 changes in iterators behavior 1) only keys written with sequence larger than this parameter would be returned and 2) the `Slice` returned by iter->key() now points to the memory that keep User-oriented representation of the internal key, rather than user key. New struct `FullKey` was added to represent internal keys, along with a new helper function `ParseFullKey(const Slice& internal_key, FullKey* result);`.
+* `ReadOptions::iter_start_seqnum` was added;
+if set to something > 0 user will see 2 changes in iterators behavior 1) only keys written with sequence larger than this parameter would be returned and 2) the `Slice` returned by iter->key() now points to the memory that keep User-oriented representation of the internal key, rather than user key. New struct `FullKey` was added to represent internal keys, along with a new helper function `ParseFullKey(const Slice& internal_key, FullKey* result);`.
 * Deprecate trash_dir param in NewSstFileManager, right now we will rename deleted files to <name>.trash instead of moving them to trash directory
 * Allow setting a custom trash/DB size ratio limit in the SstFileManager, after which files that are to be scheduled for deletion are deleted immediately, regardless of any delete ratelimit.
 * Return an error on write if write_options.sync = true and write_options.disableWAL = true to warn user of inconsistent options. Previously we will not write to WAL and not respecting the sync options in this case.

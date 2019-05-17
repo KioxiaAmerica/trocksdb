@@ -14,6 +14,7 @@
 #include "rocksdb/comparator.h"
 #include "rocksdb/db.h"
 #include "rocksdb/merge_operator.h"
+#include "table/format.h"
 #include "table/internal_iterator.h"
 
 namespace rocksdb {
@@ -109,9 +110,11 @@ Status MergeHelper::TimedFullMerge(const MergeOperator* merge_operator,
 //       keys_ stores the list of keys encountered while merging.
 //       operands_ stores the list of merge operands encountered while merging.
 //       keys_[i] corresponds to operands_[i] for each i.
-// This routine is used to support compaction_iterator.
+//
+// TODO: Avoid the snapshot stripe map lookup in CompactionRangeDelAggregator
+// and just pass the StripeRep corresponding to the stripe being merged.
 Status MergeHelper::MergeUntil(InternalIterator* iter,
-                               RangeDelAggregator* range_del_agg,
+                               CompactionRangeDelAggregator* range_del_agg,
                                const SequenceNumber stop_before,
                                const bool at_bottom) {
   // Get a copy of the internal key, before it's invalidated by iter->Next()
@@ -285,8 +288,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       if (filter != CompactionFilter::Decision::kRemoveAndSkipUntil &&
           range_del_agg != nullptr &&
           range_del_agg->ShouldDelete(
-              ikeyslice,
-              RangeDelAggregator::RangePositioningMode::kForwardTraversal)) {
+              iter->key(), RangeDelPositioningMode::kForwardTraversal)) {
         filter = CompactionFilter::Decision::kRemove;
       }
       if (filter == CompactionFilter::Decision::kKeep ||
@@ -424,7 +426,7 @@ CompactionFilter::Decision MergeHelper::FilterMerge(const Slice& user_key,
   if (compaction_filter_ == nullptr) {
     return CompactionFilter::Decision::kKeep;
   }
-  if (stats_ != nullptr) {
+  if (stats_ != nullptr && ShouldReportDetailedTime(env_, stats_)) {
     filter_timer_.Start();
   }
   compaction_filter_value_.clear();

@@ -20,12 +20,21 @@
 #include "util/sst_file_manager_impl.h"
 
 namespace rocksdb {
+
 uint64_t DBImpl::MinLogNumberToKeep() {
   if (allow_2pc()) {
     return versions_->min_log_number_to_keep_2pc();
   } else {
     return versions_->MinLogNumberWithUnflushedData();
   }
+}
+
+uint64_t DBImpl::MinObsoleteSstNumberToKeep() {
+  mutex_.AssertHeld();
+  if (!pending_outputs_.empty()) {
+    return *pending_outputs_.begin();
+  }
+  return std::numeric_limits<uint64_t>::max();
 }
 
 // * Returns the list of live files in 'sst_live'
@@ -358,9 +367,32 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
   std::vector<std::string> old_info_log_files;
   InfoLogPrefix info_log_prefix(!immutable_db_options_.db_log_dir.empty(),
                                 dbname_);
+
+  // File numbers of most recent two OPTIONS file in candidate_files (found in
+  // previos FindObsoleteFiles(full_scan=true))
+  // At this point, there must not be any duplicate file numbers in
+  // candidate_files.
+  uint64_t optsfile_num1 = std::numeric_limits<uint64_t>::min();
+  uint64_t optsfile_num2 = std::numeric_limits<uint64_t>::min();
+  for (const auto& candidate_file : candidate_files) {
+    const std::string& fname = candidate_file.file_name;
+    uint64_t number;
+    FileType type;
+    if (!ParseFileName(fname, &number, info_log_prefix.prefix, &type) ||
+        type != kOptionsFile) {
+      continue;
+    }
+    if (number > optsfile_num1) {
+      optsfile_num2 = optsfile_num1;
+      optsfile_num1 = number;
+    } else if (number > optsfile_num2) {
+      optsfile_num2 = number;
+    }
+  }
+
   std::unordered_set<uint64_t> files_to_del;
   for (const auto& candidate_file : candidate_files) {
-    std::string to_delete = candidate_file.file_name;
+    const std::string& to_delete = candidate_file.file_name;
     uint64_t number;
     FileType type;
     // Ignore file if we cannot recognize it.
@@ -409,11 +441,19 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
           old_info_log_files.push_back(to_delete);
         }
         break;
+      case kOptionsFile:
+        keep = (number >= optsfile_num2);
+        TEST_SYNC_POINT_CALLBACK(
+            "DBImpl::PurgeObsoleteFiles:CheckOptionsFiles:1",
+            reinterpret_cast<void*>(&number));
+        TEST_SYNC_POINT_CALLBACK(
+            "DBImpl::PurgeObsoleteFiles:CheckOptionsFiles:2",
+            reinterpret_cast<void*>(&keep));
+        break;
       case kCurrentFile:
       case kDBLockFile:
       case kIdentityFile:
       case kMetaDatabase:
-      case kOptionsFile:
       case kBlobFile:
         keep = true;
         break;
@@ -435,7 +475,13 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
     } else {
       dir_to_sync =
           (type == kLogFile) ? immutable_db_options_.wal_dir : dbname_;
-      fname = dir_to_sync + "/" + to_delete;
+      fname = dir_to_sync
+            + (
+                (!dir_to_sync.empty() && dir_to_sync.back() == '/') ||
+                (!to_delete.empty() && to_delete.front() == '/')
+                ? "" : "/"
+              )
+            + to_delete;
     }
 
 #ifndef ROCKSDB_LITE

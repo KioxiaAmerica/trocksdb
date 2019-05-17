@@ -120,7 +120,8 @@ class Repairer {
         wc_(db_options_.delayed_write_rate),
         vset_(dbname_, &immutable_db_options_, env_options_,
               raw_table_cache_.get(), &wb_, &wc_),
-        next_file_number_(1) {
+        next_file_number_(1),
+        db_lock_(nullptr) {
     for (const auto& cfd : column_families) {
       cf_name_to_opts_[cfd.name] = cfd.options;
     }
@@ -165,11 +166,18 @@ class Repairer {
   }
 
   ~Repairer() {
+    if (db_lock_ != nullptr) {
+      env_->UnlockFile(db_lock_);
+    }
     delete table_cache_;
   }
 
   Status Run() {
-    Status status = FindFiles();
+    Status status = env_->LockFile(LockFileName(dbname_), &db_lock_);
+    if (!status.ok()) {
+      return status;
+    }
+    status = FindFiles();
     if (status.ok()) {
       // Discard older manifests and start a fresh one
       for (size_t i = 0; i < manifests_.size(); i++) {
@@ -247,6 +255,9 @@ class Repairer {
   std::vector<uint64_t> logs_;
   std::vector<TableInfo> tables_;
   uint64_t next_file_number_;
+  // Lock over the persistent DB state. Non-nullptr iff successfully
+  // acquired.
+  FileLock* db_lock_;
 #ifdef INDIRECT_VALUE_SUPPORT
   struct VLogFileInfo {
     uint64_t file_and_ring_no;
@@ -360,14 +371,14 @@ class Repairer {
 
     // Open the log file
     std::string logname = LogFileName(db_options_.wal_dir, log);
-    unique_ptr<SequentialFile> lfile;
+    std::unique_ptr<SequentialFile> lfile;
     Status status = env_->NewSequentialFile(
         logname, &lfile, env_->OptimizeForLogRead(env_options_));
     if (!status.ok()) {
       return status;
     }
-    unique_ptr<SequentialFileReader> lfile_reader(
-        new SequentialFileReader(std::move(lfile)));
+    std::unique_ptr<SequentialFileReader> lfile_reader(
+        new SequentialFileReader(std::move(lfile), logname));
 
     // Create the log reader.
     LogReporter reporter;
@@ -379,7 +390,8 @@ class Repairer {
     // propagating bad information (like overly large sequence
     // numbers).
     log::Reader reader(db_options_.info_log, std::move(lfile_reader), &reporter,
-                       true /*enable checksum*/, 0 /*initial_offset*/, log);
+                       true /*enable checksum*/, log,
+                       false /* retry_after_eof */);
 
     // Initialize per-column family memtables
     for (auto* cfd : *vset_.GetColumnFamilySet()) {
@@ -432,10 +444,16 @@ class Repairer {
       SnapshotChecker* snapshot_checker = DisableGCSnapshotChecker::Instance();
 
       auto write_hint = cfd->CalculateSSTWriteHint(0);
+      std::vector<std::unique_ptr<FragmentedRangeTombstoneIterator>>
+          range_del_iters;
+      auto range_del_iter =
+          mem->NewRangeTombstoneIterator(ro, kMaxSequenceNumber);
+      if (range_del_iter != nullptr) {
+        range_del_iters.emplace_back(range_del_iter);
+      }
       status = BuildTable(
           dbname_, env_, *cfd->ioptions(), *cfd->GetLatestMutableCFOptions(),
-          env_options_, table_cache_, iter.get(),
-          std::unique_ptr<InternalIterator>(mem->NewRangeTombstoneIterator(ro)),
+          env_options_, table_cache_, iter.get(), std::move(range_del_iters),
           &meta, cfd->internal_comparator(),
           cfd->int_tbl_prop_collector_factories(), cfd->GetID(), cfd->GetName(),
           {}, kMaxSequenceNumber, snapshot_checker, kNoCompression,
@@ -531,7 +549,7 @@ class Repairer {
     }
     if (status.ok()) {
       InternalIterator* iter = table_cache_->NewIterator(
-          ReadOptions(), env_options_, cfd->internal_comparator(), t->meta.fd,
+          ReadOptions(), env_options_, cfd->internal_comparator(), t->meta,
           nullptr /* range_del_agg */,
           cfd->GetLatestMutableCFOptions()->prefix_extractor.get());
       bool empty = true;

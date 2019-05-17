@@ -37,9 +37,13 @@ Status WritePreparedTxnDB::Initialize(
   assert(dbimpl != nullptr);
   auto rtxns = dbimpl->recovered_transactions();
   for (auto rtxn : rtxns) {
-    auto cnt = rtxn.second->batch_cnt_ ? rtxn.second->batch_cnt_ : 1;
+    // There should only one batch for WritePrepared policy.
+    assert(rtxn.second->batches_.size() == 1);
+    const auto& seq = rtxn.second->batches_.begin()->first;
+    const auto& batch_info = rtxn.second->batches_.begin()->second;
+    auto cnt = batch_info.batch_cnt_ ? batch_info.batch_cnt_ : 1;
     for (size_t i = 0; i < cnt; i++) {
-      AddPrepared(rtxn.second->seq_ + i);
+      AddPrepared(seq + i);
     }
   }
   SequenceNumber prev_max = max_evicted_seq_;
@@ -306,9 +310,10 @@ Iterator* WritePreparedTxnDB::NewIterator(const ReadOptions& options,
   SequenceNumber min_uncommitted = 0;
   if (options.snapshot != nullptr) {
     snapshot_seq = options.snapshot->GetSequenceNumber();
-    min_uncommitted = static_cast_with_check<const SnapshotImpl, const Snapshot>(
-                        options.snapshot)
-                        ->min_uncommitted_;
+    min_uncommitted =
+        static_cast_with_check<const SnapshotImpl, const Snapshot>(
+            options.snapshot)
+            ->min_uncommitted_;
   } else {
     auto* snapshot = GetSnapshot();
     // We take a snapshot to make sure that the related data in the commit map
@@ -374,9 +379,9 @@ void WritePreparedTxnDB::Init(const TransactionDBOptions& /* unused */) {
   // around.
   INC_STEP_FOR_MAX_EVICTED =
       std::max(COMMIT_CACHE_SIZE / 100, static_cast<size_t>(1));
-  snapshot_cache_ = unique_ptr<std::atomic<SequenceNumber>[]>(
+  snapshot_cache_ = std::unique_ptr<std::atomic<SequenceNumber>[]>(
       new std::atomic<SequenceNumber>[SNAPSHOT_CACHE_SIZE] {});
-  commit_cache_ = unique_ptr<std::atomic<CommitEntry64b>[]>(
+  commit_cache_ = std::unique_ptr<std::atomic<CommitEntry64b>[]>(
       new std::atomic<CommitEntry64b>[COMMIT_CACHE_SIZE] {});
 }
 
@@ -455,7 +460,7 @@ void WritePreparedTxnDB::RemovePrepared(const uint64_t prepare_seq,
 bool WritePreparedTxnDB::GetCommitEntry(const uint64_t indexed_seq,
                                         CommitEntry64b* entry_64b,
                                         CommitEntry* entry) const {
-  *entry_64b = commit_cache_[indexed_seq].load(std::memory_order_acquire);
+  *entry_64b = commit_cache_[static_cast<size_t>(indexed_seq)].load(std::memory_order_acquire);
   bool valid = entry_64b->Parse(indexed_seq, entry, FORMAT);
   return valid;
 }
@@ -464,7 +469,7 @@ bool WritePreparedTxnDB::AddCommitEntry(const uint64_t indexed_seq,
                                         const CommitEntry& new_entry,
                                         CommitEntry* evicted_entry) {
   CommitEntry64b new_entry_64b(new_entry, FORMAT);
-  CommitEntry64b evicted_entry_64b = commit_cache_[indexed_seq].exchange(
+  CommitEntry64b evicted_entry_64b = commit_cache_[static_cast<size_t>(indexed_seq)].exchange(
       new_entry_64b, std::memory_order_acq_rel);
   bool valid = evicted_entry_64b.Parse(indexed_seq, evicted_entry, FORMAT);
   return valid;
@@ -473,7 +478,7 @@ bool WritePreparedTxnDB::AddCommitEntry(const uint64_t indexed_seq,
 bool WritePreparedTxnDB::ExchangeCommitEntry(const uint64_t indexed_seq,
                                              CommitEntry64b& expected_entry_64b,
                                              const CommitEntry& new_entry) {
-  auto& atomic_entry = commit_cache_[indexed_seq];
+  auto& atomic_entry = commit_cache_[static_cast<size_t>(indexed_seq)];
   CommitEntry64b new_entry_64b(new_entry, FORMAT);
   bool succ = atomic_entry.compare_exchange_strong(
       expected_entry_64b, new_entry_64b, std::memory_order_acq_rel,
@@ -549,12 +554,6 @@ const std::vector<SequenceNumber> WritePreparedTxnDB::GetSnapshotListFromDB(
   return db_impl_->snapshots().GetAll(nullptr, max);
 }
 
-void WritePreparedTxnDB::ReleaseSnapshot(const Snapshot* snapshot) {
-  auto snap_seq = snapshot->GetSequenceNumber();
-  ReleaseSnapshotInternal(snap_seq);
-  db_impl_->ReleaseSnapshot(snapshot);
-}
-
 void WritePreparedTxnDB::ReleaseSnapshotInternal(
     const SequenceNumber snap_seq) {
   // relax is enough since max increases monotonically, i.e., if snap_seq <
@@ -567,19 +566,48 @@ void WritePreparedTxnDB::ReleaseSnapshotInternal(
     bool need_gc = false;
     {
       WPRecordTick(TXN_OLD_COMMIT_MAP_MUTEX_OVERHEAD);
-      ROCKS_LOG_WARN(info_log_, "old_commit_map_mutex_ overhead");
+      ROCKS_LOG_WARN(info_log_, "old_commit_map_mutex_ overhead for %" PRIu64,
+                     snap_seq);
       ReadLock rl(&old_commit_map_mutex_);
       auto prep_set_entry = old_commit_map_.find(snap_seq);
       need_gc = prep_set_entry != old_commit_map_.end();
     }
     if (need_gc) {
       WPRecordTick(TXN_OLD_COMMIT_MAP_MUTEX_OVERHEAD);
-      ROCKS_LOG_WARN(info_log_, "old_commit_map_mutex_ overhead");
+      ROCKS_LOG_WARN(info_log_, "old_commit_map_mutex_ overhead for %" PRIu64,
+                     snap_seq);
       WriteLock wl(&old_commit_map_mutex_);
       old_commit_map_.erase(snap_seq);
       old_commit_map_empty_.store(old_commit_map_.empty(),
                                   std::memory_order_release);
     }
+  }
+}
+
+void WritePreparedTxnDB::CleanupReleasedSnapshots(
+    const std::vector<SequenceNumber>& new_snapshots,
+    const std::vector<SequenceNumber>& old_snapshots) {
+  auto newi = new_snapshots.begin();
+  auto oldi = old_snapshots.begin();
+  for (; newi != new_snapshots.end() && oldi != old_snapshots.end();) {
+    assert(*newi >= *oldi);  // cannot have new snapshots with lower seq
+    if (*newi == *oldi) {    // still not released
+      auto value = *newi;
+      while (newi != new_snapshots.end() && *newi == value) {
+        newi++;
+      }
+      while (oldi != old_snapshots.end() && *oldi == value) {
+        oldi++;
+      }
+    } else {
+      assert(*newi > *oldi);  // *oldi is released
+      ReleaseSnapshotInternal(*oldi);
+      oldi++;
+    }
+  }
+  // Everything remained in old_snapshots is released and must be cleaned up
+  for (; oldi != old_snapshots.end(); oldi++) {
+    ReleaseSnapshotInternal(*oldi);
   }
 }
 
@@ -631,6 +659,12 @@ void WritePreparedTxnDB::UpdateSnapshots(
   // Update the size at the end. Otherwise a parallel reader might read
   // items that are not set yet.
   snapshots_total_.store(snapshots.size(), std::memory_order_release);
+
+  // Note: this must be done after the snapshots data structures are updated
+  // with the new list of snapshots.
+  CleanupReleasedSnapshots(snapshots, snapshots_all_);
+  snapshots_all_ = snapshots;
+
   TEST_SYNC_POINT("WritePreparedTxnDB::UpdateSnapshots:p:end");
   TEST_SYNC_POINT("WritePreparedTxnDB::UpdateSnapshots:s:end");
 }
@@ -649,13 +683,20 @@ void WritePreparedTxnDB::CheckAgainstSnapshots(const CommitEntry& evicted) {
   // place before gets overwritten the reader that reads bottom-up will
   // eventully see it.
   const bool next_is_larger = true;
-  SequenceNumber snapshot_seq = kMaxSequenceNumber;
+  // We will set to true if the border line snapshot suggests that.
+  bool search_larger_list = false;
   size_t ip1 = std::min(cnt, SNAPSHOT_CACHE_SIZE);
   for (; 0 < ip1; ip1--) {
-    snapshot_seq = snapshot_cache_[ip1 - 1].load(std::memory_order_acquire);
+    SequenceNumber snapshot_seq =
+        snapshot_cache_[ip1 - 1].load(std::memory_order_acquire);
     TEST_IDX_SYNC_POINT("WritePreparedTxnDB::CheckAgainstSnapshots:p:",
                         ++sync_i);
     TEST_IDX_SYNC_POINT("WritePreparedTxnDB::CheckAgainstSnapshots:s:", sync_i);
+    if (ip1 == SNAPSHOT_CACHE_SIZE) {  // border line snapshot
+      // snapshot_seq < commit_seq => larger_snapshot_seq <= commit_seq
+      // then later also continue the search to larger snapshots
+      search_larger_list = snapshot_seq < evicted.commit_seq;
+    }
     if (!MaybeUpdateOldCommitMap(evicted.prep_seq, evicted.commit_seq,
                                  snapshot_seq, !next_is_larger)) {
       break;
@@ -670,17 +711,20 @@ void WritePreparedTxnDB::CheckAgainstSnapshots(const CommitEntry& evicted) {
 #endif
   TEST_SYNC_POINT("WritePreparedTxnDB::CheckAgainstSnapshots:p:end");
   TEST_SYNC_POINT("WritePreparedTxnDB::CheckAgainstSnapshots:s:end");
-  if (UNLIKELY(SNAPSHOT_CACHE_SIZE < cnt && ip1 == SNAPSHOT_CACHE_SIZE &&
-               snapshot_seq < evicted.prep_seq)) {
+  if (UNLIKELY(SNAPSHOT_CACHE_SIZE < cnt && search_larger_list)) {
     // Then access the less efficient list of snapshots_
     WPRecordTick(TXN_SNAPSHOT_MUTEX_OVERHEAD);
-    ROCKS_LOG_WARN(info_log_, "snapshots_mutex_ overhead");
+    ROCKS_LOG_WARN(info_log_,
+                   "snapshots_mutex_ overhead for <%" PRIu64 ",%" PRIu64
+                   "> with %" ROCKSDB_PRIszt " snapshots",
+                   evicted.prep_seq, evicted.commit_seq, cnt);
     ReadLock rl(&snapshots_mutex_);
     // Items could have moved from the snapshots_ to snapshot_cache_ before
     // accquiring the lock. To make sure that we do not miss a valid snapshot,
     // read snapshot_cache_ again while holding the lock.
     for (size_t i = 0; i < SNAPSHOT_CACHE_SIZE; i++) {
-      snapshot_seq = snapshot_cache_[i].load(std::memory_order_acquire);
+      SequenceNumber snapshot_seq =
+          snapshot_cache_[i].load(std::memory_order_acquire);
       if (!MaybeUpdateOldCommitMap(evicted.prep_seq, evicted.commit_seq,
                                    snapshot_seq, next_is_larger)) {
         break;
@@ -708,7 +752,10 @@ bool WritePreparedTxnDB::MaybeUpdateOldCommitMap(
   // then snapshot_seq < commit_seq
   if (prep_seq <= snapshot_seq) {  // overlapping range
     WPRecordTick(TXN_OLD_COMMIT_MAP_MUTEX_OVERHEAD);
-    ROCKS_LOG_WARN(info_log_, "old_commit_map_mutex_ overhead");
+    ROCKS_LOG_WARN(info_log_,
+                   "old_commit_map_mutex_ overhead for %" PRIu64
+                   " commit entry: <%" PRIu64 ",%" PRIu64 ">",
+                   snapshot_seq, prep_seq, commit_seq);
     WriteLock wl(&old_commit_map_mutex_);
     old_commit_map_empty_.store(false, std::memory_order_release);
     auto& vec = old_commit_map_[snapshot_seq];

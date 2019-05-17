@@ -46,6 +46,7 @@
 #include "table/scoped_arena_iterator.h"
 #include "util/compression.h"
 #include "util/filename.h"
+#include "util/mock_time_env.h"
 #include "util/mutexlock.h"
 
 #include "util/string_util.h"
@@ -109,8 +110,6 @@ struct OptionsOverride {
   // These will be used only if filter_policy is set
   bool partition_filters = false;
   uint64_t metadata_block_size = 1024;
-  BlockBasedTableOptions::IndexType index_type =
-      BlockBasedTableOptions::IndexType::kBinarySearch;
 
   // Used as a bit mask of individual enums in which to skip an XF test point
   int skip_policy = 0;
@@ -170,7 +169,7 @@ class SpecialMemTableRep : public MemTableRep {
   virtual ~SpecialMemTableRep() override {}
 
  private:
-  unique_ptr<MemTableRep> memtable_;
+  std::unique_ptr<MemTableRep> memtable_;
   int num_entries_flush_;
   int num_entries_;
 };
@@ -208,15 +207,15 @@ class SpecialEnv : public EnvWrapper {
  public:
   explicit SpecialEnv(Env* base);
 
-  Status NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
+  Status NewWritableFile(const std::string& f, std::unique_ptr<WritableFile>* r,
                          const EnvOptions& soptions) override {
     class SSTableFile : public WritableFile {
      private:
       SpecialEnv* env_;
-      unique_ptr<WritableFile> base_;
+      std::unique_ptr<WritableFile> base_;
 
      public:
-      SSTableFile(SpecialEnv* env, unique_ptr<WritableFile>&& base)
+      SSTableFile(SpecialEnv* env, std::unique_ptr<WritableFile>&& base)
           : env_(env), base_(std::move(base)) {}
       Status Append(const Slice& data) override {
         if (env_->table_write_callback_) {
@@ -296,7 +295,7 @@ class SpecialEnv : public EnvWrapper {
     };
     class ManifestFile : public WritableFile {
      public:
-      ManifestFile(SpecialEnv* env, unique_ptr<WritableFile>&& b)
+      ManifestFile(SpecialEnv* env, std::unique_ptr<WritableFile>&& b)
           : env_(env), base_(std::move(b)) {}
       Status Append(const Slice& data) override {
         if (env_->manifest_write_error_.load(std::memory_order_acquire)) {
@@ -317,14 +316,17 @@ class SpecialEnv : public EnvWrapper {
         }
       }
       uint64_t GetFileSize() override { return base_->GetFileSize(); }
+      Status Allocate(uint64_t offset, uint64_t len) override {
+        return base_->Allocate(offset, len);
+      }
 
      private:
       SpecialEnv* env_;
-      unique_ptr<WritableFile> base_;
+      std::unique_ptr<WritableFile> base_;
     };
     class WalFile : public WritableFile {
      public:
-      WalFile(SpecialEnv* env, unique_ptr<WritableFile>&& b)
+      WalFile(SpecialEnv* env, std::unique_ptr<WritableFile>&& b)
           : env_(env), base_(std::move(b)) {
         env_->num_open_wal_file_.fetch_add(1);
       }
@@ -370,10 +372,13 @@ class SpecialEnv : public EnvWrapper {
       bool IsSyncThreadSafe() const override {
         return env_->is_wal_sync_thread_safe_.load();
       }
+      Status Allocate(uint64_t offset, uint64_t len) override {
+        return base_->Allocate(offset, len);
+      }
 
      private:
       SpecialEnv* env_;
-      unique_ptr<WritableFile> base_;
+      std::unique_ptr<WritableFile> base_;
     };
 
     if (non_writeable_rate_.load(std::memory_order_acquire) > 0) {
@@ -415,11 +420,11 @@ class SpecialEnv : public EnvWrapper {
   }
 
   Status NewRandomAccessFile(const std::string& f,
-                             unique_ptr<RandomAccessFile>* r,
+                             std::unique_ptr<RandomAccessFile>* r,
                              const EnvOptions& soptions) override {
     class CountingFile : public RandomAccessFile {
      public:
-      CountingFile(unique_ptr<RandomAccessFile>&& target,
+      CountingFile(std::unique_ptr<RandomAccessFile>&& target,
                    anon::AtomicCounter* counter,
                    std::atomic<size_t>* bytes_read)
           : target_(std::move(target)),
@@ -434,7 +439,7 @@ class SpecialEnv : public EnvWrapper {
       }
 
      private:
-      unique_ptr<RandomAccessFile> target_;
+      std::unique_ptr<RandomAccessFile> target_;
       anon::AtomicCounter* counter_;
       std::atomic<size_t>* bytes_read_;
     };
@@ -452,11 +457,11 @@ class SpecialEnv : public EnvWrapper {
   }
 
   virtual Status NewSequentialFile(const std::string& f,
-                                   unique_ptr<SequentialFile>* r,
+                                   std::unique_ptr<SequentialFile>* r,
                                    const EnvOptions& soptions) override {
     class CountingFile : public SequentialFile {
      public:
-      CountingFile(unique_ptr<SequentialFile>&& target,
+      CountingFile(std::unique_ptr<SequentialFile>&& target,
                    anon::AtomicCounter* counter)
           : target_(std::move(target)), counter_(counter) {}
       virtual Status Read(size_t n, Slice* result, char* scratch) override {
@@ -466,7 +471,7 @@ class SpecialEnv : public EnvWrapper {
       virtual Status Skip(uint64_t n) override { return target_->Skip(n); }
 
      private:
-      unique_ptr<SequentialFile> target_;
+      std::unique_ptr<SequentialFile> target_;
       anon::AtomicCounter* counter_;
     };
 
@@ -569,44 +574,13 @@ class SpecialEnv : public EnvWrapper {
 
   std::atomic<int> delete_count_;
 
-  bool time_elapse_only_sleep_;
+  std::atomic<bool> time_elapse_only_sleep_;
 
   bool no_slowdown_;
 
   std::atomic<bool> is_wal_sync_thread_safe_{true};
 
-  std::atomic<size_t> compaction_readahead_size_;
-};
-
-class MockTimeEnv : public EnvWrapper {
- public:
-  explicit MockTimeEnv(Env* base) : EnvWrapper(base) {}
-
-  virtual Status GetCurrentTime(int64_t* time) override {
-    assert(time != nullptr);
-    assert(current_time_ <=
-           static_cast<uint64_t>(std::numeric_limits<int64_t>::max()));
-    *time = static_cast<int64_t>(current_time_);
-    return Status::OK();
-  }
-
-  virtual uint64_t NowMicros() override {
-    assert(current_time_ <= std::numeric_limits<uint64_t>::max() / 1000000);
-    return current_time_ * 1000000;
-  }
-
-  virtual uint64_t NowNanos() override {
-    assert(current_time_ <= std::numeric_limits<uint64_t>::max() / 1000000000);
-    return current_time_ * 1000000000;
-  }
-
-  void set_current_time(uint64_t time) {
-    assert(time >= current_time_);
-    current_time_ = time;
-  }
-
- private:
-  std::atomic<uint64_t> current_time_{0};
+  std::atomic<size_t> compaction_readahead_size_{};
 };
 
 #ifndef ROCKSDB_LITE
@@ -698,14 +672,16 @@ class DBTestBase : public testing::Test {
     kLevelSubcompactions = 33,
     kBlockBasedTableWithIndexRestartInterval = 34,
     kBlockBasedTableWithPartitionedIndex = 35,
-    kBlockBasedTableWithPartitionedIndexFormat3 = 36,
+    kBlockBasedTableWithPartitionedIndexFormat4 = 36,
     kPartitionedFilterWithNewTableReaderForCompactions = 37,
+    kUniversalSubcompactions = 38,
+    kxxHash64Checksum = 39,
     // The following tests use indirect values.  We don't test combinations that are incompatible with, or have nothing to do with, indirect values
 #ifdef INDIRECT_VALUE_SUPPORT
     // MUST KEEP ALL THE INDIRECT CONFIGS TOGETHER!  Checked in SkipIndirect
-    kDefaultInd = 38,
-    kBlockBasedTableWithPrefixHashIndexInd = 39,
-    kBlockBasedTableWithWholeKeyHashIndexInd = 40,
+    kDefaultInd = 40,
+    kBlockBasedTableWithPrefixHashIndexInd = 41,
+    kBlockBasedTableWithWholeKeyHashIndexInd = 42,
 //    kPlainTableFirstBytePrefix = 3,
 //    kPlainTableCappedPrefix = 4,
 //    kPlainTableCappedPrefixNonMmap = 5,
@@ -713,34 +689,35 @@ class DBTestBase : public testing::Test {
 //    kVectorRep = 7,
 //    kHashLinkList = 8,
 //    kHashCuckoo = 9,
-    kMergePutInd = 41,
-    kFilterInd = 42,
-    kFullFilterWithNewTableReaderForCompactionsInd = 43,
-    kUncompressedInd = 44,
-    kNumLevel_3Ind = 45,
-    kDBLogDirInd = 46,
-    kWalDirAndMmapReadsInd = 47,
+    kMergePutInd = 43,
+    kFilterInd = 44,
+    kFullFilterWithNewTableReaderForCompactionsInd = 45,
+    kUncompressedInd = 46,
+    kNumLevel_3Ind = 47,
+    kDBLogDirInd = 48,
+    kWalDirAndMmapReadsInd = 49,
 //    kManifestFileSize = 17,
 //    kPerfOptions = 18,
 //    kHashSkipList = 19,
-    kUniversalCompactionInd = 48,
-    kUniversalCompactionMultiLevelInd = 49,
-    kCompressedBlockCacheInd = 50,
-    kInfiniteMaxOpenFilesInd = 51,
+    kUniversalCompactionInd = 50,
+    kUniversalCompactionMultiLevelInd = 51,
+    kCompressedBlockCacheInd = 52,
+    kInfiniteMaxOpenFilesInd = 53,
 //    kxxHashChecksum = 24,
 //    kFIFOCompaction = 25,
-    kOptimizeFiltersForHitsInd = 52,
-    kRowCacheInd = 53,
+    kOptimizeFiltersForHitsInd = 54,
+    kRowCacheInd = 55,
 //    kRecycleLogFiles = 28,
 //    kConcurrentSkipList = 29,
 //    kPipelinedWrite = 30,
 //    kConcurrentWALWrites = 31,
-    kDirectIOInd = 54,
+    kDirectIOInd = 56,
 //    kLevelSubcompactions = 33,
-    kBlockBasedTableWithIndexRestartIntervalInd = 55,
-    kBlockBasedTableWithPartitionedIndexInd = 56,
-    kBlockBasedTableWithPartitionedIndexFormat3Ind = 57,
-    kPartitionedFilterWithNewTableReaderForCompactionsInd = 58,   // If you add another, must change references to this in SkipIndirect
+    kBlockBasedTableWithIndexRestartIntervalInd = 57,
+    kBlockBasedTableWithPartitionedIndexInd = 58,
+    kBlockBasedTableWithPartitionedIndexFormat4Ind = 59,
+    kPartitionedFilterWithNewTableReaderForCompactionsInd = 60,   // If you add another, must change references to this in SkipIndirect
+
 #endif
 
     // This must be the last line
@@ -781,6 +758,13 @@ class DBTestBase : public testing::Test {
     kSkipDirectIO = 512,
     kSkipIndirect =1024,  // skip indirect values
   };
+
+  const int kRangeDelSkipConfigs =
+      // Plain tables do not support range deletions.
+      kSkipPlainTable |
+      // MmapReads disables the iterator pinning that RangeDelAggregator
+      // requires.
+      kSkipMmapReads;
 
   explicit DBTestBase(const std::string path);
 
@@ -854,6 +838,9 @@ class DBTestBase : public testing::Test {
   // Jump from kDefault to kFilter to kFullFilter
   bool ChangeFilterOptions(int skip_mask = 0);
 
+  // Switch between different DB options for file ingestion tests.
+  bool ChangeOptionsForFileIngestionTest();
+
   // Switch between indirect values on/off
   // Jump from kDefault to kDefaultInd
   bool ChangeIndirectOptions(int skip_mask = 0);
@@ -911,6 +898,8 @@ class DBTestBase : public testing::Test {
   bool IsMemoryMappedAccessSupported() const;
 
   Status Flush(int cf = 0);
+
+  Status Flush(const std::vector<int>& cf_ids);
 
  // The InvInd version is Invariant under Indirection: it makes the keys long and the values 16 bytes, so that an indirect reference has the same length as a direct value
   Status PutInvInd(const Slice& k, const Slice& v, bool vlogging, WriteOptions wo = WriteOptions());  // write kv of constant total size regardless of indirect values

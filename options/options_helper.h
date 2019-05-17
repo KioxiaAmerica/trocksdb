@@ -69,6 +69,7 @@ enum class OptionType {
   kMergeOperator,
   kMemTableRepFactory,
   kBlockBasedTableIndexType,
+  kBlockBasedTableDataBlockIndexType,
   kFilterPolicy,
   kFlushBlockPolicyFactory,
   kChecksumType,
@@ -134,6 +135,10 @@ Status GetColumnFamilyOptionsFromMapInternal(
     std::vector<std::string>* unsupported_options_names = nullptr,
     bool ignore_unknown_options = false);
 
+bool ParseSliceTransform(
+    const std::string& value,
+    std::shared_ptr<const SliceTransform>* slice_transform);
+
 extern Status StringToMap(
     const std::string& opts_str,
     std::unordered_map<std::string, std::string>* opts_map);
@@ -163,6 +168,9 @@ struct OptionsHelper {
       lru_cache_options_type_info;
   static std::unordered_map<std::string, BlockBasedTableOptions::IndexType>
       block_base_table_index_type_string_map;
+  static std::unordered_map<std::string,
+                            BlockBasedTableOptions::DataBlockIndexType>
+      block_base_table_data_block_index_type_string_map;
   static std::unordered_map<std::string, EncodingType> encoding_type_string_map;
   static std::unordered_map<std::string, CompactionStyle>
       compaction_style_string_map;
@@ -203,6 +211,8 @@ static auto& compression_type_string_map =
     OptionsHelper::compression_type_string_map;
 static auto& block_base_table_index_type_string_map =
     OptionsHelper::block_base_table_index_type_string_map;
+static auto& block_base_table_data_block_index_type_string_map =
+    OptionsHelper::block_base_table_data_block_index_type_string_map;
 static auto& encoding_type_string_map = OptionsHelper::encoding_type_string_map;
 static auto& compaction_style_string_map =
     OptionsHelper::compaction_style_string_map;

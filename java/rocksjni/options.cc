@@ -252,6 +252,20 @@ void Java_org_rocksdb_Options_setWriteBufferSize(JNIEnv* env, jobject /*jobj*/,
 
 /*
  * Class:     org_rocksdb_Options
+ * Method:    setWriteBufferManager
+ * Signature: (JJ)V
+ */
+void Java_org_rocksdb_Options_setWriteBufferManager(JNIEnv* /*env*/, jobject /*jobj*/,
+                                                    jlong joptions_handle,
+                                                    jlong jwrite_buffer_manager_handle) {
+  auto* write_buffer_manager =
+          reinterpret_cast<std::shared_ptr<rocksdb::WriteBufferManager> *>(jwrite_buffer_manager_handle);
+  reinterpret_cast<rocksdb::Options*>(joptions_handle)->write_buffer_manager =
+          *write_buffer_manager;
+}
+
+/*
+ * Class:     org_rocksdb_Options
  * Method:    writeBufferSize
  * Signature: (J)J
  */
@@ -1956,8 +1970,8 @@ jbyte Java_org_rocksdb_Options_compressionType(JNIEnv* /*env*/,
  * @param jcompression_levels A reference to a java byte array
  *     where each byte indicates a compression level
  *
- * @return A unique_ptr to the vector, or unique_ptr(nullptr) if a JNI exception
- * occurs
+ * @return A std::unique_ptr to the vector, or std::unique_ptr(nullptr) if a JNI
+ * exception occurs
  */
 std::unique_ptr<std::vector<rocksdb::CompressionType>>
 rocksdb_compression_vector_helper(JNIEnv* env, jbyteArray jcompression_levels) {
@@ -2079,6 +2093,21 @@ jbyte Java_org_rocksdb_Options_bottommostCompressionType(JNIEnv* /*env*/,
   auto* options = reinterpret_cast<rocksdb::Options*>(jhandle);
   return rocksdb::CompressionTypeJni::toJavaCompressionType(
       options->bottommost_compression);
+}
+
+/*
+ * Class:     org_rocksdb_Options
+ * Method:    setBottommostCompressionOptions
+ * Signature: (JJ)V
+ */
+void Java_org_rocksdb_Options_setBottommostCompressionOptions(
+    JNIEnv* /*env*/, jobject /*jobj*/, jlong jhandle,
+    jlong jbottommost_compression_options_handle) {
+  auto* options = reinterpret_cast<rocksdb::Options*>(jhandle);
+  auto* bottommost_compression_options =
+      reinterpret_cast<rocksdb::CompressionOptions*>(
+          jbottommost_compression_options_handle);
+  options->bottommost_compression_opts = *bottommost_compression_options;
 }
 
 /*
@@ -3230,7 +3259,7 @@ Java_org_rocksdb_ColumnFamilyOptions_setCompactionFilterFactoryHandle(
     JNIEnv* /*env*/, jobject /*jobj*/, jlong jopt_handle,
     jlong jcompactionfilterfactory_handle) {
   auto* cff_factory =
-      reinterpret_cast<std::shared_ptr<rocksdb::CompactionFilterFactory>*>(
+      reinterpret_cast<std::shared_ptr<rocksdb::CompactionFilterFactoryJniCallback>*>(
           jcompactionfilterfactory_handle);
   reinterpret_cast<rocksdb::ColumnFamilyOptions*>(jopt_handle)
       ->compaction_filter_factory = *cff_factory;
@@ -3499,6 +3528,20 @@ jbyte Java_org_rocksdb_ColumnFamilyOptions_bottommostCompressionType(
   auto* cf_options = reinterpret_cast<rocksdb::ColumnFamilyOptions*>(jhandle);
   return rocksdb::CompressionTypeJni::toJavaCompressionType(
       cf_options->bottommost_compression);
+}
+/*
+ * Class:     org_rocksdb_ColumnFamilyOptions
+ * Method:    setBottommostCompressionOptions
+ * Signature: (JJ)V
+ */
+void Java_org_rocksdb_ColumnFamilyOptions_setBottommostCompressionOptions(
+    JNIEnv* /*env*/, jobject /*jobj*/, jlong jhandle,
+    jlong jbottommost_compression_options_handle) {
+  auto* cf_options = reinterpret_cast<rocksdb::ColumnFamilyOptions*>(jhandle);
+  auto* bottommost_compression_options =
+      reinterpret_cast<rocksdb::CompressionOptions*>(
+          jbottommost_compression_options_handle);
+  cf_options->bottommost_compression_opts = *bottommost_compression_options;
 }
 
 /*
@@ -5491,6 +5534,20 @@ void Java_org_rocksdb_DBOptions_setDbWriteBufferSize(
 
 /*
  * Class:     org_rocksdb_DBOptions
+ * Method:    setWriteBufferManager
+ * Signature: (JJ)V
+ */
+void Java_org_rocksdb_DBOptions_setWriteBufferManager(JNIEnv* /*env*/, jobject /*jobj*/,
+                                                      jlong jdb_options_handle,
+                                                      jlong jwrite_buffer_manager_handle) {
+  auto* write_buffer_manager =
+      reinterpret_cast<std::shared_ptr<rocksdb::WriteBufferManager> *>(jwrite_buffer_manager_handle);
+  reinterpret_cast<rocksdb::DBOptions*>(jdb_options_handle)->write_buffer_manager =
+      *write_buffer_manager;
+}
+
+/*
+ * Class:     org_rocksdb_DBOptions
  * Method:    dbWriteBufferSize
  * Signature: (J)J
  */
@@ -6494,6 +6551,31 @@ jlong Java_org_rocksdb_ReadOptions_iterateUpperBound(JNIEnv* /*env*/,
   auto& upper_bound_slice_handle =
       reinterpret_cast<rocksdb::ReadOptions*>(jhandle)->iterate_upper_bound;
   return reinterpret_cast<jlong>(upper_bound_slice_handle);
+}
+
+/*
+ * Class:     org_rocksdb_ReadOptions
+ * Method:    setIterateLowerBound
+ * Signature: (JJ)I
+ */
+void Java_org_rocksdb_ReadOptions_setIterateLowerBound(
+    JNIEnv* /*env*/, jobject /*jobj*/, jlong jhandle,
+    jlong jlower_bound_slice_handle) {
+  reinterpret_cast<rocksdb::ReadOptions*>(jhandle)->iterate_lower_bound =
+      reinterpret_cast<rocksdb::Slice*>(jlower_bound_slice_handle);
+}
+
+/*
+ * Class:     org_rocksdb_ReadOptions
+ * Method:    iterateLowerBound
+ * Signature: (J)J
+ */
+jlong Java_org_rocksdb_ReadOptions_iterateLowerBound(JNIEnv* /*env*/,
+                                                     jobject /*jobj*/,
+                                                     jlong jhandle) {
+  auto& lower_bound_slice_handle =
+      reinterpret_cast<rocksdb::ReadOptions*>(jhandle)->iterate_lower_bound;
+  return reinterpret_cast<jlong>(lower_bound_slice_handle);
 }
 
 /////////////////////////////////////////////////////////////////////

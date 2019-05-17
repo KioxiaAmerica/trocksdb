@@ -11,6 +11,7 @@ LIB_SOURCES =                                                   \
   db/compaction_iterator.cc                                     \
   db/compaction_job.cc                                          \
   db/compaction_picker.cc                                       \
+  db/compaction_picker_fifo.cc                                  \
   db/compaction_picker_universal.cc                             \
   db/convenience.cc                                             \
   db/db_filesnapshot.cc                                         \
@@ -25,6 +26,7 @@ LIB_SOURCES =                                                   \
   db/db_info_dumper.cc                                          \
   db/db_iter.cc                                                 \
   db/dbformat.cc                                                \
+  db/error_handler.cc						\
   db/event_helpers.cc                                           \
   db/experimental.cc                                            \
   db/external_sst_file_ingestion_job.cc                         \
@@ -37,12 +39,12 @@ LIB_SOURCES =                                                   \
   db/log_reader.cc                                              \
   db/log_writer.cc                                              \
   db/malloc_stats.cc                                            \
-  db/managed_iterator.cc                                        \
   db/memtable.cc                                                \
   db/memtable_list.cc                                           \
   db/merge_helper.cc                                            \
   db/merge_operator.cc                                          \
   db/range_del_aggregator.cc                                    \
+  db/range_tombstone_fragmenter.cc                              \
   db/repair.cc                                                  \
   db/snapshot_impl.cc                                           \
   db/table_cache.cc                                             \
@@ -103,6 +105,8 @@ LIB_SOURCES =                                                   \
   table/cuckoo_table_builder.cc                                 \
   table/cuckoo_table_factory.cc                                 \
   table/cuckoo_table_reader.cc                                  \
+  table/data_block_hash_index.cc                                \
+  table/data_block_footer.cc                                    \
   table/flush_block_policy.cc                                   \
   table/format.cc                                               \
   table/full_filter_block.cc                                    \
@@ -118,6 +122,7 @@ LIB_SOURCES =                                                   \
   table/plain_table_index.cc                                    \
   table/plain_table_key_coding.cc                               \
   table/plain_table_reader.cc                                   \
+  table/sst_file_reader.cc                                      \
   table/sst_file_writer.cc                                      \
   table/table_properties.cc                                     \
   table/two_level_iterator.cc                                   \
@@ -140,6 +145,7 @@ LIB_SOURCES =                                                   \
   util/filename.cc                                              \
   util/filter_policy.cc                                         \
   util/hash.cc                                                  \
+  util/jemalloc_nodump_allocator.cc                             \
   util/log_buffer.cc                                            \
   util/murmurhash.cc                                            \
   util/random.cc                                                \
@@ -147,23 +153,23 @@ LIB_SOURCES =                                                   \
   util/slice.cc                                                 \
   util/sst_file_manager_impl.cc                                 \
   util/status.cc                                                \
-  util/status_message.cc                                        \
   util/string_util.cc                                           \
   util/sync_point.cc                                            \
   util/sync_point_impl.cc                                       \
   util/thread_local.cc                                          \
   util/threadpool_imp.cc                                        \
+  util/trace_replay.cc                                          \
   util/transaction_test_util.cc                                 \
   util/xxhash.cc                                                \
   utilities/backupable/backupable_db.cc                         \
   utilities/blob_db/blob_compaction_filter.cc                   \
   utilities/blob_db/blob_db.cc                                  \
   utilities/blob_db/blob_db_impl.cc                             \
+  utilities/blob_db/blob_db_impl_filesnapshot.cc                \
   utilities/blob_db/blob_file.cc                                \
   utilities/blob_db/blob_log_format.cc                          \
   utilities/blob_db/blob_log_reader.cc                          \
   utilities/blob_db/blob_log_writer.cc                          \
-  utilities/blob_db/ttl_extractor.cc                            \
   utilities/cassandra/cassandra_compaction_filter.cc            \
   utilities/cassandra/format.cc                                 \
   utilities/cassandra/merge_operator.cc                         \
@@ -198,6 +204,7 @@ LIB_SOURCES =                                                   \
   utilities/simulator_cache/sim_cache.cc                        \
   utilities/spatialdb/spatial_db.cc                             \
   utilities/table_properties_collectors/compact_on_deletion_collector.cc \
+  utilities/trace/file_trace_reader_writer.cc                   \
   utilities/transactions/optimistic_transaction.cc              \
   utilities/transactions/optimistic_transaction_db_impl.cc      \
   utilities/transactions/pessimistic_transaction.cc             \
@@ -230,6 +237,9 @@ TOOL_LIB_SOURCES = \
   tools/ldb_tool.cc                                             \
   tools/sst_dump_tool.cc                                        \
   utilities/blob_db/blob_dump_tool.cc                           \
+
+ANALYZER_LIB_SOURCES = \
+  tools/trace_analyzer_tool.cc					\
 
 MOCK_LIB_SOURCES = \
   table/mock_table.cc \
@@ -293,6 +303,7 @@ MAIN_SOURCES =                                                          \
   db/dbformat_test.cc                                                   \
   db/deletefile_test.cc                                                 \
   db/env_timed_test.cc                                                  \
+  db/error_handler_test.cc                                        	\
   db/external_sst_file_basic_test.cc                                    \
   db/external_sst_file_test.cc                                          \
   db/fault_injection_test.cc                                            \
@@ -321,6 +332,8 @@ MAIN_SOURCES =                                                          \
   db/redis_test.cc                                                      \
   db/repair_test.cc                                                     \
   db/range_del_aggregator_test.cc                                       \
+  db/range_del_aggregator_bench.cc                                      \
+  db/range_tombstone_fragmenter_test.cc                                 \
   db/table_properties_collector_test.cc                                 \
   db/util_merge_operators_test.cc                                       \
   db/version_builder_test.cc                                            \
@@ -346,8 +359,10 @@ MAIN_SOURCES =                                                          \
   table/cleanable_test.cc                                               \
   table/cuckoo_table_builder_test.cc                                    \
   table/cuckoo_table_reader_test.cc                                     \
+  table/data_block_hash_index_test.cc                                   \
   table/full_filter_block_test.cc                                       \
   table/merger_test.cc                                                  \
+  table/sst_file_reader_test.cc                                         \
   table/table_reader_bench.cc                                           \
   table/table_test.cc                                                   \
   third-party/gtest-1.7.0/fused-src/gtest/gtest-all.cc                  \
@@ -357,6 +372,7 @@ MAIN_SOURCES =                                                          \
   tools/ldb_cmd_test.cc                                                 \
   tools/reduce_levels_test.cc                                           \
   tools/sst_dump_test.cc                                                \
+  tools/trace_analyzer_test.cc						\
   util/arena_test.cc                                                    \
   util/auto_roll_logger_test.cc                                         \
   util/autovector_test.cc                                               \
@@ -368,6 +384,7 @@ MAIN_SOURCES =                                                          \
   util/filelock_test.cc                                                 \
   util/log_write_bench.cc                                               \
   util/rate_limiter_test.cc                                             \
+  util/repeatable_thread_test.cc                                        \
   util/slice_transform_test.cc                                          \
   util/timer_queue_test.cc                                              \
   util/thread_list_test.cc                                              \
@@ -411,6 +428,7 @@ JNI_NATIVE_SOURCES =                                          \
   java/rocksjni/compaction_filter.cc                          \
   java/rocksjni/compaction_filter_factory.cc                  \
   java/rocksjni/compaction_filter_factory_jnicallback.cc      \
+  java/rocksjni/compact_range_options.cc                      \
   java/rocksjni/compaction_options_fifo.cc                    \
   java/rocksjni/compaction_options_universal.cc               \
   java/rocksjni/comparator.cc                                 \
@@ -425,6 +443,7 @@ JNI_NATIVE_SOURCES =                                          \
   java/rocksjni/loggerjnicallback.cc                          \
   java/rocksjni/lru_cache.cc                                  \
   java/rocksjni/memtablejni.cc                                \
+  java/rocksjni/memory_util.cc                                \
   java/rocksjni/merge_operator.cc                             \
   java/rocksjni/native_comparator_wrapper_test.cc             \
   java/rocksjni/optimistic_transaction_db.cc                  \
@@ -457,4 +476,5 @@ JNI_NATIVE_SOURCES =                                          \
   java/rocksjni/write_batch.cc                                \
   java/rocksjni/writebatchhandlerjnicallback.cc               \
   java/rocksjni/write_batch_test.cc                           \
-  java/rocksjni/write_batch_with_index.cc
+  java/rocksjni/write_batch_with_index.cc                     \
+  java/rocksjni/write_buffer_manager.cc
