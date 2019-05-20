@@ -882,8 +882,9 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   // the AddTombstones calls will be propagated down to the v1 aggregator.
   std::unique_ptr<CompactionRangeDelAggregator> range_del_agg(
       new CompactionRangeDelAggregator(&cfd->internal_comparator(), existing_snapshots_));
+  // Although the v2 aggregator is what the level iterator(s) know about,
   std::unique_ptr<InternalIterator> input(versions_->MakeInputIterator(
-      sub_compact->compaction, &range_del_agg, env_optiosn_for_read_));
+      sub_compact->compaction, &range_del_agg.get(), env_optiosn_for_read_));
 #endif
 
   AutoThreadOperationStageUpdater stage_updater(
