@@ -722,11 +722,6 @@ class DBTestBase : public testing::Test {
 
     // This must be the last line
     kEnd,
-
-    // TODO: This option although been there for a while was disable due to a
-    // mistake. Enabling it makes somem tests to fail. We should enable it and
-    // fix the unit tests.
-    kUniversalSubcompactions,
   };
 
  public:

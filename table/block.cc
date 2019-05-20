@@ -154,9 +154,6 @@ void DataBlockIter::Prev() {
 
     current_ = current_prev_entry.offset;
     key_.SetKey(current_key, false /* copy */);
-    } else {
-      key_.SetUserKey(current_key, false /* copy */);
-    }
     value_ = current_prev_entry.value;
 
     return;
@@ -206,10 +203,6 @@ void DataBlockIter::Prev() {
 
 void DataBlockIter::Seek(const Slice& target) {
   Slice seek_key = target;
-  Slice seek_key = target;
-  if (!key_includes_seq_) {
-    seek_key = ExtractUserKey(target);
-  }
   PERF_TIMER_GUARD(block_seek_nanos);
   if (data_ == nullptr) {  // Not init yet
     return;
@@ -336,10 +329,8 @@ bool DataBlockIter::SeekForGetImpl(const Slice& target) {
 
   // Here we are conservative and only support a limited set of cases
   ValueType value_type = ExtractValueType(key_.GetKey());
-  if (value_type != ValueType::kTypeValue &&
-      value_type != ValueType::kTypeDeletion &&
-      value_type != ValueType::kTypeSingleDeletion &&
-      value_type != ValueType::kTypeBlobIndex) {
+
+  if (!IsTypeNotOpaqueForSeek(value_type)){
     Seek(target);
     return true;
   }
@@ -479,9 +470,6 @@ bool DataBlockIter::ParseNextDataKey(const char* limit) {
       // If this key dont share any bytes with prev key then we dont need
       // to decode it and can use it's address in the block directly.
       key_.SetKey(Slice(p, non_shared), false /* copy */);
-      } else {
-        key_.SetUserKey(Slice(p, non_shared), false /* copy */);
-      }
       key_pinned_ = true;
     } else {
       // This key share `shared` bytes with prev key, we need to decode it

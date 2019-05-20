@@ -12,8 +12,9 @@ std::vector<std::string> rocksdb_kill_prefix_blacklist;
 #ifndef NDEBUG
 namespace rocksdb {
 
-SyncPoint:: ~SyncPoint() {
-  delete impl_;
+SyncPoint* SyncPoint::GetInstance() {
+  static SyncPoint sync_point;
+  return &sync_point;
 }
 
 SyncPoint::SyncPoint() : impl_(new Data) {}

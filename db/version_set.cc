@@ -943,7 +943,7 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
 #ifdef INDIRECT_VALUE_SUPPORT_OBSOLETE   // add the earliest_ref to the column metadata transferred from LevelFiles
           ,file->indirect_ref_0
 #endif
-          );
+          });
       files.back().num_entries = file->num_entries;
       files.back().num_deletions = file->num_deletions;
       level_size += file->fd.GetFileSize();
@@ -1234,8 +1234,6 @@ Version::Version(ColumnFamilyData* column_family_data, VersionSet* vset,
       refs_(0),
       env_options_(env_opt),
       mutable_cf_options_(mutable_cf_options),
-      version_number_(version_number) {}
-
       version_number_(version_number) {
 #if DEBLEVEL&32
 printf("Version: %p\n",this);
@@ -1293,7 +1291,6 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
     *status = table_cache_->Get(
         read_options, *internal_comparator(), *f->file_metadata, ikey,
         &get_context, mutable_cf_options_.prefix_extractor.get(),
-        mutable_cf_options_.prefix_extractor.get(),
         cfd_->internal_stats()->GetFileReadHist(fp.GetHitFileLevel()),
         IsFilterSkipped(static_cast<int>(fp.GetHitFileLevel()),
                         fp.IsHitFileLastInLevel()),
@@ -1311,7 +1308,7 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
     if (get_context.State() != GetContext::kNotFound &&
         get_context.State() != GetContext::kMerge &&
         db_statistics_ != nullptr) {
-      get_context.ReportCounters();
+      get_context.TransferCounters(db_statistics_);  // move local stats to shared
     }
     switch (get_context.State()) {
       case GetContext::kNotFound:
@@ -1348,7 +1345,7 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
   }
 
   if (db_statistics_ != nullptr) {
-    get_context.ReportCounters();
+    get_context.TransferCounters(db_statistics_);  // move local stats to shared 
   }
   if (GetContext::kMerge == get_context.State()) {
     if (!merge_operator_) {
@@ -3101,7 +3098,7 @@ Status VersionSet::ProcessManifestWrites(
       assert(!builder_guards.empty() &&
              builder_guards.size() == versions.size());
       auto* builder = builder_guards[i]->version_builder();
-      builder->SaveTo(versions[i]->storage_info(),column_family_data);
+      builder->SaveTo(versions[i]->storage_info(),last_writer->cfd);   // scaf must get the correct cf info
 #ifdef INDIRECT_VALUE_SUPPORT
     accum_vlog_edits = builder->VLogAdditions();  // save the VLog edits to be applied later
 #endif
@@ -3170,7 +3167,6 @@ Status VersionSet::ProcessManifestWrites(
     EnvOptions opt_env_opts = env_->OptimizeForManifestWrite(env_options_);
     // Before releasing mutex, make a copy of mutable_cf_options and pass to
     // `PrepareApply` to avoided a potential data race with backgroundflush
-    MutableCFOptions mutable_cf_options_copy(mutable_cf_options);
     mu->Unlock();
 
     TEST_SYNC_POINT("VersionSet::LogAndApply:WriteManifest");
@@ -3231,13 +3227,13 @@ Status VersionSet::ProcessManifestWrites(
     // The VLog changes include deleting files that have passed out of the new Version.  These files are
     // detected here.  These changes must be put into both the current database and the manifest.  We do this
     // by folding them into the last edit_batch entry and also the current CF.
-    if(column_family_data!=nullptr && column_family_data->vlog()) {  // if the column doesn't exist yet, don't collect stats on it.  Do if it is being dropped, though
+    if(last_writer->cfd!=nullptr && last_writer->cfd->vlog()) {  // if the column doesn't exist yet, don't collect stats on it.  Do if it is being dropped, though   scaf need correct column info
       std::vector<VLogRingRestartInfo> vlog_deletions;
-      DetectVLogDeletions(column_family_data,&vlog_deletions);    // compute the deletions
+      DetectVLogDeletions(last_writer->cfd,&vlog_deletions);    // compute the deletions  scaf need correct column
       Coalesce(batch_edits.back()->vlog_additions,vlog_deletions,true);  // apply them to the current edits
       Coalesce(accum_vlog_edits,vlog_deletions,true);  // add deletions into accumulated edits
-      column_family_data->vlog()->MarkVlogFilesDeletable(accum_vlog_edits);  // We have installed the SSTs; now allow VLogfile to be deleted
-      Coalesce(column_family_data->vloginfo(),accum_vlog_edits,false);   // apply accum edits, including deletions, to database.  false means 'don't include the delete', used for the CF version
+      last_writer->cfd->vlog()->MarkVlogFilesDeletable(accum_vlog_edits);  // We have installed the SSTs; now allow VLogfile to be deleted   scaf correct column
+      Coalesce(last_writer->cfd->vloginfo(),accum_vlog_edits,false);   // apply accum edits, including deletions, to database.  false means 'don't include the delete', used for the CF version  scaf correct column
 #if DEBLEVEL&0x1000
       {printf("VlogInfo before writing manifest: ");
          std::vector<VLogRingRestartInfo> *vring = &column_family_data->vloginfo();
@@ -3327,10 +3323,6 @@ Status VersionSet::ProcessManifestWrites(
           max_log_number_in_batch =
               std::max(max_log_number_in_batch, e->log_number_);
         }
-        if (e->has_min_log_number_to_keep_) {
-          last_min_log_number_to_keep =
-              std::max(last_min_log_number_to_keep, e->min_log_number_to_keep_);
-      }
       }
       if (max_log_number_in_batch != 0) {
           assert(version->cfd_->GetLogNumber() <= max_log_number_in_batch);
@@ -3616,6 +3608,17 @@ Status VersionSet::ApplyOneVersionEdit(
     auto builder = builders.find(edit.column_family_);
     assert(builder != builders.end());
     builder->second->version_builder()->Apply(&edit);
+#ifdef INDIRECT_VALUE_SUPPORT
+
+    if(edit.vlog_additions.size())   // If this edit contains vlog info
+      Coalesce(cfd->vloginfo(), edit.vlog_additions, false);  // fold them into the CF, eliding any deletion record
+#if DEBLEVEL&0x800
+    {printf("Recover: edit record: ");
+       const std::vector<VLogRingRestartInfo> *vring = &edit.vlog_additions;
+       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, space amp=%5.2f, files=",i,(*vring)[i].size,(*vring)[i].frag,((double)(*vring)[i].size)/(1+(*vring)[i].size-(*vring)[i].frag));for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
+    }
+#endif
+#endif
   }
 
   if (cfd != nullptr) {
@@ -3762,6 +3765,8 @@ Status VersionSet::Recover(
         break;
       }
 
+      ColumnFamilyData* cfd = nullptr;
+
       if (edit.is_in_atomic_group_) {
         if (replay_buffer.empty()) {
           replay_buffer.resize(edit.remaining_entries_ + 1);
@@ -3788,41 +3793,33 @@ Status VersionSet::Recover(
                 &have_last_sequence, &last_sequence, &min_log_number_to_keep,
                 &max_column_family);
             if (!s.ok()) {
-          break;
-        }
-      }
+              break;
+            }
+          }
           replay_buffer.clear();
           num_entries_decoded = 0;
         }
         TEST_SYNC_POINT("VersionSet::Recover:AtomicGroup");
-          } else {
+      } else {
         if (!replay_buffer.empty()) {
           TEST_SYNC_POINT_CALLBACK(
               "VersionSet::Recover:AtomicGroupMixedWithNormalEdits", &edit);
           s = Status::Corruption("corrupted atomic group");
           break;
-          }
+        }
+        cfd = column_family_set_->GetColumnFamily(edit.column_family_);  // scaf where do we get cf from?
         s = ApplyOneVersionEdit(
             edit, cf_name_to_options, column_families_not_found, builders,
             &have_log_number, &log_number, &have_prev_log_number,
             &previous_log_number, &have_next_file, &next_file,
             &have_last_sequence, &last_sequence, &min_log_number_to_keep,
             &max_column_family);
-        }
+      }
       if (!s.ok()) {
-          break;
-        }
-
-#ifdef INDIRECT_VALUE_SUPPORT
-      if(edit.vlog_additions.size())   // If this edit contains vlog info
-        Coalesce(cfd->vloginfo(), edit.vlog_additions, false);  // fold them into the CF, eliding any deletion record
-#if DEBLEVEL&0x800
-    {printf("Recover: edit record: ");
-       const std::vector<VLogRingRestartInfo> *vring = &edit.vlog_additions;
-       for(int i=0;i<vring->size();++i){printf("ring %d: size=%zd, frag=%zd, space amp=%5.2f, files=",i,(*vring)[i].size,(*vring)[i].frag,((double)(*vring)[i].size)/(1+(*vring)[i].size-(*vring)[i].frag));for(int j=0;j<(*vring)[i].valid_files.size();++j){printf("%zd ",(*vring)[i].valid_files[j]);};printf("\n");}
+        break;
+      }
     }
-#endif
-#endif
+  }
 
   if (s.ok()) {
     if (!have_next_file) {

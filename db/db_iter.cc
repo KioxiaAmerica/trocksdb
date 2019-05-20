@@ -1393,8 +1393,6 @@ bool DBIter::FindUserKeyBeforeSavedKey() {
   return true;
 }
 
-  return true;
-}
 
 bool DBIter::TooManyInternalKeysSkipped(bool increment) {
   if ((max_skippable_internal_keys_ > 0) &&

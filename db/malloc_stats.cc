@@ -19,7 +19,6 @@
 namespace rocksdb {
 
 #ifdef ROCKSDB_JEMALLOC
-#endif
 
 #ifdef JEMALLOC_NO_RENAME
 #define malloc_stats_print je_malloc_stats_print
@@ -41,7 +40,6 @@ static void GetJemallocStatus(void* mstat_arg, const char* status) {
   snprintf(mstat->cur, buf_size, "%s", status);
   mstat->cur += status_len;
 }
-#ifdef ROCKSDB_JEMALLOC
 void DumpMallocStats(std::string* stats) {
   if (!HasJemalloc()) {
     return;

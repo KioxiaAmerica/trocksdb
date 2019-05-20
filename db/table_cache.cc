@@ -42,7 +42,7 @@ static void UnrefEntry(void* arg1, void* arg2) {
   cache->Release(h);
 }
 
-static void DeleteTableReader(void* arg1, void* /*arg2*/) {
+static void DeleteTableReader(void* arg1, void* arg2) {
   TableReader* table_reader = reinterpret_cast<TableReader*>(arg1);
   Statistics* stats = reinterpret_cast<Statistics*>(arg2);
   RecordTick(stats, NO_FILE_CLOSES);

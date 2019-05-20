@@ -37,7 +37,6 @@ PartitionedFilterBlockBuilder::PartitionedFilterBlockBuilder(
       index_on_filter_block_builder_without_seq_(index_block_restart_interval,
                                                  true /*use_delta_encoding*/,
                                                  use_value_delta_encoding),
-      index_on_filter_block_builder_without_seq_(index_block_restart_interval),
       p_index_builder_(p_index_builder),
       filters_in_partition_(0),
       num_added_(0) {

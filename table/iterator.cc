@@ -180,7 +180,7 @@ InternalIteratorBase<TValue>* NewErrorInternalIterator(const Status& status,
   if (arena == nullptr) {
     return NewErrorInternalIterator<TValue>(status);
   } else {
-    auto mem = arena->AllocateAligned(sizeof(EmptyInternalIterator));
+    auto mem = arena->AllocateAligned(sizeof(EmptyIterator));
     return new (mem) EmptyInternalIterator<TValue>(status);
   }
 }

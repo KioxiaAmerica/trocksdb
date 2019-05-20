@@ -1402,9 +1402,6 @@ void DBTestBase::validateNumberOfEntries(int numValues, int cf) {
   // This should be defined after range_del_agg so that it destructs the
   // assigned iterator before it range_del_agg is already destructed.
   ScopedArenaIterator iter;
-  // This should be defined after range_del_agg so that it destructs the
-  // assigned iterator before it range_del_agg is already destructed.
-  ScopedArenaIterator iter;
   if (cf != 0) {
     iter.set(dbfull()->NewInternalIterator(&arena, &range_del_agg,
                                            kMaxSequenceNumber, handles_[cf]));

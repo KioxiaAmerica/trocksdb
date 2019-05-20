@@ -5776,26 +5776,13 @@ TEST_F(DBTest, HardLimit) {
 #if !defined(ROCKSDB_LITE) && !defined(ROCKSDB_DISABLE_STALL_NOTIFICATION)
 class WriteStallListener : public EventListener {
  public:
-  WriteStallListener()
-      : cond_(&mutex_),
-        condition_(WriteStallCondition::kNormal),
-        expected_(WriteStallCondition::kNormal),
-        expected_set_(false) {}
+  WriteStallListener() : condition_(WriteStallCondition::kNormal) {}
   void OnStallConditionsChanged(const WriteStallInfo& info) override {
     MutexLock l(&mutex_);
-    condition_ = info.condition.cur;
-    if (expected_set_ && condition_ == expected_) {
-      cond_.Signal();
-      expected_set_ = false;
-    }
   }
   bool CheckCondition(WriteStallCondition expected) {
     MutexLock l(&mutex_);
     return expected == condition_;
-        }
-      }
-    }
-    return true;
   }
  private:
   port::Mutex   mutex_;

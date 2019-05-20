@@ -977,7 +977,6 @@ TEST_P(DBIteratorTest, DBIteratorBoundTest) {
     ASSERT_EQ(static_cast<int>(get_perf_context()->internal_delete_skipped_count), 0);
   }
 }
-#endif
 
 TEST_P(DBIteratorTest, DBIteratorBoundMultiSeek) {
   Options options = CurrentOptions();

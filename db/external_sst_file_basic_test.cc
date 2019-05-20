@@ -680,7 +680,6 @@ TEST_F(ExternalSSTFileBasicTest, FadviseTrigger) {
 
 TEST_P(ExternalSSTFileBasicTest, IngestionWithRangeDeletions) {
   int kNumLevels = 7;
-  int kNumLevels = 7;
   Options options = CurrentOptions();
   options.disable_auto_compactions = true;
   options.num_levels = kNumLevels;

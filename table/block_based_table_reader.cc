@@ -87,7 +87,6 @@ Status ReadBlockFromFile(
                              maybe_compressed, compression_dict, cache_options,
                              memory_allocator);
   Status s = block_fetcher.ReadBlockContents();
-  Status s = block_fetcher.ReadBlockContents();
   if (s.ok()) {
     result->reset(new Block(std::move(contents), global_seqno,
                             read_amp_bytes_per_bit, ioptions.statistics));
@@ -774,7 +773,6 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
                              uint64_t file_size,
                              std::unique_ptr<TableReader>* table_reader,
                              const SliceTransform* prefix_extractor,
-                             const SliceTransform* prefix_extractor,
                              const bool prefetch_index_and_filter_in_cache,
                              const bool skip_filters, const int level,
                              const bool immortal_table,
@@ -1304,7 +1302,6 @@ Status BlockBasedTable::GetDataBlockFromCache(
             RecordTick(statistics, BLOCK_CACHE_INDEX_ADD);
             RecordTick(statistics, BLOCK_CACHE_INDEX_BYTES_INSERT, charge);
           }
-          }
         } else {
           if (get_context != nullptr) {
             get_context->get_context_stats_.num_cache_data_add++;
@@ -1407,11 +1404,6 @@ Status BlockBasedTable::PutDataBlockToCache(
         get_context->get_context_stats_.num_cache_add++;
         get_context->get_context_stats_.num_cache_bytes_write += charge;
       } else {
-      if (get_context != nullptr) {
-        get_context->RecordCounters(BLOCK_CACHE_ADD, 1);
-        get_context->RecordCounters(BLOCK_CACHE_BYTES_WRITE,
-                                    block->value->usable_size());
-      } else {
         RecordTick(statistics, BLOCK_CACHE_ADD);
         RecordTick(statistics, BLOCK_CACHE_BYTES_WRITE, charge);
       }
@@ -1423,7 +1415,6 @@ Status BlockBasedTable::PutDataBlockToCache(
         } else {
           RecordTick(statistics, BLOCK_CACHE_INDEX_ADD);
           RecordTick(statistics, BLOCK_CACHE_INDEX_BYTES_INSERT, charge);
-        }
         }
       } else {
         if (get_context != nullptr) {
@@ -1683,10 +1674,6 @@ InternalIteratorBase<BlockHandle>* BlockBasedTable::NewIndexIterator(
         get_context->get_context_stats_.num_cache_add++;
         get_context->get_context_stats_.num_cache_bytes_write += charge;
       } else {
-      if (get_context != nullptr) {
-        get_context->RecordCounters(BLOCK_CACHE_ADD, 1);
-        get_context->RecordCounters(BLOCK_CACHE_BYTES_WRITE, usable_size);
-      } else {
         RecordTick(statistics, BLOCK_CACHE_ADD);
         RecordTick(statistics, BLOCK_CACHE_BYTES_WRITE, charge);
       }
@@ -1776,7 +1763,6 @@ TBlockIter* BlockBasedTable::NewDataBlockIterator(
           is_index ? kDisableGlobalSequenceNumber : rep->global_seqno,
           rep->table_options.read_amp_bytes_per_bit,
           GetMemoryAllocator(rep->table_options));
-    }
     }
     if (s.ok()) {
       block.value = block_value.release();
@@ -2676,7 +2662,6 @@ Status BlockBasedTable::VerifyChecksumInBlocks(
         ReadOptions(), handle, &contents, rep_->ioptions,
         false /* decompress */, false /*maybe_compressed*/,
         dummy_comp_dict /*compression dict*/, rep_->persistent_cache_options);
-    s = block_fetcher.ReadBlockContents();
     s = block_fetcher.ReadBlockContents();
     if (!s.ok()) {
       break;

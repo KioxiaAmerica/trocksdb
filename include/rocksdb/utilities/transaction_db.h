@@ -162,20 +162,6 @@ struct TransactionDBWriteOptimizations {
   bool skip_duplicate_key_check = false;
 };
 
-// The per-write optimizations that do not involve transactions. TransactionDB
-// implementation might or might not make use of the specified optimizations.
-struct TransactionDBWriteOptimizations {
-  // If it is true it means that the application guarantees that the
-  // key-set in the write batch do not conflict with any concurrent transaction
-  // and hence the concurrency control mechanism could be skipped for this
-  // write.
-  bool skip_concurrency_control = false;
-  // If true, the application guarantees that there is no duplicate <column
-  // family, key> in the write batch and any employed mechanism to handle
-  // duplicate keys could be skipped.
-  bool skip_duplicate_key_check = false;
-};
-
 struct KeyLockInfo {
   std::string key;
   std::vector<TransactionID> ids;

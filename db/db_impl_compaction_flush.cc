@@ -2470,7 +2470,7 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
         c->edit()->DeleteFile(c->level(l), f);
         c->edit()->AddFile(c->output_level(), f->fd.GetNumber(),
                            f->fd.GetPathId(), f->fd.GetFileSize(), f->smallest,
-                           f->largest, f->smallest_seqno, f->largest_seqno,
+                           f->largest, f->fd.smallest_seqno, f->fd.largest_seqno,
                            f->marked_for_compaction
 #ifdef INDIRECT_VALUE_SUPPORT
                            ,f->indirect_ref_0

@@ -599,10 +599,6 @@ static std::vector<int> FLAGS_max_bytes_for_level_multiplier_additional_v;
 DEFINE_string(max_bytes_for_level_multiplier_additional, "",
               "A vector that specifies additional fanout per level");
 
-static std::vector<DbPath> FLAGS_db_paths_v;
-DEFINE_string(db_paths, "",
-              "A vector that specifies db_paths");
-
 DEFINE_int32(level0_stop_writes_trigger,
              rocksdb::Options().level0_stop_writes_trigger,
              "Number of files in level-0"
@@ -617,8 +613,6 @@ DEFINE_int32(level0_file_num_compaction_trigger,
              rocksdb::Options().level0_file_num_compaction_trigger,
              "Number of files in level-0"
              " when compactions start");
-
-DEFINE_int32(arena_block_size, 0, "Arena Block Size.");
 
 static bool ValidateInt32Percent(const char* flagname, int32_t value) {
   if (value <= 0 || value>=100) {
@@ -3483,15 +3477,11 @@ void VerifyDBFromDB(std::string& truth_db_name) {
       options.max_bytes_for_level_multiplier_additional =
         FLAGS_max_bytes_for_level_multiplier_additional_v;
     }
-    if (FLAGS_db_paths_v.size() > 0) {
-      options.db_paths = FLAGS_db_paths_v;
-    }
     options.level0_stop_writes_trigger = FLAGS_level0_stop_writes_trigger;
     options.level0_file_num_compaction_trigger =
         FLAGS_level0_file_num_compaction_trigger;
     options.level0_slowdown_writes_trigger =
       FLAGS_level0_slowdown_writes_trigger;
-    options.arena_block_size = FLAGS_arena_block_size;
 #ifdef INDIRECT_VALUE_SUPPORT
     options.allow_trivial_move = FLAGS_allow_trivial_move;
     options.compaction_score_limit_L0 = FLAGS_compaction_score_limit_L0;
@@ -5888,30 +5878,6 @@ int db_bench_tool(int argc, char** argv) {
 #else
         stoi(fanout[j]));
 #endif
-  }
-
-  std::vector<std::string> fanout_dbpaths = rocksdb::StringSplit(
-    FLAGS_db_paths, ':');
-  for (size_t j = 0; j < fanout_dbpaths.size(); j++) {
-    std::string dbpath_str = fanout_dbpaths[j];
-    //Convert dbpath_str to DbPath(path,size)
-    std::vector<std::string> fanout_p = rocksdb::StringSplit(dbpath_str, ',');
-    if (fanout_p.size() != 2) {
-      fprintf(stderr, "Insufficient number of fanouts specified %d\n",
-              (int)fanout_p.size());
-      exit(1);
-    }
-    const std::string path = fanout_p[0];
-    uint64_t sz;
-#ifndef CYGWIN
-        //std::stoi(fanout_p[1]);
-        std::istringstream iss(fanout_p[1]);
-#else
-	//stoi(fanout_p[1]);
-        istringstream iss(fanout_p[1]);
-#endif
-    iss >> sz;
-    FLAGS_db_paths_v.emplace_back(path,sz);
   }
 
 #ifdef INDIRECT_VALUE_SUPPORT

@@ -77,19 +77,6 @@ ParsedInternalKey UncutEndpoint(const Slice& s) {
 
 ParsedInternalKey InternalValue(const Slice& key, SequenceNumber seq) {
   return ParsedInternalKey(key, seq, kTypeValue);
-  }
-  std::unique_ptr<test::VectorIterator> range_del_iter(
-      new test::VectorIterator(keys, values));
-  range_del_agg.AddTombstones(std::move(range_del_iter));
-  for (size_t i = 1; i < expected_points.size(); ++i) {
-    bool overlapped = range_del_agg.IsRangeOverlapped(
-        expected_points[i - 1].begin, expected_points[i].begin);
-    if (expected_points[i - 1].seq > 0 || expected_points[i].seq > 0) {
-      ASSERT_TRUE(overlapped);
-    } else {
-      ASSERT_FALSE(overlapped);
-    }
-  }
 }
 
 void VerifyIterator(

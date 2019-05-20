@@ -131,18 +131,13 @@ Status DBImpl::PromoteL0(ColumnFamilyHandle* column_family, int target_level) {
       edit.DeleteFile(0, f);
       edit.AddFile(target_level, f->fd.GetNumber(), f->fd.GetPathId(),
                    f->fd.GetFileSize(), f->smallest, f->largest,
-<<<<<<< HEAD
-                   f->smallest_seqno, f->largest_seqno,
+                   f->fd.smallest_seqno, f->fd.largest_seqno,
                    f->marked_for_compaction
 #ifdef INDIRECT_VALUE_SUPPORT
                    ,f->indirect_ref_0
                    ,f->avgparentfileno
 #endif
                    );
-=======
-                   f->fd.smallest_seqno, f->fd.largest_seqno,
-                   f->marked_for_compaction);
->>>>>>> origin/5.18.tr
     }
 
     status = versions_->LogAndApply(cfd, *cfd->GetLatestMutableCFOptions(),

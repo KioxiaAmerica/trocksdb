@@ -238,7 +238,11 @@ void GetExpectedTableProperties(
     const int kPutsPerTable, const int kDeletionsPerTable,
     const int kMergeOperandsPerTable, const int kRangeDeletionsPerTable,
     const int kTableCount, const int kBloomBitsPerKey, const size_t kBlockSize,
-    const bool index_key_is_user_key, const bool value_delta_encoding) {
+    const bool index_key_is_user_key, const bool value_delta_encoding
+#ifdef INDIRECT_VALUE_SUPPORT
+    ,std::vector<int32_t> vringlevels
+#endif
+  ) {
   const int kKeysPerTable =
       kPutsPerTable + kDeletionsPerTable + kMergeOperandsPerTable;
   const int kPutCount = kTableCount * kPutsPerTable;
@@ -249,9 +253,7 @@ void GetExpectedTableProperties(
   const int kAvgSuccessorSize = kKeySize / 5;
   int kEncodingSavePerKey = kKeySize / 4;
 #ifdef INDIRECT_VALUE_SUPPORT
-  if(options.vlogring_activation_level.size())kEncodingSavePerKey = std::min(2,kKeySize / 10);  // empirical.  Using random keys it's very unlikely to share bytes
-#else
-  (void)options;
+  if(vringlevels.size())kEncodingSavePerKey = std::min(2,kKeySize / 10);  // empirical.  Using random keys it's very unlikely to share bytes
 #endif //INDIRECT_VALUE_SUPPORT
   expected_tp->raw_key_size =
       (kKeyCount + kRangeDeletionCount) * (kKeySize + 8);
@@ -267,9 +269,9 @@ void GetExpectedTableProperties(
   expected_tp->data_size =
       kTableCount * (kKeysPerTable * (kKeySize + 8 + kValueSize));
 #ifdef INDIRECT_VALUE_SUPPORT
-  if(options.vlogring_activation_level.size())expected_tp->data_size =
+  if(vringlevels.size())expected_tp->data_size =
       kTableCount * (kKeysPerTable * (1 + kKeySize + 8 + 1 + kValueSize));
-  if(options.vlogring_activation_level.size())expected_tp->num_data_blocks =
+  if(vringlevels.size())expected_tp->num_data_blocks =
       kTableCount *
       (1 + kKeysPerTable / (kBlockSize / (1 + kKeySize + 8 - kEncodingSavePerKey + 1 + kValueSize)));
 #endif //INDIRECT_VALUE_SUPPORT
@@ -392,7 +394,11 @@ TEST_F(DBPropertiesTest, AggregatedTableProperties) {
         &expected_tp, kKeySize, kValueSize, kPutsPerTable, kDeletionsPerTable,
         kMergeOperandsPerTable, kRangeDeletionsPerTable, kTableCount,
         kBloomBitsPerKey, table_options.block_size, index_key_is_user_key,
-        value_is_delta_encoded);
+        value_is_delta_encoded
+#ifdef INDIRECT_VALUE_SUPPORT
+    ,options.vlogring_activation_level
+#endif
+);
 
     VerifyTableProperties(expected_tp, output_tp);
   }
@@ -611,7 +617,11 @@ TEST_F(DBPropertiesTest, AggregatedTablePropertiesAtLevel) {
           &expected_tp, kKeySize, kValueSize, kPutsPerTable, kDeletionsPerTable,
           kMergeOperandsPerTable, kRangeDeletionsPerTable, table,
           kBloomBitsPerKey, table_options.block_size, index_key_is_user_key,
-          value_is_delta_encoded);
+          value_is_delta_encoded
+#ifdef INDIRECT_VALUE_SUPPORT
+          ,options.vlogring_activation_level
+#endif
+);
       // Gives larger bias here as index block size, filter block size,
       // and data block size become much harder to estimate in this test.
       double nblocksbias = 0.25;  // with small values, nblocks is small and has large fractional error

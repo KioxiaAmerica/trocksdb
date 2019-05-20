@@ -15,38 +15,6 @@
 
 namespace rocksdb {
 
-#ifndef ROCKSDB_LITE
-CompactionEventListener::CompactionListenerValueType fromInternalValueType(
-    ValueType vt) {
-  switch (vt) {
-    case kTypeDeletion:
-      return CompactionEventListener::CompactionListenerValueType::kDelete;
-    case kTypeValue:
-      return CompactionEventListener::CompactionListenerValueType::kValue;
-    case kTypeMerge:
-      return CompactionEventListener::CompactionListenerValueType::
-          kMergeOperand;
-    case kTypeSingleDeletion:
-      return CompactionEventListener::CompactionListenerValueType::
-          kSingleDelete;
-    case kTypeRangeDeletion:
-      return CompactionEventListener::CompactionListenerValueType::kRangeDelete;
-    case kTypeBlobIndex:
-      return CompactionEventListener::CompactionListenerValueType::kBlobIndex;
-#ifdef INDIRECT_VALUE_SUPPORT  // create listener events for indirect types
-    case kTypeIndirectValue:
-return CompactionEventListener::CompactionListenerValueType::kIndirectValue;
-    case kTypeIndirectMerge:
-      return CompactionEventListener::CompactionListenerValueType::
-          kIndirectMergeOperand;
-#endif
-    default:
-      assert(false);
-      return CompactionEventListener::CompactionListenerValueType::kInvalid;
-  }
-}
-#endif  // ROCKSDB_LITE
-
 CompactionIterator::CompactionIterator(
     InternalIterator* input, const Comparator* cmp, MergeHelper* merge_helper,
     SequenceNumber last_sequence, std::vector<SequenceNumber>* snapshots,

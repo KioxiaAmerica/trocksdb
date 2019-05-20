@@ -864,11 +864,11 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   assert(sub_compact != nullptr);
   ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
 #ifdef INDIRECT_VALUE_SUPPORT
-  std::unique_ptr<RangeDelAggregator> range_del_agg;
+  std::unique_ptr<CompactionRangeDelAggregator> range_del_agg;
   std::unique_ptr<InternalIterator> input;
   if(const_cast<Compaction*>(sub_compact->compaction)->compaction_reason() != CompactionReason::kActiveRecycling) {
     // normal case, using the merging iterator
-    range_del_agg.reset(new RangeDelAggregator(cfd->internal_comparator(), existing_snapshots_));
+    range_del_agg.reset(new CompactionRangeDelAggregator(&cfd->internal_comparator(), existing_snapshots_));
     input.reset(versions_->MakeInputIterator(sub_compact->compaction, range_del_agg.get(),env_optiosn_for_read_));
   } else {
     // Active Recycling, using the RecyclingIterator
@@ -877,10 +877,14 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   }
 
 #else
-  std::unique_ptr<RangeDelAggregator> range_del_agg(
-      new RangeDelAggregator(cfd->internal_comparator(), existing_snapshots_));
+
+  // Although the v2 aggregator is what the level iterator(s) know about,
+  // the AddTombstones calls will be propagated down to the v1 aggregator.
+  std::unique_ptr<CompactionRangeDelAggregator> range_del_agg(
+      new CompactionRangeDelAggregator(&cfd->internal_comparator(), existing_snapshots_));
   std::unique_ptr<InternalIterator> input(versions_->MakeInputIterator(
       sub_compact->compaction, &range_del_agg, env_optiosn_for_read_));
+#endif
 
   AutoThreadOperationStageUpdater stage_updater(
       ThreadStatus::STAGE_COMPACTION_PROCESS_KV);
@@ -974,7 +978,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       input.get(), cfd->user_comparator(), &merge, versions_->LastSequence(),
       &existing_snapshots_, earliest_write_conflict_snapshot_,
       snapshot_checker_, env_, ShouldReportDetailedTime(env_, stats_), false,
-      &range_del_agg, sub_compact->compaction, compaction_filter,
+      range_del_agg.get(), sub_compact->compaction, compaction_filter,
       shutting_down_, preserve_deletes_seqnum_));
   auto c_iter = sub_compact->c_iter.get();
   c_iter->SeekToFirst();
@@ -1188,7 +1192,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
 #endif
       CompactionIterationStats range_del_out_stats;
       status =
-          FinishCompactionOutputFile(input_status, sub_compact, &range_del_agg,
+          FinishCompactionOutputFile(input_status, sub_compact, range_del_agg.get(),
                                           &range_del_out_stats, next_key);
       RecordDroppedKeys(range_del_out_stats,
                         &sub_compact->compaction_job_stats);
@@ -1242,7 +1246,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
 #ifdef INDIRECT_VALUE_SUPPORT
       range_del_agg!=nullptr &&
 #endif
-      sub_compact->outputs.size() == 0 && !range_del_agg.IsEmpty()) {
+      sub_compact->outputs.size() == 0 && !range_del_agg->IsEmpty()) {
     // handle subcompaction containing only range deletions
     status = OpenCompactionOutputFile(sub_compact);
   }
@@ -1263,7 +1267,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
     sub_compact->current_output()->meta.InstallRef0(sub_compact->compaction->output_level(),ref0,cfd);
 #endif
     CompactionIterationStats range_del_out_stats;
-    Status s = FinishCompactionOutputFile(status, sub_compact, &range_del_agg,
+    Status s = FinishCompactionOutputFile(status, sub_compact, range_del_agg.get(),
                                           &range_del_out_stats);
     if (status.ok()) {
       status = s;
@@ -1716,8 +1720,8 @@ Status CompactionJob::InstallCompactionResults(
               overlapping_files.push_back(std::vector<FileMetaData*>());  // create place to store the overlaps
               if(const_cast<SubcompactionState&>(sub_compact).outputs.size()){  // if no files output, don't look for overlaps
                 compaction->column_family_data()->current()->storage_info()->GetOverlappingInputsRangeBinarySearch(
-                   checklevel, ExtractUserKey(*const_cast<SubcompactionState&>(sub_compact).outputs.front().meta.smallest.rep()),
-                   ExtractUserKey(*const_cast<SubcompactionState&>(sub_compact).outputs.back().meta.largest.rep()),
+                   checklevel, &const_cast<SubcompactionState&>(sub_compact).outputs.front().meta.smallest,
+                   &const_cast<SubcompactionState&>(sub_compact).outputs.back().meta.largest,
                    &overlapping_files.back(), -1 /* no hint */, nullptr /* place to return found index */,
                    false /* 'look for overlapping files' */);  // sets overlapping_files to the overlaps, in order
               }

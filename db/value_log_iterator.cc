@@ -41,7 +41,7 @@ namespace rocksdb {
         if(++file_index >= compaction->inputs()->size())break;  // exit if no more files
         // Create the iterator for the next (or first) file
         file_iterator.reset(compaction->column_family_data()->table_cache()->NewIterator(
-          read_options, env_options, compaction->column_family_data()->internal_comparator() /* not used */, (*compaction->inputs())[file_index][0]->fd, nullptr /* range_del_agg */ ,
+          read_options, env_options, compaction->column_family_data()->internal_comparator() /* not used */, *(*compaction->inputs())[file_index][0], nullptr /* range_del_agg */ ,
           nullptr /* prefix extractor */, nullptr /* don't need reference to table */, nullptr /* no file_read_hist */,
           true /* for_compaction */, nullptr /* arena */, false /* skip_filters */, (*compaction->inputs())[file_index][0]->level));
         // start at the beginning of the next file

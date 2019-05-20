@@ -452,7 +452,7 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
     r->props.raw_value_size += value.size();
     if (value_type == kTypeDeletion || value_type == kTypeSingleDeletion) {
       r->props.num_deletions++;
-    } else if (value_type == kTypeMerge) {
+    } else if(IsTypeMerge(value_type)) {
       r->props.num_merge_operands++;
     }
 

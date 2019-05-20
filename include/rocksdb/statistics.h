@@ -418,21 +418,6 @@ enum Histograms : uint32_t {
   FLUSH_TIME,
 
   HISTOGRAM_ENUM_MAX,
-    {BLOB_DB_KEY_SIZE, "rocksdb.blobdb.key.size"},
-    {BLOB_DB_VALUE_SIZE, "rocksdb.blobdb.value.size"},
-    {BLOB_DB_WRITE_MICROS, "rocksdb.blobdb.write.micros"},
-    {BLOB_DB_GET_MICROS, "rocksdb.blobdb.get.micros"},
-    {BLOB_DB_MULTIGET_MICROS, "rocksdb.blobdb.multiget.micros"},
-    {BLOB_DB_SEEK_MICROS, "rocksdb.blobdb.seek.micros"},
-    {BLOB_DB_NEXT_MICROS, "rocksdb.blobdb.next.micros"},
-    {BLOB_DB_PREV_MICROS, "rocksdb.blobdb.prev.micros"},
-    {BLOB_DB_BLOB_FILE_WRITE_MICROS, "rocksdb.blobdb.blob.file.write.micros"},
-    {BLOB_DB_BLOB_FILE_READ_MICROS, "rocksdb.blobdb.blob.file.read.micros"},
-    {BLOB_DB_BLOB_FILE_SYNC_MICROS, "rocksdb.blobdb.blob.file.sync.micros"},
-    {BLOB_DB_GC_MICROS, "rocksdb.blobdb.gc.micros"},
-    {BLOB_DB_COMPRESSION_MICROS, "rocksdb.blobdb.compression.micros"},
-    {BLOB_DB_DECOMPRESSION_MICROS, "rocksdb.blobdb.decompression.micros"},
-    {FLUSH_TIME, "rocksdb.db.flush.micros"},
 };
 
 extern const std::vector<std::pair<Histograms, std::string>> HistogramsNameMap;

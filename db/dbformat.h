@@ -240,6 +240,19 @@ inline bool IsTypeIndirect(ValueType t) {
 }
 #endif
 
+// Checks whether a type is from user operation
+inline bool IsTypeNotOpaqueForSeek(ValueType t) {
+  return (bool) ( (t<=kTypeIndirectMerge) &
+   ((
+    (1LL<< kTypeDeletion) | (1LL << kTypeValue) | (1LL << kTypeSingleDeletion) | (1LL << kTypeBlobIndex)
+#ifdef INDIRECT_VALUE_SUPPORT
+      | (1LL << kTypeIndirectValue)
+#endif
+    )>>t
+   ) ); 
+}
+
+
 // Defined in dbformat.cc
 extern const ValueType kValueTypeForSeek;
 extern const ValueType kValueTypeForSeekForPrev;

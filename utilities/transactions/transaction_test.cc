@@ -5058,8 +5058,6 @@ TEST_P(TransactionTest, MemoryLimitTest) {
 TEST_P(TransactionStressTest, SeqAdvanceTest) {
   // TODO(myabandeh): must be test with false before new releases
   const bool short_test = true;
-  // TODO(myabandeh): must be test with false before new releases
-  const bool short_test = true;
   WriteOptions wopts;
   FlushOptions fopt;
 

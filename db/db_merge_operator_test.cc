@@ -29,7 +29,7 @@ class TestReadCallback : public ReadCallback {
                    SequenceNumber snapshot_seq)
       : snapshot_checker_(snapshot_checker), snapshot_seq_(snapshot_seq) {}
 
-  bool IsCommitted(SequenceNumber seq) override {
+  bool IsVisible(SequenceNumber seq) override {
     return snapshot_checker_->IsInSnapshot(seq, snapshot_seq_);
   }
 
@@ -144,7 +144,7 @@ TEST_F(DBMergeOperatorTest, MergeErrorOnRead) {
   options.create_if_missing = true;
   options.merge_operator.reset(new TestPutOperator());
   options.env = env_;
-  DestroyAndReopen(options);
+  Reopen(options);
   ASSERT_OK(Merge("k1", "v1"));
   ASSERT_OK(Merge("k1", "corrupted"));
   std::string value;
@@ -160,7 +160,7 @@ TEST_F(DBMergeOperatorTest, MergeErrorOnWrite) {
   options.merge_operator.reset(new TestPutOperator());
   options.max_successive_merges = 3;
   options.env = env_;
-  DestroyAndReopen(options);
+  Reopen(options);
   ASSERT_OK(Merge("k1", "v1"));
   ASSERT_OK(Merge("k1", "v2"));
   // Will trigger a merge when hitting max_successive_merges and the merge

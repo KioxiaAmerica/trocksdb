@@ -897,6 +897,7 @@ Compaction* UniversalCompactionPicker::PickDeleteTriggeredCompaction(
       /* max_grandparent_overlap_bytes */ LLONG_MAX, path_id,
       GetCompressionType(ioptions_, vstorage, mutable_cf_options, output_level,
                          1),
+      GetCompressionOptions(ioptions_, vstorage, output_level),
       /* max_subcompactions */ 0, /* grandparents */ {}, /* is manual */ true,
       score, false /* deletion_compaction */,
       CompactionReason::kFilesMarkedForCompaction);

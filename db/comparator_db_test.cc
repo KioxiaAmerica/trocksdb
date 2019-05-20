@@ -269,10 +269,6 @@ class ComparatorDBTest
     toptions.format_version = GetParam();
     last_options_.table_factory.reset(
         rocksdb::NewBlockBasedTableFactory(toptions));
-    BlockBasedTableOptions toptions;
-    toptions.format_version = GetParam();
-    last_options_.table_factory.reset(
-        rocksdb::NewBlockBasedTableFactory(toptions));
     EXPECT_OK(DestroyDB(dbname_, last_options_));
   }
 

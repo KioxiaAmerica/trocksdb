@@ -305,7 +305,6 @@ class CompactionIteratorTest : public testing::TestWithParam<bool> {
   std::unique_ptr<CompactionIterator> c_iter_;
   std::unique_ptr<CompactionRangeDelAggregator> range_del_agg_;
   std::unique_ptr<SnapshotChecker> snapshot_checker_;
-  std::unique_ptr<SnapshotChecker> snapshot_checker_;
   std::atomic<bool> shutting_down_{false};
   FakeCompaction* compaction_proxy_;
 };

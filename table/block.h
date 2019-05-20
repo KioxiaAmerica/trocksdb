@@ -230,15 +230,12 @@ class BlockIter : public InternalIteratorBase<TValue> {
     assert(num_restarts > 0);           // Ensure the param is valid
 
     comparator_ = comparator;
-    user_comparator_ = user_comparator;
     data_ = data;
     restarts_ = restarts;
     num_restarts_ = num_restarts;
     current_ = restarts_;
     restart_index_ = num_restarts_;
     global_seqno_ = global_seqno;
-    block_contents_pinned_ = block_contents_pinned;
-    key_includes_seq_ = key_includes_seq;
     block_contents_pinned_ = block_contents_pinned;
   }
 
@@ -292,11 +289,7 @@ class BlockIter : public InternalIteratorBase<TValue> {
  protected:
   // Note: The type could be changed to InternalKeyComparator but we see a weird
   // performance drop by that.
-  // Note: The type could be changed to InternalKeyComparator but we see a weird
-  // performance drop by that.
   const Comparator* comparator_;
-  // Same as comparator_ if comparator_ is not InernalKeyComparator
-  const Comparator* user_comparator_;
   const char* data_;       // underlying block contents
   uint32_t num_restarts_;  // Number of uint32_t entries in restart array
 
@@ -450,9 +443,6 @@ class DataBlockIter final : public BlockIter<Slice> {
 
   inline int Compare(const IterKey& ikey, const Slice& b) const {
     return comparator_->Compare(ikey.GetInternalKey(), b);
-    } else {
-      return user_comparator_->Compare(a, b);
-    }
   }
 
   bool SeekForGetImpl(const Slice& target);

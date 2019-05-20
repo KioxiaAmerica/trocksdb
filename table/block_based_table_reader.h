@@ -93,7 +93,6 @@ class BlockBasedTable : public TableReader {
                      uint64_t file_size,
                      std::unique_ptr<TableReader>* table_reader,
                      const SliceTransform* prefix_extractor = nullptr,
-                     const SliceTransform* prefix_extractor = nullptr,
                      bool prefetch_index_and_filter_in_cache = true,
                      bool skip_filters = false, int level = -1,
                      const bool immortal_table = false,
@@ -236,17 +235,6 @@ class BlockBasedTable : public TableReader {
       bool key_includes_seq = true, bool index_key_is_full = true,
       GetContext* get_context = nullptr, Status s = Status(),
       FilePrefetchBuffer* prefetch_buffer = nullptr);
-
-  class PartitionedIndexIteratorState;
-
-  friend class PartitionIndexReader;
-
- protected:
-
-  Rep* get_rep() { return rep_; }
-
-  static std::atomic<uint64_t> next_cache_key_id_;
-
 
   class PartitionedIndexIteratorState;
 
