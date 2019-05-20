@@ -473,8 +473,6 @@ EOF
         if [ "$?" = 0 ]; then
             COMMON_FLAGS="$COMMON_FLAGS -DROCKSDB_SCHED_GETCPU_PRESENT"
         fi
-<<<<<<< HEAD
-=======
     fi
 
     if ! test $ROCKSDB_DISABLE_ALIGNED_NEW; then
@@ -486,7 +484,6 @@ EOF
         if [ "$?" = 0 ]; then
             PLATFORM_CXXFLAGS="$PLATFORM_CXXFLAGS -faligned-new -DHAVE_ALIGNED_NEW"
         fi
->>>>>>> origin/5.18.tr
     fi
 fi
 
