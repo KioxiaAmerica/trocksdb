@@ -167,7 +167,6 @@ class DBIter final: public Iterator {
     }
     RecordTick(statistics_, NO_ITERATOR_DELETED);
     ResetInternalKeysSkippedCounter();
-    ResetInternalKeysSkippedCounter();
     local_stats_.BumpGlobalStatistics(statistics_);
     if (!arena_mode_) {
       delete iter_;
@@ -798,7 +797,6 @@ bool DBIter::MergeValuesNewToOld() {
   ParsedInternalKey ikey;
   Status s;
   for (CallIteratorNext(); iter_->Valid(); CallIteratorNext()) {
-    TEST_SYNC_POINT("DBIter::MergeValuesNewToOld:SteppedToNextOperand");
     TEST_SYNC_POINT("DBIter::MergeValuesNewToOld:SteppedToNextOperand");
     if (!ParseKey(&ikey)) {
       return false;

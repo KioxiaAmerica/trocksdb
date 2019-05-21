@@ -3177,7 +3177,7 @@ Status VersionSet::ProcessManifestWrites(
         assert(!builder_guards.empty() &&
                builder_guards.size() == versions.size());
         assert(!mutable_cf_options_ptrs.empty() &&
-               builder_guards.size() == versions.size());
+               mutable_cf_options_ptrs.size() == versions.size());
         ColumnFamilyData* cfd = versions[i]->cfd_;
         builder_guards[i]->version_builder()->LoadTableHandlers(
             cfd->internal_stats(), cfd->ioptions()->optimize_filters_for_hits,

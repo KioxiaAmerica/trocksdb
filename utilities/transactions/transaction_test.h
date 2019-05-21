@@ -200,8 +200,7 @@ class TransactionTestBase : public ::testing::Test {
     }
     StackableDB* stackable_db = new StackableDB(root_db);
     assert(root_db != nullptr);
-     assert(root_db != nullptr);
-      assert(handles.size() == 1);
+    assert(handles.size() == 1);
     s = TransactionDB::WrapStackableDB(stackable_db, txn_db_options,
                                        compaction_enabled_cf_indices, handles,
                                        &db);

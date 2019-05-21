@@ -31,7 +31,6 @@
 #include "db/write_thread.h"
 #include "options/cf_options.h"
 #include "options/db_options.h"
-#include "options/cf_options.h"
 #include "port/port.h"
 #include "rocksdb/compaction_filter.h"
 #include "rocksdb/compaction_job_stats.h"

@@ -680,7 +680,6 @@ class ReadaheadRandomAccessFile : public RandomAccessFile {
       buffer_offset_ = offset;
       buffer_.Size(result.size());
       assert(buffer_.BufferStart() == result.data());
-      assert(buffer_.BufferStart() == result.data());
     }
     return s;
   }
