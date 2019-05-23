@@ -3765,8 +3765,6 @@ Status VersionSet::Recover(
         break;
       }
 
-      ColumnFamilyData* cfd = nullptr;
-
       if (edit.is_in_atomic_group_) {
         if (replay_buffer.empty()) {
           replay_buffer.resize(edit.remaining_entries_ + 1);
@@ -3807,7 +3805,7 @@ Status VersionSet::Recover(
           s = Status::Corruption("corrupted atomic group");
           break;
         }
-        cfd = column_family_set_->GetColumnFamily(edit.column_family_);  // scaf where do we get cf from?
+        column_family_set_->GetColumnFamily(edit.column_family_);  // scaf where do we get cf from?
         s = ApplyOneVersionEdit(
             edit, cf_name_to_options, column_families_not_found, builders,
             &have_log_number, &log_number, &have_prev_log_number,

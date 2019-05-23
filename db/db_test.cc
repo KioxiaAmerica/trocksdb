@@ -5777,7 +5777,7 @@ TEST_F(DBTest, HardLimit) {
 class WriteStallListener : public EventListener {
  public:
   WriteStallListener() : condition_(WriteStallCondition::kNormal) {}
-  void OnStallConditionsChanged(const WriteStallInfo& info) override {
+  void OnStallConditionsChanged(const WriteStallInfo& /* info */) override {
     MutexLock l(&mutex_);
   }
   bool CheckCondition(WriteStallCondition expected) {
