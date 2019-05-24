@@ -3807,7 +3807,7 @@ Status VersionSet::Recover(
           s = Status::Corruption("corrupted atomic group");
           break;
         }
-        column_family_set_->GetColumnFamily(edit.column_family_);  // scaf where do we get cf from?
+// obsolete         column_family_set_->GetColumnFamily(edit.column_family_);  // scaf where do we get cf from?
         s = ApplyOneVersionEdit(
             edit, cf_name_to_options, column_families_not_found, builders,
             &have_log_number, &log_number, &have_prev_log_number,
