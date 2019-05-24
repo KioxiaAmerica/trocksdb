@@ -184,10 +184,6 @@ Status PartitionedIndexBuilder::Finish(
                                            handle_encoding,
                                            &handle_delta_encoding_slice);
     }
-    if (!seperator_is_key_plus_seq_) {
-      index_block_builder_without_seq_.Add(ExtractUserKey(last_entry.key),
-                                           handle_encoding);
-    }
     entries_.pop_front();
   }
   // If there is no sub_index left, then return the 2nd level index.

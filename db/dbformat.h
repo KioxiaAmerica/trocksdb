@@ -212,11 +212,11 @@ inline bool IsTypeExtended(ValueType t) {
    ) ); 
 }
 
-// Checks for Direct Merge or Value, or Delete, which are all we allow in ingested SSTs
+// Checks for Direct Merge or Value, RangeDelete, or Delete, which are all we allow in ingested SSTs
 inline bool IsTypeIngestible(ValueType t) {
     return (bool)((t <= kTypeIndirectMerge) &  // only if value is in the low range.  Use & to avoid premature branch
         ((
-        (1LL << kTypeDeletion) | (1LL << kTypeValue) | (1LL << kTypeMerge)
+        (1LL << kTypeDeletion) | (1LL << kTypeValue) | (1LL << kTypeMerge) | (1LL << kTypeRangeDeletion)
             ) >> t // select one bit from the mask to be the result
             ));
 }

@@ -91,10 +91,6 @@ Slice PartitionedFilterBlockBuilder::Finish(
           ExtractUserKey(last_entry.key), handle_encoding,
           &handle_delta_encoding_slice);
     }
-    if (!p_index_builder_->seperator_is_key_plus_seq()) {
-      index_on_filter_block_builder_without_seq_.Add(
-          ExtractUserKey(last_entry.key), handle_encoding);
-    }
     filters.pop_front();
   } else {
     MaybeCutAFilterBlock();

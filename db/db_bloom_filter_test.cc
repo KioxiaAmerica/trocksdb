@@ -62,7 +62,6 @@ class SliceTransformLimitedDomainGeneric : public SliceTransform {
     return dst.size() == 5;
   }
 };
-
 // KeyMayExist can lead to a few false positives, but not false negatives.
 // To make test deterministic, use a much larger number of bits per key-20 than
 // bits in the key, so that false positives are eliminated

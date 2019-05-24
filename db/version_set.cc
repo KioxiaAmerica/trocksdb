@@ -1308,7 +1308,7 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
     if (get_context.State() != GetContext::kNotFound &&
         get_context.State() != GetContext::kMerge &&
         db_statistics_ != nullptr) {
-      get_context.TransferCounters(db_statistics_);  // move local stats to shared
+      get_context.ReportCounters();
     }
     switch (get_context.State()) {
       case GetContext::kNotFound:
@@ -1345,7 +1345,7 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
   }
 
   if (db_statistics_ != nullptr) {
-    get_context.TransferCounters(db_statistics_);  // move local stats to shared 
+    get_context.ReportCounters();
   }
   if (GetContext::kMerge == get_context.State()) {
     if (!merge_operator_) {
@@ -3015,9 +3015,9 @@ Status VersionSet::ProcessManifestWrites(
     size_t group_start = std::numeric_limits<size_t>::max();
     while (it != manifest_writers_.cend()) {
       if ((*it)->edit_list.front()->IsColumnFamilyManipulation()) {
-    // no group commits for column family add or drop
+      // no group commits for column family add or drop
         break;
-    }
+      }
       last_writer = *(it++);
       assert(last_writer != nullptr);
       assert(last_writer->cfd != nullptr);
@@ -3098,9 +3098,11 @@ Status VersionSet::ProcessManifestWrites(
       assert(!builder_guards.empty() &&
              builder_guards.size() == versions.size());
       auto* builder = builder_guards[i]->version_builder();
-      builder->SaveTo(versions[i]->storage_info(),last_writer->cfd);   // scaf must get the correct cf info
+      builder->SaveTo(versions[i]->storage_info(),last_writer->cfd);
 #ifdef INDIRECT_VALUE_SUPPORT
-    accum_vlog_edits = builder->VLogAdditions();  // save the VLog edits to be applied later
+      // Add the edits from this builder into the collected edits for this CF.
+      Coalesce(accum_vlog_edits,builder->VLogAdditions(),true);
+// obsolete     accum_vlog_edits = builder->VLogAdditions();  // save the VLog edits to be applied later
 #endif
     }
   }

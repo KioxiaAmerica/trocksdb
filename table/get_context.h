@@ -100,8 +100,7 @@ class GetContext {
     return true;
   }
 
-  void RecordCounters(Tickers ticker, size_t val);  // record ticks during Get()
-  void TransferCounters( Statistics* stats);  // Transfer all the ticks to shared stats
+  void ReportCounters();
 
  private:
   const Comparator* ucmp_;
@@ -109,10 +108,6 @@ class GetContext {
   // the merge operations encountered;
   Logger* logger_;
   Statistics* statistics_;
-#ifdef INDIRECT_VALUE_SUPPORT
-  static unsigned char debruijn[64];
-  uint64_t modstatsmask = 0;  // one bit set for each stats field that is nonzero
-#endif
 
   GetState state_;
   Slice user_key_;
