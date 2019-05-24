@@ -592,17 +592,12 @@ ifdef COMPILE_WITH_UBSAN
 endif
 #LOCK/CRASH test cases
 #[unit] \
-	backupable_db_test 			trocks Bug128\
-	db_iterator_test 			trocks+noflags Bug139\
 
 ifdef INDIRECT_VALUE_SUPPORT
 LOCKS= \
-	backupable_db_test \
-	db_iterator_test \
 
 else
 LOCKS= \
-	db_iterator_test \
 
 endif
 
@@ -1614,13 +1609,15 @@ blob_db_test: utilities/blob_db/blob_db_test.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
 repeatable_thread_test: util/repeatable_thread_test.o $(LIBOBJECTS) $(TESTHARNESS)
-vlog_files_test: db/vlog_files_test.o db/db_test_util.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
 range_tombstone_fragmenter_test: db/range_tombstone_fragmenter_test.o db/db_test_util.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
 sst_file_reader_test: table/sst_file_reader_test.o $(LIBOBJECTS) $(TESTHARNESS)
+	$(AM_LINK)
+
+vlog_files_test: db/vlog_files_test.o db/db_test_util.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
 
 #-------------------------------------------------
