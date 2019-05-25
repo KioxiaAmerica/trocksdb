@@ -381,25 +381,25 @@ Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
   bool bounds_set = false;
   iter->SeekToFirst();
   if (iter->Valid()) {
-  if (!ParseInternalKey(iter->key(), &key)) {
-    return Status::Corruption("external file have corrupted keys");
-  }
-  if (key.sequence != 0) {
-    return Status::Corruption("external file have non zero sequence number");
-  }
-  file_to_ingest->smallest_user_key = key.user_key.ToString();
+    if (!ParseInternalKey(iter->key(), &key)) {
+      return Status::Corruption("external file have corrupted keys");
+    }
+    if (key.sequence != 0) {
+      return Status::Corruption("external file have non zero sequence number");
+    }
+    file_to_ingest->smallest_user_key = key.user_key.ToString();
 
-  iter->SeekToLast();
-  if (!ParseInternalKey(iter->key(), &key)) {
-    return Status::Corruption("external file have corrupted keys");
-  }
-  if (key.sequence != 0) {
-    return Status::Corruption("external file have non zero sequence number");
-  }
-  file_to_ingest->largest_user_key = key.user_key.ToString();
+    iter->SeekToLast();
+    if (!ParseInternalKey(iter->key(), &key)) {
+      return Status::Corruption("external file have corrupted keys");
+    }
+    if (key.sequence != 0) {
+      return Status::Corruption("external file have non zero sequence number");
+    }
+    file_to_ingest->largest_user_key = key.user_key.ToString();
 
     bounds_set = true;
-}
+  }
 
   // We may need to adjust these key bounds, depending on whether any range
   // deletion tombstones extend past them.
@@ -555,19 +555,19 @@ Status ExternalSstFileIngestionJob::AssignGlobalSeqnoForIngestedFile(
     // Determine if we can write global_seqno to a given offset of file.
     // If the file system does not support random write, then we should not.
     // Otherwise we should.
-  std::unique_ptr<RandomRWFile> rwfile;
-  Status status = env_->NewRandomRWFile(file_to_ingest->internal_file_path,
+    std::unique_ptr<RandomRWFile> rwfile;
+    Status status = env_->NewRandomRWFile(file_to_ingest->internal_file_path,
                                         &rwfile, env_options_);
     if (status.ok()) {
-  std::string seqno_val;
-  PutFixed64(&seqno_val, seqno);
-  status = rwfile->Write(file_to_ingest->global_seqno_offset, seqno_val);
+      std::string seqno_val;
+      PutFixed64(&seqno_val, seqno);
+      status = rwfile->Write(file_to_ingest->global_seqno_offset, seqno_val);
       if (!status.ok()) {
         return status;
-  }
+      }
     } else if (!status.IsNotSupported()) {
-  return status;
-}
+      return status;
+    }
   }
 
   file_to_ingest->assigned_seqno = seqno;
