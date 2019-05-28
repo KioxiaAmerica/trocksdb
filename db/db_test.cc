@@ -5777,8 +5777,9 @@ TEST_F(DBTest, HardLimit) {
 class WriteStallListener : public EventListener {
  public:
   WriteStallListener() : condition_(WriteStallCondition::kNormal) {}
-  void OnStallConditionsChanged(const WriteStallInfo& /* info */) override {
+  void OnStallConditionsChanged(const WriteStallInfo& info) override {
     MutexLock l(&mutex_);
+    condition_ = info.condition.cur;
   }
   bool CheckCondition(WriteStallCondition expected) {
     MutexLock l(&mutex_);
@@ -5980,7 +5981,6 @@ TEST_F(DBTest, SoftLimit) {
   sleeping_task_low.WakeUp();
   sleeping_task_low.WaitUntilDone();
 }
-
 
 TEST_F(DBTest, LastWriteBufferDelay) {
   Options options = CurrentOptions();

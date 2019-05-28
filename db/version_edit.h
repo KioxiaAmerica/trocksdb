@@ -317,10 +317,12 @@ printf("VersionEdit::DeleteFile: %p\n",f);
 #endif
 #ifdef INDIRECT_VALUE_SUPPORT
     // At this point we are committed to deleting the input file f, but that's a ways in the future.  We are holding the mutex
-    // for ocmpaction/copy, but we are still before the lock point on &w (in LogAndApply) at which writers get queued.  We mustn't
+    // for compaction/copy, but we are still before the lock point on &w (in LogAndApply) at which writers get queued.  We mustn't
     // UnCurrent f right now, until we know that we have processed, for manifest purposes, the SST actions that justify this deletion.
     // So, we enqueue f on retiring_files_ (analogous to new_files_ for added files).  As the edits are applied we will move
     // these files to retiredfiles in the rep, and will UnCurrent them in SaveTo
+    assert(f->indirect_ref_0.size()==f->ringfwdchain.size());  // If the file was never installed, the sizes may be different
+    assert(f->indirect_ref_0.size()==f->ringbwdchain.size());
     retiring_files_.push_back(f);
 #endif
     DeleteFile(level, f->fd.GetNumber());
