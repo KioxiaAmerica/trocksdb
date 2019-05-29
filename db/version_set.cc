@@ -3894,6 +3894,9 @@ Status VersionSet::Recover(
       Version* v = new Version(cfd, this, env_options_,
                                *cfd->GetLatestMutableCFOptions(),
                                current_version_number_++);
+#ifdef INDIRECT_VALUE_SUPPORT
+      // Must include cfd in the next line to install the new files into the SSTs
+#endif
       builder->SaveTo(v->storage_info(),cfd);
 
       // Install recovered version
