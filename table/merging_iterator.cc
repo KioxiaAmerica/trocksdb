@@ -232,12 +232,10 @@ class MergingIterator : public InternalIterator {
           TEST_SYNC_POINT_CALLBACK("MergeIterator::Prev:BeforePrev", &child);
           considerStatus(child.status());
           if (child.Valid() && comparator_->Equal(target, child.key())) {
-
             child.Prev();
             considerStatus(child.status());
-            }
-              considerStatus(child.status());
-            }
+          }
+        }
         if (child.Valid()) {
           assert(child.status().ok());
           maxHeap_->push(&child);

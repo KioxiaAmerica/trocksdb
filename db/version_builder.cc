@@ -519,7 +519,7 @@ void VersionBuilder::SaveTo(VersionStorageInfo* vstorage, ColumnFamilyData* /*cf
 #ifdef INDIRECT_VALUE_SUPPORT
   // We are about to commit the added_files in rep_ to the new version vstorage.  This is a safe time
   // to enter their info into the Value Log.  We could come here either from initial recovery or from finishing a
-  // compaction.  SaveTo() is also called from DumpManifest to build a faux version for dumping, and in tests; in that case we
+  // compaction/flush.  SaveTo() is also called from DumpManifest to build a faux version for dumping, and in tests; in that case we
   // make cfd null so we skip the value log work.  We also skip the Value Log work if there is no VLog for the cfd
   if(cfd!=nullptr && cfd->vlog()){
     VLog *vlog = cfd->vlog().get();

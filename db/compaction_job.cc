@@ -1367,7 +1367,11 @@ Status CompactionJob::FinishCompactionOutputFile(
   Status s = input_status;
   auto meta = &sub_compact->current_output()->meta;
   assert(meta != nullptr);
-  if (s.ok()) {
+  if (s.ok()
+#ifdef INDIRECT_VALUE_SUPPORT  // could be left in on all systems
+      && range_del_agg!=nullptr  // no range_del_agg iterator means Active Recycling.  Skip all the checking & tombstone anguish
+#endif
+     ) {
     Slice lower_bound_guard, upper_bound_guard;
     std::string smallest_user_key;
     const Slice *lower_bound, *upper_bound;
