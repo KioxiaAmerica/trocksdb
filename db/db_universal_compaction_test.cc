@@ -1398,6 +1398,8 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
   options.level0_file_num_compaction_trigger = 2;
   options.num_levels = 1;
 
+  const int allowedvlen1 = 1;   const int allowedvlen2 = 990;  // possible lengths for values
+
   std::vector<Options> option_vector;
   option_vector.emplace_back(options);
   ColumnFamilyOptions cf_opt1(options), cf_opt2(options);
@@ -1418,6 +1420,12 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
   CreateColumnFamilies({"two"},option_vector[2]);
 
   ReopenWithColumnFamilies({"default", "one", "two"}, option_vector);
+  bool values_are_indirect = false;  // Set if we are using VLogging
+  int allowedvlen3 = 1;
+#ifndef INDIRECT_VALUE_SUPPORT
+  values_are_indirect = options.vlogring_activation_level.size()!=0;
+  if(values_are_indirect)allowedvlen3 = 16;
+#endif
 
   Random rnd(301);
   int key_idx = 0;
@@ -1425,9 +1433,9 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
   int key_idx2 = 0;
 
   auto generate_file = [&]() {
-    GenerateNewFile(0, &rnd, &key_idx);
-    GenerateNewFile(1, &rnd, &key_idx1);
-    GenerateNewFile(2, &rnd, &key_idx2);
+    GenerateNewFileInvInd(0, &rnd, &key_idx,values_are_indirect);
+    GenerateNewFileInvInd(1, &rnd, &key_idx1,values_are_indirect);
+    GenerateNewFileInvInd(2, &rnd, &key_idx2,values_are_indirect);
   };
 
   auto check_sstfilecount = [&](int path_id, int expected) {
@@ -1437,22 +1445,23 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
   };
 
   auto check_getvalues = [&]() {
+
     for (int i = 0; i < key_idx; i++) {
-      auto v = Get(0, Key(i));
+      auto v = Get(0, KeyInvIndNewFile(i,i%100,values_are_indirect));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+      ASSERT_TRUE(v.size() == allowedvlen1 || v.size() == (size_t)allowedvlen2 || v.size() == (size_t)allowedvlen3);
     }
 
     for (int i = 0; i < key_idx1; i++) {
-      auto v = Get(1, Key(i));
+      auto v = Get(1, KeyInvIndNewFile(i,i%100,values_are_indirect));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+      ASSERT_TRUE(v.size() == allowedvlen1 || v.size() == (size_t)allowedvlen2 || v.size() == (size_t)allowedvlen3);
     }
 
     for (int i = 0; i < key_idx2; i++) {
-      auto v = Get(2, Key(i));
+      auto v = Get(2, KeyInvIndNewFile(i,i%100,values_are_indirect));
       ASSERT_NE(v, "NOT_FOUND");
-      ASSERT_TRUE(v.size() == 1 || v.size() == 990);
+      ASSERT_TRUE(v.size() == allowedvlen1 || v.size() == (size_t)allowedvlen2 || v.size() == (size_t)allowedvlen3);
     }
   };
 
