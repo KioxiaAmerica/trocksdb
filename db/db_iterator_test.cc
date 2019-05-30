@@ -60,7 +60,6 @@ class FlushBlockEveryKeyPolicy : public FlushBlockPolicy {
  private:
   bool start_ = false;
 };
-
 class FlushBlockEveryKeyPolicyFactory : public FlushBlockPolicyFactory {
  public:
   explicit FlushBlockEveryKeyPolicyFactory() {}
@@ -2192,7 +2191,6 @@ TEST_P(DBIteratorTest, UpperBoundWithChangeDirection) {
 
   delete iter;
 }
-
 TEST_P(DBIteratorTest, TableFilter) {
   ASSERT_OK(Put("a", "1"));
   dbfull()->Flush(FlushOptions());
@@ -2423,7 +2421,6 @@ TEST_P(DBIteratorTest, SeekAfterHittingManyInternalKeys) {
   ASSERT_EQ(iter2->key().ToString(), "6");
   ASSERT_EQ(iter2->value().ToString(), "val_6");
 }
-
 // Reproduces a former bug where iterator would skip some records when DBIter
 // re-seeks subiterator with Incomplete status.
 TEST_P(DBIteratorTest, NonBlockingIterationBugRepro) {
@@ -2463,7 +2460,6 @@ TEST_P(DBIteratorTest, NonBlockingIterationBugRepro) {
   // "d".
   EXPECT_TRUE(iter->status().IsIncomplete());
 }
-
 TEST_P(DBIteratorTest, SeekBackwardAfterOutOfUpperBound) {
   Put("a", "");
   Put("b", "");

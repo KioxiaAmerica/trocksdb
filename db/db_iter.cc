@@ -139,7 +139,7 @@ class DBIter final: public Iterator {
         db_impl_(db_impl),
         cfd_(cfd),
 #ifdef INDIRECT_VALUE_SUPPORT
-        resolved_indirect_vals(std::vector<shared_ptr<std::string>>(16)),  // init a capacity that will probably cover all needs
+        resolved_indirect_vals(std::vector<std::shared_ptr<std::string>>(16)),
 // obsolete         resolved_indirect_vals(std::vector<std::string>()),
 #endif
         allow_blob_(allow_blob),

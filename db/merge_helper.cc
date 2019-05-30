@@ -288,7 +288,11 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       if (filter != CompactionFilter::Decision::kRemoveAndSkipUntil &&
           range_del_agg != nullptr &&
           range_del_agg->ShouldDelete(
+#ifdef INDIRECT_VALUE_SUPPORT
+              ikeyslice, RangeDelPositioningMode::kForwardTraversal)) {
+#else
               iter->key(), RangeDelPositioningMode::kForwardTraversal)) {
+#endif
         filter = CompactionFilter::Decision::kRemove;
       }
       if (filter == CompactionFilter::Decision::kKeep ||
