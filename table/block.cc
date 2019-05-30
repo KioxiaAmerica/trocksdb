@@ -501,10 +501,10 @@ bool DataBlockIter::ParseNextDataKey(const char* limit) {
 
     value_ = Slice(p + non_shared, value_length);
     if (shared == 0) {
-    while (restart_index_ + 1 < num_restarts_ &&
+      while (restart_index_ + 1 < num_restarts_ &&
            GetRestartPoint(restart_index_ + 1) < current_) {
-      ++restart_index_;
-    }
+        ++restart_index_;
+      }
     }
     // else we are in the middle of a restart interval and the restart_index_
     // thus has not changed
@@ -738,7 +738,7 @@ uint32_t Block::NumRestarts() const {
     // with a vary large num_restarts i.e. >= 0x80000000 can be interpreted
     // correctly as no HashIndex even if the MSB of num_restarts is set.
     return num_restarts;
-}
+  }
   BlockBasedTableOptions::DataBlockIndexType index_type;
   UnPackIndexTypeAndNumRestarts(block_footer, &index_type, &num_restarts);
   return num_restarts;
@@ -781,18 +781,18 @@ Block::Block(BlockContents&& contents, SequenceNumber _global_seqno,
       case BlockBasedTableOptions::kDataBlockBinarySearch:
         restart_offset_ = static_cast<uint32_t>(size_) -
                           (1 + num_restarts_) * sizeof(uint32_t);
-    if (restart_offset_ > size_ - sizeof(uint32_t)) {
-      // The size is too small for NumRestarts() and therefore
-      // restart_offset_ wrapped around.
-      size_ = 0;
-    }
+        if (restart_offset_ > size_ - sizeof(uint32_t)) {
+          // The size is too small for NumRestarts() and therefore
+          // restart_offset_ wrapped around.
+         size_ = 0;
+        }
         break;
       case BlockBasedTableOptions::kDataBlockBinaryAndHash:
         if (size_ < sizeof(uint32_t) /* block footer */ +
                         sizeof(uint16_t) /* NUM_BUCK */) {
           size_ = 0;
           break;
-  }
+        }
 
         uint16_t map_offset;
         data_block_hash_index_.Initialize(
@@ -871,7 +871,7 @@ IndexBlockIter* Block::NewIterator(const Comparator* cmp,
     ret_iter = iter;
   } else {
     ret_iter = new IndexBlockIter;
-}
+  }
   if (size_ < 2 * sizeof(uint32_t)) {
     ret_iter->Invalidate(Status::Corruption("bad block contents"));
     return ret_iter;

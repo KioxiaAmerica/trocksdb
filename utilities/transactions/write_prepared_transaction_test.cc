@@ -486,8 +486,8 @@ class WritePreparedTransactionTestBase : public TransactionTestBase {
         ASSERT_TRUE(kv.second == values[0]);
       } else {
         ASSERT_EQ(kv.second, "NOT_FOUND");
+      }
     }
-  }
   }
 
   // Verify all versions of keys.

@@ -1025,7 +1025,6 @@ class HarnessTest : public testing::Test {
   bool only_support_prefix_seek_;
   std::shared_ptr<InternalKeyComparator> internal_comparator_;
 };
-
 static bool Between(uint64_t val, uint64_t low, uint64_t high) {
   bool result = (val >= low) && (val <= high);
   if (!result) {
@@ -1081,7 +1080,6 @@ INSTANTIATE_TEST_CASE_P(FormatDef, BlockBasedTableTest,
                         testing::Values(test::kDefaultFormatVersion));
 INSTANTIATE_TEST_CASE_P(FormatLatest, BlockBasedTableTest,
                         testing::Values(test::kLatestFormatVersion));
-
 // This test serves as the living tutorial for the prefix scan of user collected
 // properties.
 TEST_F(TablePropertyTest, PrefixScanTest) {
@@ -1658,13 +1656,11 @@ TEST_P(BlockBasedTableTest, SkipPrefixBloomFilter) {
     ASSERT_EQ(db_iter->value(), kv.second);
   }
 }
-
 static std::string RandomString(Random* rnd, int len) {
   std::string r;
   test::RandomString(rnd, len, &r);
   return r;
 }
-
 void AddInternalKey(TableConstructor* c, const std::string& prefix,
                     int /*suffix_len*/ = 800) {
   static Random rnd(1023);
