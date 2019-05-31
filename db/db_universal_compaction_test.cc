@@ -1422,7 +1422,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
   ReopenWithColumnFamilies({"default", "one", "two"}, option_vector);
   bool values_are_indirect = false;  // Set if we are using VLogging
   int allowedvlen3 = 1;
-#ifndef INDIRECT_VALUE_SUPPORT
+#ifdef INDIRECT_VALUE_SUPPORT
   values_are_indirect = options.vlogring_activation_level.size()!=0;
   if(values_are_indirect)allowedvlen3 = 16;
 #endif
