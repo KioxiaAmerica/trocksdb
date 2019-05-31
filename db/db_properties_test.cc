@@ -628,7 +628,7 @@ TEST_F(DBPropertiesTest, AggregatedTablePropertiesAtLevel) {
 #ifdef INDIRECT_VALUE_SUPPORT
       if(options.vlogring_activation_level.size())nblocksbias = 0.35;  // with small values, nblocks is small and has large fractional error
 #endif
-      VerifyTableProperties(tp, expected_tp, 0.5, 0.4, 0.4, nblocksbias);
+      VerifyTableProperties(expected_tp, tp, 0.5, 0.4, 0.4, nblocksbias);
     }
   }
 }
