@@ -503,7 +503,11 @@ TEST_F(DBSSTTest, DeleteSchedulerMultipleDBPaths) {
   ASSERT_EQ("0,2", FilesPerLevel(0));
 
   sfm->WaitForEmptyTrash();
+#ifdef DISABLE_JEMALLOC
+  ASSERT_EQ(bg_delete_file, 4);
+#else
   ASSERT_EQ(bg_delete_file, 8);
+#endif
 
   // Compaction will delete both files and regenerate a file in L1 in second
   // db path. The deleted files should still be cleaned up via delete scheduler.
