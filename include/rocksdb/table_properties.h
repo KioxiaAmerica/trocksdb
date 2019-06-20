@@ -53,6 +53,7 @@ struct TablePropertiesNames {
   static const std::string kPrefixExtractorName;
   static const std::string kPropertyCollectors;
   static const std::string kCompression;
+  static const std::string kCompressionOptions;
   static const std::string kCreationTime;
   static const std::string kOldestKeyTime;
 };
@@ -90,6 +91,14 @@ class TablePropertiesCollector {
                             uint64_t /*file_size*/) {
     // For backwards-compatibility.
     return Add(key, value);
+  }
+
+  // Called after each new block is cut
+  virtual void BlockAdd(uint64_t /* blockRawBytes */,
+                        uint64_t /* blockCompressedBytesFast */,
+                        uint64_t /* blockCompressedBytesSlow */) {
+    // Nothing to do here. Callback registers can override.
+    return;
   }
 
   // Finish() will be called when a table has already been built and is ready
@@ -200,6 +209,9 @@ struct TableProperties {
 
   // The compression algo used to compress the SST files.
   std::string compression_name;
+
+  // Compression options used to compress the SST files.
+  std::string compression_options;
 
   // user collected properties
   UserCollectedProperties user_collected_properties;

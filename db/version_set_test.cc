@@ -25,7 +25,7 @@ class GenerateLevelFilesBriefTest : public testing::Test {
 
   GenerateLevelFilesBriefTest() { }
 
-  ~GenerateLevelFilesBriefTest() {
+  ~GenerateLevelFilesBriefTest() override {
     for (size_t i = 0; i < files_.size(); i++) {
       delete files_[i];
     }
@@ -79,9 +79,7 @@ class CountingLogger : public Logger {
  public:
   CountingLogger() : log_count(0) {}
   using Logger::Logv;
-  virtual void Logv(const char* /*format*/, va_list /*ap*/) override {
-    log_count++;
-  }
+  void Logv(const char* /*format*/, va_list /*ap*/) override { log_count++; }
   int log_count;
 };
 
@@ -121,7 +119,7 @@ class VersionStorageInfoTest : public testing::Test {
 #endif
         ) {}
 
-  ~VersionStorageInfoTest() {
+  ~VersionStorageInfoTest() override {
     for (int i = 0; i < vstorage_.num_levels(); i++) {
       for (auto* f : vstorage_.LevelFiles(i)) {
         if (--f->refs == 0) {
@@ -432,8 +430,7 @@ class FindLevelFileTest : public testing::Test {
 
   FindLevelFileTest() : disjoint_sorted_files_(true) { }
 
-  ~FindLevelFileTest() {
-  }
+  ~FindLevelFileTest() override {}
 
   void LevelFileInit(size_t num = 0) {
     char* mem = arena_.AllocateAligned(num * sizeof(FdWithKeyRange));

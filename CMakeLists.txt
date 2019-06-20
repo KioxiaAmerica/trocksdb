@@ -94,7 +94,13 @@ else()
   if(WITH_ZLIB)
     find_package(zlib REQUIRED)
     add_definitions(-DZLIB)
-    include_directories(${ZLIB_INCLUDE_DIR})
+    if(ZLIB_INCLUDE_DIRS)
+      # CMake 3
+      include_directories(${ZLIB_INCLUDE_DIRS})
+    else()
+      # CMake 2
+      include_directories(${ZLIB_INCLUDE_DIR})
+    endif()
     list(APPEND THIRDPARTY_LIBS ${ZLIB_LIBRARIES})
   endif()
 
@@ -429,7 +435,7 @@ if(WITH_FALLOCATE)
 #include <linux/falloc.h>
 int main() {
  int fd = open(\"/dev/null\", 0);
- fallocate(fd, FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE, 0, 1024);
+ fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, 1024);
 }
 " HAVE_FALLOCATE)
   if(HAVE_FALLOCATE)
@@ -502,6 +508,7 @@ set(SOURCES
         db/db_impl_debug.cc
         db/db_impl_experimental.cc
         db/db_impl_readonly.cc
+        db/db_impl_secondary.cc
         db/db_info_dumper.cc
         db/db_iter.cc
         db/dbformat.cc
@@ -514,6 +521,7 @@ set(SOURCES
         db/flush_scheduler.cc
         db/forward_iterator.cc
         db/internal_stats.cc
+        db/in_memory_stats_history.cc
         db/logs_with_prep_tracker.cc
         db/log_reader.cc
         db/log_writer.cc
@@ -545,7 +553,6 @@ set(SOURCES
         env/env_hdfs.cc
         env/mock_env.cc
         memtable/alloc_tracker.cc
-        memtable/hash_cuckoo_rep.cc
         memtable/hash_linklist_rep.cc
         memtable/hash_skiplist_rep.cc
         memtable/skiplistrep.cc
@@ -617,6 +624,7 @@ set(SOURCES
         util/comparator.cc
         util/compression_context_cache.cc
         util/concurrent_arena.cc
+        util/concurrent_task_limiter_impl.cc
         util/crc32c.cc
         util/delete_scheduler.cc
         util/dynamic_bloom.cc
@@ -657,20 +665,11 @@ set(SOURCES
         utilities/cassandra/format.cc
         utilities/cassandra/merge_operator.cc
         utilities/checkpoint/checkpoint_impl.cc
-        utilities/col_buf_decoder.cc
-        utilities/col_buf_encoder.cc
-        utilities/column_aware_encoding_util.cc
         utilities/compaction_filters/remove_emptyvalue_compactionfilter.cc
-        utilities/date_tiered/date_tiered_db_impl.cc
         utilities/debug.cc
-        utilities/document/document_db.cc
-        utilities/document/json_document.cc
-        utilities/document/json_document_builder.cc
         utilities/env_mirror.cc
         utilities/env_timed.cc
-        utilities/geodb/geodb_impl.cc
         utilities/leveldb_options/leveldb_options.cc
-        utilities/lua/rocks_lua_compaction_filter.cc
         utilities/memory/memory_util.cc
         utilities/merge_operators/bytesxor.cc
         utilities/merge_operators/max.cc
@@ -685,9 +684,7 @@ set(SOURCES
         utilities/persistent_cache/block_cache_tier_metadata.cc
         utilities/persistent_cache/persistent_cache_tier.cc
         utilities/persistent_cache/volatile_tier_impl.cc
-        utilities/redis/redis_lists.cc
         utilities/simulator_cache/sim_cache.cc
-        utilities/spatialdb/spatial_db.cc
         utilities/table_properties_collectors/compact_on_deletion_collector.cc
         utilities/trace/file_trace_reader_writer.cc
         utilities/transactions/optimistic_transaction_db_impl.cc
@@ -843,6 +840,7 @@ if(NOT WIN32 OR ROCKSDB_INSTALL_ON_WINDOWS)
     TARGETS ${ROCKSDB_SHARED_LIB}
     EXPORT RocksDBTargets
     COMPONENT runtime
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
     LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
     INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
@@ -897,6 +895,7 @@ if(WITH_TESTS)
         db/db_options_test.cc
         db/db_properties_test.cc
         db/db_range_del_test.cc
+        db/db_secondary_test.cc
         db/db_sst_test.cc
         db/db_statistics_test.cc
         db/db_table_properties_test.cc
@@ -989,12 +988,6 @@ if(WITH_TESTS)
         utilities/cassandra/cassandra_row_merge_test.cc
         utilities/cassandra/cassandra_serialize_test.cc
         utilities/checkpoint/checkpoint_test.cc
-        utilities/column_aware_encoding_test.cc
-        utilities/date_tiered/date_tiered_test.cc
-        utilities/document/document_db_test.cc
-        utilities/document/json_document_test.cc
-        utilities/geodb/geodb_test.cc
-        utilities/lua/rocks_lua_test.cc
         utilities/memory/memory_test.cc
         utilities/merge_operators/string_append/stringappend_test.cc
         utilities/object_registry_test.cc
@@ -1002,8 +995,6 @@ if(WITH_TESTS)
         utilities/options/options_util_test.cc
         utilities/persistent_cache/hash_table_test.cc
         utilities/persistent_cache/persistent_cache_test.cc
-        utilities/redis/redis_lists_test.cc
-        utilities/spatialdb/spatial_db_test.cc
         utilities/simulator_cache/sim_cache_test.cc
         utilities/table_properties_collectors/compact_on_deletion_collector_test.cc
         utilities/transactions/optimistic_transaction_test.cc
@@ -1023,7 +1014,6 @@ if(WITH_TESTS)
     db/range_del_aggregator_bench.cc
     tools/db_bench.cc
     table/table_reader_bench.cc
-    utilities/column_aware_encoding_exp.cc
     utilities/persistent_cache/hash_table_bench.cc)
   add_library(testharness OBJECT util/testharness.cc)
   foreach(sourcefile ${BENCHMARKS})

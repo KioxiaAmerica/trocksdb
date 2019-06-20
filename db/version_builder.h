@@ -37,10 +37,11 @@ class VersionBuilder {
                                   int level);
   bool CheckConsistencyForNumLevels();
   void Apply(VersionEdit* edit);
-  void SaveTo(VersionStorageInfo* vstorage, ColumnFamilyData *cfd = nullptr);
-  void LoadTableHandlers(InternalStats* internal_stats, int max_threads,
-                         bool prefetch_index_and_filter_in_cache,
-                         const SliceTransform* prefix_extractor);
+  void SaveTo(VersionStorageInfo* vstorage);
+  Status LoadTableHandlers(InternalStats* internal_stats, int max_threads,
+                           bool prefetch_index_and_filter_in_cache,
+                           bool is_initial_load,
+                           const SliceTransform* prefix_extractor);
   void MaybeAddFile(VersionStorageInfo* vstorage, int level, FileMetaData* f);
 #ifdef INDIRECT_VALUE_SUPPORT
   std::vector<VLogRingRestartInfo> VLogAdditions();

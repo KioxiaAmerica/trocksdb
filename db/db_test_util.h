@@ -503,6 +503,11 @@ class SpecialEnv : public EnvWrapper {
     return s;
   }
 
+  virtual uint64_t NowCPUNanos() override {
+    now_cpu_count_.fetch_add(1);
+    return target()->NowCPUNanos();
+  }
+
   virtual uint64_t NowNanos() override {
     return (time_elapse_only_sleep_ ? 0 : target()->NowNanos()) +
            addon_time_.load() * 1000;
@@ -571,6 +576,8 @@ class SpecialEnv : public EnvWrapper {
   std::function<void()>* table_write_callback_;
 
   std::atomic<int64_t> addon_time_;
+
+  std::atomic<int> now_cpu_count_;
 
   std::atomic<int> delete_count_;
 
@@ -645,81 +652,82 @@ class DBTestBase : public testing::Test {
     kPlainTableAllBytesPrefix = 6,
     kVectorRep = 7,
     kHashLinkList = 8,
-    kHashCuckoo = 9,
-    kMergePut = 10,
-    kFilter = 11,
-    kFullFilterWithNewTableReaderForCompactions = 12,
-    kUncompressed = 13,
-    kNumLevel_3 = 14,
-    kDBLogDir = 15,
-    kWalDirAndMmapReads = 16,
-    kManifestFileSize = 17,
-    kPerfOptions = 18,
-    kHashSkipList = 19,
-    kUniversalCompaction = 20,
-    kUniversalCompactionMultiLevel = 21,
-    kCompressedBlockCache = 22,
-    kInfiniteMaxOpenFiles = 23,
-    kxxHashChecksum = 24,
-    kFIFOCompaction = 25,
-    kOptimizeFiltersForHits = 26,
-    kRowCache = 27,
-    kRecycleLogFiles = 28,
-    kConcurrentSkipList = 29,
-    kPipelinedWrite = 30,
-    kConcurrentWALWrites = 31,
-    kDirectIO = 32,
-    kLevelSubcompactions = 33,
-    kBlockBasedTableWithIndexRestartInterval = 34,
-    kBlockBasedTableWithPartitionedIndex = 35,
-    kBlockBasedTableWithPartitionedIndexFormat4 = 36,
-    kPartitionedFilterWithNewTableReaderForCompactions = 37,
-    kUniversalSubcompactions = 38,
-    kxxHash64Checksum = 39,
+    kMergePut = 9,
+    kFilter = 10,
+    kFullFilterWithNewTableReaderForCompactions = 11,
+    kUncompressed = 12,
+    kNumLevel_3 = 13,
+    kDBLogDir = 14,
+    kWalDirAndMmapReads = 15,
+    kManifestFileSize = 16,
+    kPerfOptions = 17,
+    kHashSkipList = 18,
+    kUniversalCompaction = 19,
+    kUniversalCompactionMultiLevel = 20,
+    kCompressedBlockCache = 21,
+    kInfiniteMaxOpenFiles = 22,
+    kxxHashChecksum = 23,
+    kFIFOCompaction = 24,
+    kOptimizeFiltersForHits = 25,
+    kRowCache = 26,
+    kRecycleLogFiles = 27,
+    kConcurrentSkipList = 28,
+    kPipelinedWrite = 29,
+    kConcurrentWALWrites = 30,
+    kDirectIO = 31,
+    kLevelSubcompactions = 32,
+    kBlockBasedTableWithIndexRestartInterval = 33,
+    kBlockBasedTableWithPartitionedIndex = 34,
+    kBlockBasedTableWithPartitionedIndexFormat4 = 35,
+    kPartitionedFilterWithNewTableReaderForCompactions = 36,
+    kUniversalSubcompactions = 37,
+    kxxHash64Checksum = 38,
     // The following tests use indirect values.  We don't test combinations that are incompatible with, or have nothing to do with, indirect values
 #ifdef INDIRECT_VALUE_SUPPORT
     // MUST KEEP ALL THE INDIRECT CONFIGS TOGETHER!  Checked in SkipIndirect
-    kDefaultInd = 40,
-    kBlockBasedTableWithPrefixHashIndexInd = 41,
-    kBlockBasedTableWithWholeKeyHashIndexInd = 42,
+    kDefaultInd = 39,
+    kBlockBasedTableWithPrefixHashIndexInd = 40,
+    kBlockBasedTableWithWholeKeyHashIndexInd = 41,
 //    kPlainTableFirstBytePrefix = 3,
 //    kPlainTableCappedPrefix = 4,
 //    kPlainTableCappedPrefixNonMmap = 5,
 //    kPlainTableAllBytesPrefix = 6,
 //    kVectorRep = 7,
 //    kHashLinkList = 8,
-//    kHashCuckoo = 9,
-    kMergePutInd = 43,
-    kFilterInd = 44,
-    kFullFilterWithNewTableReaderForCompactionsInd = 45,
-    kUncompressedInd = 46,
-    kNumLevel_3Ind = 47,
-    kDBLogDirInd = 48,
-    kWalDirAndMmapReadsInd = 49,
-//    kManifestFileSize = 17,
-//    kPerfOptions = 18,
-//    kHashSkipList = 19,
-    kUniversalCompactionInd = 50,
-    kUniversalCompactionMultiLevelInd = 51,
-    kCompressedBlockCacheInd = 52,
-    kInfiniteMaxOpenFilesInd = 53,
-//    kxxHashChecksum = 24,
-//    kFIFOCompaction = 25,
-    kOptimizeFiltersForHitsInd = 54,
-    kRowCacheInd = 55,
-//    kRecycleLogFiles = 28,
-//    kConcurrentSkipList = 29,
-//    kPipelinedWrite = 30,
-//    kConcurrentWALWrites = 31,
-    kDirectIOInd = 56,
-//    kLevelSubcompactions = 33,
-    kBlockBasedTableWithIndexRestartIntervalInd = 57,
-    kBlockBasedTableWithPartitionedIndexInd = 58,
-    kBlockBasedTableWithPartitionedIndexFormat4Ind = 59,
-    kPartitionedFilterWithNewTableReaderForCompactionsInd = 60,   // If you add another, must change references to this in SkipIndirect
+    kMergePutInd = 42,
+    kFilterInd = 43,
+    kFullFilterWithNewTableReaderForCompactionsInd = 44,
+    kUncompressedInd = 45,
+    kNumLevel_3Ind = 46,
+    kDBLogDirInd = 47,
+    kWalDirAndMmapReadsInd = 48,
+//    kManifestFileSize = 16,
+//    kPerfOptions = 17,
+//    kHashSkipList = 18,
+    kUniversalCompactionInd = 49,
+    kUniversalCompactionMultiLevelInd = 50,
+    kCompressedBlockCacheInd = 51,
+    kInfiniteMaxOpenFilesInd = 52,
+//    kxxHashChecksum = 23,
+//    kFIFOCompaction = 24,
+    kOptimizeFiltersForHitsInd = 53,
+    kRowCacheInd = 54,
+//    kRecycleLogFiles = 27,
+//    kConcurrentSkipList = 28,
+//    kPipelinedWrite = 29,
+//    kConcurrentWALWrites = 30,
+    kDirectIOInd = 55,
+//    kLevelSubcompactions = 32,
+    kBlockBasedTableWithIndexRestartIntervalInd = 56,
+    kBlockBasedTableWithPartitionedIndexInd = 57,
+    kBlockBasedTableWithPartitionedIndexFormat4Ind = 58,
+    kPartitionedFilterWithNewTableReaderForCompactionsInd = 59,   // If you add another, must change references to this in SkipIndirect
+//    kUniversalSubcompactions = 37,
+//    kxxHash64Checksum = 38,
 
 #endif
 
+=======
     // This must be the last line
     kEnd,
   };
@@ -747,7 +755,6 @@ class DBTestBase : public testing::Test {
     kSkipPlainTable = 8,
     kSkipHashIndex = 16,
     kSkipNoSeekToLast = 32,
-    kSkipHashCuckoo = 64,
     kSkipFIFOCompaction = 128,
     kSkipMmapReads = 256,
     kSkipDirectIO = 512,
@@ -933,6 +940,10 @@ class DBTestBase : public testing::Test {
                   const Snapshot* snapshot = nullptr);
 
   Status Get(const std::string& k, PinnableSlice* v);
+
+  std::vector<std::string> MultiGet(std::vector<int> cfs,
+                                    const std::vector<std::string>& k,
+                                    const Snapshot* snapshot = nullptr);
 
   uint64_t GetNumSnapshots();
 

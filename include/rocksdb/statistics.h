@@ -8,8 +8,9 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <string>
+#include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "rocksdb/status.h"
@@ -21,7 +22,8 @@ namespace rocksdb {
  *  1. Any ticker should be added before TICKER_ENUM_MAX.
  *  2. Add a readable string in TickersNameMap below for the newly added ticker.
  *  3. Add a corresponding enum value to TickerType.java in the java API
- *  4. DO NOT push any BLOCK_xxx tickers past 63, or make any ticker used in get_context, go past index number 63
+ *  4. Add the enum conversions from Java and C++ to portal.h's toJavaTickerType
+ * and toCppTickers
  */
 enum Tickers : uint32_t {
   // total block cache misses
@@ -312,7 +314,7 @@ enum Tickers : uint32_t {
   // # of bytes in the blob files evicted because of BlobDB is full.
   BLOB_DB_FIFO_BYTES_EVICTED,
 
-  // These coutners indicate a performance issue in WritePrepared transactions.
+  // These counters indicate a performance issue in WritePrepared transactions.
   // We should not seem them ticking them much.
   // # of times prepare_mutex_ is acquired in the fast path.
   TXN_PREPARE_MUTEX_OVERHEAD,
@@ -323,12 +325,19 @@ enum Tickers : uint32_t {
   // # of times snapshot_mutex_ is acquired in the fast path.
   TXN_SNAPSHOT_MUTEX_OVERHEAD,
 
-  // Number of keys actually found in MultiGet calls (vs number requested by caller)
+  // Number of keys actually found in MultiGet calls (vs number requested by
+  // caller)
   // NUMBER_MULTIGET_KEYS_READ gives the number requested by caller
   NUMBER_MULTIGET_KEYS_FOUND,
 
   NO_ITERATOR_CREATED,  // number of iterators created
   NO_ITERATOR_DELETED,  // number of iterators deleted
+
+  BLOCK_CACHE_COMPRESSION_DICT_MISS,
+  BLOCK_CACHE_COMPRESSION_DICT_HIT,
+  BLOCK_CACHE_COMPRESSION_DICT_ADD,
+  BLOCK_CACHE_COMPRESSION_DICT_BYTES_INSERT,
+  BLOCK_CACHE_COMPRESSION_DICT_BYTES_EVICT,
   TICKER_ENUM_MAX
 };
 
@@ -348,6 +357,7 @@ enum Histograms : uint32_t {
   DB_GET = 0,
   DB_WRITE,
   COMPACTION_TIME,
+  COMPACTION_CPU_TIME,
   SUBCOMPACTION_SETUP_TIME,
   TABLE_SYNC_MICROS,
   COMPACTION_OUTFILE_SYNC_MICROS,
@@ -433,9 +443,14 @@ struct HistogramData {
   double max = 0.0;
   uint64_t count = 0;
   uint64_t sum = 0;
+  double min = 0.0;
 };
 
-enum StatsLevel {
+enum StatsLevel : uint8_t {
+  // Disable timer stats, and skip histogram stats
+  kExceptHistogramOrTimers,
+  // Skip timer stats
+  kExceptTimers,
   // Collect all stats except time inside mutex lock AND time spent on
   // compression.
   kExceptDetailedTimers,
@@ -460,12 +475,29 @@ class Statistics {
   virtual void recordTick(uint32_t tickerType, uint64_t count = 0) = 0;
   virtual void setTickerCount(uint32_t tickerType, uint64_t count) = 0;
   virtual uint64_t getAndResetTickerCount(uint32_t tickerType) = 0;
-  virtual void measureTime(uint32_t histogramType, uint64_t time) = 0;
+  virtual void reportTimeToHistogram(uint32_t histogramType, uint64_t time) {
+    if (get_stats_level() <= StatsLevel::kExceptTimers) {
+      return;
+    }
+    recordInHistogram(histogramType, time);
+  }
+  // The function is here only for backward compatibility reason.
+  // Users implementing their own Statistics class should override
+  // recordInHistogram() instead and leave measureTime() as it is.
+  virtual void measureTime(uint32_t /*histogramType*/, uint64_t /*time*/) {
+    // This is not supposed to be called.
+    assert(false);
+  }
+  virtual void recordInHistogram(uint32_t histogramType, uint64_t time) {
+    // measureTime() is the old and inaccurate function name.
+    // To keep backward compatible. If users implement their own
+    // statistics, which overrides meareTime() but doesn't override
+    // this function. We forward to measureTime().
+    measureTime(histogramType, time);
+  }
 
   // Resets all ticker and histogram stats
-  virtual Status Reset() {
-    return Status::NotSupported("Not implemented");
-  }
+  virtual Status Reset() { return Status::NotSupported("Not implemented"); }
 
   // String representation of the statistic object.
   virtual std::string ToString() const {
@@ -473,12 +505,24 @@ class Statistics {
     return std::string("ToString(): not implemented");
   }
 
+  virtual bool getTickerMap(std::map<std::string, uint64_t>*) const {
+    // Do nothing by default
+    return false;
+  };
+
   // Override this function to disable particular histogram collection
   virtual bool HistEnabledForType(uint32_t type) const {
     return type < HISTOGRAM_ENUM_MAX;
   }
+  void set_stats_level(StatsLevel sl) {
+    stats_level_.store(sl, std::memory_order_relaxed);
+  }
+  StatsLevel get_stats_level() const {
+    return stats_level_.load(std::memory_order_relaxed);
+  }
 
-  StatsLevel stats_level_ = kExceptDetailedTimers;
+ private:
+  std::atomic<StatsLevel> stats_level_{kExceptDetailedTimers};
 };
 
 // Create a concrete DBStatistics object

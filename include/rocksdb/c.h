@@ -637,7 +637,6 @@ extern ROCKSDB_LIBRARY_API rocksdb_iterator_t* rocksdb_writebatch_wi_create_iter
     rocksdb_iterator_t* base_iterator,
     rocksdb_column_family_handle_t* cf);
 
-
 /* Block based table options */
 
 extern ROCKSDB_LIBRARY_API rocksdb_block_based_table_options_t*
@@ -728,6 +727,9 @@ extern ROCKSDB_LIBRARY_API void rocksdb_options_set_cuckoo_table_factory(
 /* Options */
 extern ROCKSDB_LIBRARY_API void rocksdb_set_options(
     rocksdb_t* db, int count, const char* const keys[], const char* const values[], char** errptr);
+
+extern ROCKSDB_LIBRARY_API void rocksdb_set_options_cf(
+    rocksdb_t* db, rocksdb_column_family_handle_t* handle, int count, const char* const keys[], const char* const values[], char** errptr);
 
 extern ROCKSDB_LIBRARY_API rocksdb_options_t* rocksdb_options_create();
 extern ROCKSDB_LIBRARY_API void rocksdb_options_destroy(rocksdb_options_t*);
@@ -1499,6 +1501,13 @@ extern ROCKSDB_LIBRARY_API rocksdb_transactiondb_t* rocksdb_transactiondb_open(
     const rocksdb_transactiondb_options_t* txn_db_options, const char* name,
     char** errptr);
 
+rocksdb_transactiondb_t* rocksdb_transactiondb_open_column_families(
+    const rocksdb_options_t* options,
+    const rocksdb_transactiondb_options_t* txn_db_options, const char* name,
+    int num_column_families, const char** column_family_names,
+    const rocksdb_options_t** column_family_options,
+    rocksdb_column_family_handle_t** column_family_handles, char** errptr);
+
 extern ROCKSDB_LIBRARY_API const rocksdb_snapshot_t*
 rocksdb_transactiondb_create_snapshot(rocksdb_transactiondb_t* txn_db);
 
@@ -1544,6 +1553,11 @@ extern ROCKSDB_LIBRARY_API char* rocksdb_transaction_get_for_update(
     const char* key, size_t klen, size_t* vlen, unsigned char exclusive,
     char** errptr);
 
+char* rocksdb_transaction_get_for_update_cf(
+    rocksdb_transaction_t* txn, const rocksdb_readoptions_t* options,
+    rocksdb_column_family_handle_t* column_family, const char* key, size_t klen,
+    size_t* vlen, unsigned char exclusive, char** errptr);
+
 extern ROCKSDB_LIBRARY_API char* rocksdb_transactiondb_get(
     rocksdb_transactiondb_t* txn_db, const rocksdb_readoptions_t* options,
     const char* key, size_t klen, size_t* vlen, char** errptr);
@@ -1578,9 +1592,18 @@ extern ROCKSDB_LIBRARY_API void rocksdb_transaction_merge(
     rocksdb_transaction_t* txn, const char* key, size_t klen, const char* val,
     size_t vlen, char** errptr);
 
+extern ROCKSDB_LIBRARY_API void rocksdb_transaction_merge_cf(
+    rocksdb_transaction_t* txn, rocksdb_column_family_handle_t* column_family,
+    const char* key, size_t klen, const char* val, size_t vlen, char** errptr);
+
 extern ROCKSDB_LIBRARY_API void rocksdb_transactiondb_merge(
     rocksdb_transactiondb_t* txn_db, const rocksdb_writeoptions_t* options,
     const char* key, size_t klen, const char* val, size_t vlen, char** errptr);
+
+extern ROCKSDB_LIBRARY_API void rocksdb_transactiondb_merge_cf(
+    rocksdb_transactiondb_t* txn_db, const rocksdb_writeoptions_t* options,
+    rocksdb_column_family_handle_t* column_family, const char* key, size_t klen,
+    const char* val, size_t vlen, char** errptr);
 
 extern ROCKSDB_LIBRARY_API void rocksdb_transaction_delete(
     rocksdb_transaction_t* txn, const char* key, size_t klen, char** errptr);
@@ -1610,6 +1633,11 @@ rocksdb_transaction_create_iterator_cf(
 extern ROCKSDB_LIBRARY_API rocksdb_iterator_t*
 rocksdb_transactiondb_create_iterator(rocksdb_transactiondb_t* txn_db,
                                       const rocksdb_readoptions_t* options);
+
+extern ROCKSDB_LIBRARY_API rocksdb_iterator_t*
+rocksdb_transactiondb_create_iterator_cf(
+    rocksdb_transactiondb_t* txn_db, const rocksdb_readoptions_t* options,
+    rocksdb_column_family_handle_t* column_family);
 
 extern ROCKSDB_LIBRARY_API void rocksdb_transactiondb_close(
     rocksdb_transactiondb_t* txn_db);

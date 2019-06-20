@@ -168,7 +168,6 @@ Status ExternalSstFileIngestionJob::Run() {
   assert(status.ok() && need_flush == false);
 #endif
 
-  bool consumed_seqno = false;
   bool force_global_seqno = false;
 
   if (ingestion_options_.snapshot_consistency && !db_snapshots_->empty()) {
@@ -198,7 +197,7 @@ Status ExternalSstFileIngestionJob::Run() {
     TEST_SYNC_POINT_CALLBACK("ExternalSstFileIngestionJob::Run",
                              &assigned_seqno);
     if (assigned_seqno == last_seqno + 1) {
-      consumed_seqno = true;
+      consumed_seqno_ = true;
     }
     if (!status.ok()) {
       return status;
@@ -211,13 +210,6 @@ Status ExternalSstFileIngestionJob::Run() {
                   f.largest_internal_key(), f.assigned_seqno, f.assigned_seqno,
                   false);
   }
-
-  if (consumed_seqno) {
-    versions_->SetLastAllocatedSequence(last_seqno + 1);
-    versions_->SetLastPublishedSequence(last_seqno + 1);
-    versions_->SetLastSequence(last_seqno + 1);
-  }
-
   return status;
 }
 
@@ -239,7 +231,8 @@ void ExternalSstFileIngestionJob::UpdateStats() {
       stats.bytes_moved = f.fd.GetFileSize();
     }
     stats.num_output_files = 1;
-    cfd_->internal_stats()->AddCompactionStats(f.picked_level, stats);
+    cfd_->internal_stats()->AddCompactionStats(f.picked_level,
+                                               Env::Priority::USER, stats);
     cfd_->internal_stats()->AddCFStats(InternalStats::BYTES_INGESTED_ADD_FILE,
                                        f.fd.GetFileSize());
     total_keys += f.num_entries;
@@ -273,6 +266,7 @@ void ExternalSstFileIngestionJob::Cleanup(const Status& status) {
                        f.internal_file_path.c_str(), s.ToString().c_str());
       }
     }
+    consumed_seqno_ = false;
   } else if (status.ok() && ingestion_options_.move_files) {
     // The files were moved and added successfully, remove original file links
     for (IngestedFileInfo& f : files_to_ingest_) {
@@ -316,6 +310,13 @@ Status ExternalSstFileIngestionJob::GetIngestedFileInfo(
                          sv->mutable_cf_options.prefix_extractor.get(),
                          env_options_, cfd_->internal_comparator()),
       std::move(sst_file_reader), file_to_ingest->file_size, &table_reader);
+  if (!status.ok()) {
+    return status;
+  }
+
+  if (ingestion_options_.verify_checksums_before_ingest) {
+    status = table_reader->VerifyChecksum();
+  }
   if (!status.ok()) {
     return status;
   }

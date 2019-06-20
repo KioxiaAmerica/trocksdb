@@ -390,6 +390,8 @@ class ColumnFamilyData {
 
   Directory* GetDataDir(size_t path_id) const;
 
+  ThreadLocalPtr* TEST_GetLocalSV() { return local_sv_.get(); }
+
 #ifdef INDIRECT_VALUE_SUPPORT
   std::shared_ptr<VLog> vlog() { return vlog_;}    // the VLog to be used for this column family.  May contain no rings
   std::vector<VLogRingRestartInfo>& vloginfo() { return vlog_info; }

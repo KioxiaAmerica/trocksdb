@@ -26,10 +26,16 @@ void DBImpl::TEST_SwitchWAL() {
   SwitchWAL(&write_context);
 }
 
-bool DBImpl::TEST_WALBufferIsEmpty() {
-  InstrumentedMutexLock wl(&log_write_mutex_);
+bool DBImpl::TEST_WALBufferIsEmpty(bool lock) {
+  if (lock) {
+    log_write_mutex_.Lock();
+  }
   log::Writer* cur_log_writer = logs_.back().writer;
-  return cur_log_writer->TEST_BufferIsEmpty();
+  auto res = cur_log_writer->TEST_BufferIsEmpty();
+  if (lock) {
+    log_write_mutex_.Unlock();
+  }
+  return res;
 }
 
 int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes(
@@ -101,7 +107,7 @@ Status DBImpl::TEST_SwitchMemtable(ColumnFamilyData* cfd) {
 }
 
 Status DBImpl::TEST_FlushMemTable(bool wait, bool allow_write_stall,
-    ColumnFamilyHandle* cfh) {
+                                  ColumnFamilyHandle* cfh) {
   FlushOptions fo;
   fo.wait = wait;
   fo.allow_write_stall = allow_write_stall;
@@ -143,13 +149,9 @@ Status DBImpl::TEST_WaitForCompact(bool wait_unscheduled) {
   return error_handler_.GetBGError();
 }
 
-void DBImpl::TEST_LockMutex() {
-  mutex_.Lock();
-}
+void DBImpl::TEST_LockMutex() { mutex_.Lock(); }
 
-void DBImpl::TEST_UnlockMutex() {
-  mutex_.Unlock();
-}
+void DBImpl::TEST_UnlockMutex() { mutex_.Unlock(); }
 
 void* DBImpl::TEST_BeginWrite() {
   auto w = new WriteThread::Writer();
@@ -243,10 +245,24 @@ size_t DBImpl::TEST_GetWalPreallocateBlockSize(
   return GetWalPreallocateBlockSize(write_buffer_size);
 }
 
-void DBImpl::TEST_WaitForTimedTaskRun(std::function<void()> callback) const {
+void DBImpl::TEST_WaitForDumpStatsRun(std::function<void()> callback) const {
   if (thread_dump_stats_ != nullptr) {
     thread_dump_stats_->TEST_WaitForRun(callback);
   }
+}
+
+void DBImpl::TEST_WaitForPersistStatsRun(std::function<void()> callback) const {
+  if (thread_persist_stats_ != nullptr) {
+    thread_persist_stats_->TEST_WaitForRun(callback);
+  }
+}
+
+bool DBImpl::TEST_IsPersistentStatsEnabled() const {
+  return thread_persist_stats_ && thread_persist_stats_->IsRunning();
+}
+
+size_t DBImpl::TEST_EstiamteStatsHistorySize() const {
+  return EstiamteStatsHistorySize();
 }
 }  // namespace rocksdb
 #endif  // NDEBUG

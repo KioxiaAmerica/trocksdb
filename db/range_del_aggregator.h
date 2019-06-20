@@ -88,13 +88,13 @@ class TruncatedRangeDelIterator {
 
   const InternalKey* smallest_ikey_;
   const InternalKey* largest_ikey_;
-  };
+};
 
 struct SeqMaxComparator {
   bool operator()(const TruncatedRangeDelIterator* a,
                   const TruncatedRangeDelIterator* b) const {
     return a->seq() > b->seq();
-    }
+  }
 };
 
 struct StartKeyMinComparator {
@@ -120,7 +120,7 @@ class ForwardRangeDelIterator {
     iter->Seek(parsed.user_key);
     PushIter(iter, parsed);
     assert(active_iters_.size() == active_seqnums_.size());
-    }
+  }
 
   size_t UnusedIdx() const { return unused_idx_; }
   void IncUnusedIdx() { unused_idx_++; }
@@ -135,7 +135,7 @@ class ForwardRangeDelIterator {
     bool operator()(const ActiveSeqSet::const_iterator& a,
                     const ActiveSeqSet::const_iterator& b) const {
       return icmp->Compare((*a)->end_key(), (*b)->end_key()) > 0;
-  }
+    }
 
     const InternalKeyComparator* icmp;
   };
@@ -167,7 +167,6 @@ class ForwardRangeDelIterator {
     active_seqnums_.erase(active_top);
     return iter;
   }
-  bool AddFile(uint64_t file_number);
 
   void PushInactiveIter(TruncatedRangeDelIterator* iter) {
     inactive_iters_.push(iter);
@@ -226,7 +225,6 @@ class ReverseRangeDelIterator {
     }
 
     const InternalKeyComparator* icmp;
-    std::set<uint64_t> added_files_;
   };
 
   void PushIter(TruncatedRangeDelIterator* iter,
@@ -341,9 +339,9 @@ class RangeDelAggregator {
     std::vector<std::unique_ptr<TruncatedRangeDelIterator>> iters_;
     ForwardRangeDelIterator forward_iter_;
     ReverseRangeDelIterator reverse_iter_;
-  SequenceNumber upper_bound_;
+    SequenceNumber upper_bound_;
     SequenceNumber lower_bound_;
-};
+  };
 
   const InternalKeyComparator* icmp_;
 

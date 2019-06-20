@@ -72,8 +72,8 @@ TEST_F(DBRangeDelTest, CompactionOutputHasOnlyRangeTombstone) {
     // Skip cuckoo memtables, which do not support snapshots. Skip non-leveled
     // compactions as the above assertions about the number of files in a level
     // do not hold true.
-  } while (ChangeOptions(kRangeDelSkipConfigs | kSkipHashCuckoo |
-                         kSkipUniversalCompaction | kSkipFIFOCompaction));
+  } while (ChangeOptions(kRangeDelSkipConfigs | kSkipUniversalCompaction |
+                         kSkipFIFOCompaction));
 }
 
 TEST_F(DBRangeDelTest, CompactionOutputFilesExactlyFilled) {
@@ -515,6 +515,30 @@ TEST_F(DBRangeDelTest, CompactionRemovesCoveredMergeOperands) {
   ASSERT_EQ(expected, actual);
 }
 
+TEST_F(DBRangeDelTest, PutDeleteRangeMergeFlush) {
+  // Test the sequence of operations: (1) Put, (2) DeleteRange, (3) Merge, (4)
+  // Flush. The `CompactionIterator` previously had a bug where we forgot to
+  // check for covering range tombstones when processing the (1) Put, causing
+  // it to reappear after the flush.
+  Options opts = CurrentOptions();
+  opts.merge_operator = MergeOperators::CreateUInt64AddOperator();
+  Reopen(opts);
+
+  std::string val;
+  PutFixed64(&val, 1);
+  ASSERT_OK(db_->Put(WriteOptions(), "key", val));
+  ASSERT_OK(db_->DeleteRange(WriteOptions(), db_->DefaultColumnFamily(),
+                             "key", "key_"));
+  ASSERT_OK(db_->Merge(WriteOptions(), "key", val));
+  ASSERT_OK(db_->Flush(FlushOptions()));
+
+  ReadOptions read_opts;
+  std::string expected, actual;
+  ASSERT_OK(db_->Get(read_opts, "key", &actual));
+  PutFixed64(&expected, 1);
+  ASSERT_EQ(expected, actual);
+}
+
 // NumTableFilesAtLevel() is not supported in ROCKSDB_LITE
 #ifndef ROCKSDB_LITE
 TEST_F(DBRangeDelTest, ObsoleteTombstoneCleanup) {
@@ -670,8 +694,7 @@ TEST_F(DBRangeDelTest, GetCoveredKeyFromSst) {
     std::string value;
     ASSERT_TRUE(db_->Get(read_opts, "key", &value).IsNotFound());
     db_->ReleaseSnapshot(snapshot);
-    // Cuckoo memtables do not support snapshots.
-  } while (ChangeOptions(kRangeDelSkipConfigs | kSkipHashCuckoo));
+  } while (ChangeOptions(kRangeDelSkipConfigs));
 }
 
 TEST_F(DBRangeDelTest, GetCoveredMergeOperandFromMemtable) {
@@ -1145,14 +1168,14 @@ class MockMergeOperator : public MergeOperator {
   // Mock non-associative operator. Non-associativity is expressed by lack of
   // implementation for any `PartialMerge*` functions.
  public:
-  virtual bool FullMergeV2(const MergeOperationInput& merge_in,
-                           MergeOperationOutput* merge_out) const override {
+  bool FullMergeV2(const MergeOperationInput& merge_in,
+                   MergeOperationOutput* merge_out) const override {
     assert(merge_out != nullptr);
     merge_out->new_value = merge_in.operand_list.back().ToString();
     return true;
   }
 
-  virtual const char* Name() const override { return "MockMergeOperator"; }
+  const char* Name() const override { return "MockMergeOperator"; }
 };
 
 TEST_F(DBRangeDelTest, KeyAtOverlappingEndpointReappears) {
@@ -1170,6 +1193,14 @@ TEST_F(DBRangeDelTest, KeyAtOverlappingEndpointReappears) {
   options.merge_operator.reset(new MockMergeOperator());
   options.target_file_size_base = kFileBytes;
   Reopen(options);
+
+  // Push dummy data to L3 so that our actual test files on L0-L2
+  // will not be considered "bottommost" level, otherwise compaction
+  // may prevent us from creating overlapping user keys
+  // as on the bottommost layer MergeHelper
+  ASSERT_OK(db_->Merge(WriteOptions(), "key", "dummy"));
+  ASSERT_OK(db_->Flush(FlushOptions()));
+  MoveFilesToLevel(3);
 
   Random rnd(301);
   const Snapshot* snapshot = nullptr;
@@ -1192,8 +1223,9 @@ TEST_F(DBRangeDelTest, KeyAtOverlappingEndpointReappears) {
   std::string value;
   ASSERT_TRUE(db_->Get(ReadOptions(), "key", &value).IsNotFound());
 
-  ASSERT_OK(db_->CompactRange(CompactRangeOptions(), nullptr /* begin_key */,
-                              nullptr /* end_key */));
+  dbfull()->TEST_CompactRange(0 /* level */, nullptr /* begin */,
+                              nullptr /* end */, nullptr /* column_family */,
+                              true /* disallow_trivial_move */);
   ASSERT_EQ(0, NumTableFilesAtLevel(0));
   // Now we have multiple files at L1 all containing a single user key, thus
   // guaranteeing overlap in the file endpoints.

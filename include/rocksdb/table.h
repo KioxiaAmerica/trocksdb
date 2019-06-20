@@ -41,8 +41,6 @@ class WritableFileWriter;
 struct EnvOptions;
 struct Options;
 
-using std::unique_ptr;
-
 enum ChecksumType : char {
   kNoChecksum = 0x0,
   kCRC32c = 0x1,
@@ -61,6 +59,10 @@ struct BlockBasedTableOptions {
 
   // TODO(kailiu) Temporarily disable this feature by making the default value
   // to be false.
+  //
+  // TODO(ajkr) we need to update names of variables controlling meta-block
+  // caching as they should now apply to range tombstone and compression
+  // dictionary meta-blocks, in addition to index and filter meta-blocks.
   //
   // Indicating if we'd put index/filter blocks to the block cache.
   // If not specified, each "table reader" object will pre-load index/filter
@@ -225,7 +227,7 @@ struct BlockBasedTableOptions {
   // Default: 0 (disabled)
   uint32_t read_amp_bytes_per_bit = 0;
 
-  // We currently have three versions:
+  // We currently have five versions:
   // 0 -- This version is currently written out by all RocksDB's versions by
   // default.  Can be read by really old RocksDB's. Doesn't support changing
   // checksum (default is CRC32).
@@ -354,13 +356,13 @@ struct PlainTableOptions {
 };
 
 // -- Plain Table with prefix-only seek
-// For this factory, you need to set Options.prefix_extractor properly to make it
-// work. Look-up will starts with prefix hash lookup for key prefix. Inside the
-// hash bucket found, a binary search is executed for hash conflicts. Finally,
-// a linear search is used.
+// For this factory, you need to set Options.prefix_extractor properly to make
+// it work. Look-up will starts with prefix hash lookup for key prefix. Inside
+// the hash bucket found, a binary search is executed for hash conflicts.
+// Finally, a linear search is used.
 
-extern TableFactory* NewPlainTableFactory(const PlainTableOptions& options =
-                                              PlainTableOptions());
+extern TableFactory* NewPlainTableFactory(
+    const PlainTableOptions& options = PlainTableOptions());
 
 struct CuckooTablePropertyNames {
   // The key that is used to fill empty buckets.
@@ -454,8 +456,8 @@ class TableFactory {
   //     and cache the table object returned.
   // (2) SstFileDumper (for SST Dump) opens the table and dump the table
   //     contents using the iterator of the table.
-  // (3) DBImpl::IngestExternalFile() calls this function to read the contents of
-  //     the sst file it's attempting to add
+  // (3) DBImpl::IngestExternalFile() calls this function to read the contents
+  //     of the sst file it's attempting to add
   //
   // table_reader_options is a TableReaderOptions which contain all the
   //    needed parameters and configuration to open the table.
@@ -494,9 +496,8 @@ class TableFactory {
   //
   // If the function cannot find a way to sanitize the input DB Options,
   // a non-ok Status will be returned.
-  virtual Status SanitizeOptions(
-      const DBOptions& db_opts,
-      const ColumnFamilyOptions& cf_opts) const = 0;
+  virtual Status SanitizeOptions(const DBOptions& db_opts,
+                                 const ColumnFamilyOptions& cf_opts) const = 0;
 
   // Return a string that contains printable format of table configurations.
   // RocksDB prints configurations at DB Open().
@@ -543,7 +544,8 @@ class TableFactory {
 // @block_based_table_factory:  block based table factory to use. If NULL, use
 //                              a default one.
 // @plain_table_factory: plain table factory to use. If NULL, use a default one.
-// @cuckoo_table_factory: cuckoo table factory to use. If NULL, use a default one.
+// @cuckoo_table_factory: cuckoo table factory to use. If NULL, use a default
+// one.
 extern TableFactory* NewAdaptiveTableFactory(
     std::shared_ptr<TableFactory> table_factory_to_write = nullptr,
     std::shared_ptr<TableFactory> block_based_table_factory = nullptr,

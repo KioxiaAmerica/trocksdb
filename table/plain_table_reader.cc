@@ -54,7 +54,7 @@ inline uint32_t GetFixed32Element(const char* base, size_t offset) {
 class PlainTableIterator : public InternalIterator {
  public:
   explicit PlainTableIterator(PlainTableReader* table, bool use_prefix_seek);
-  ~PlainTableIterator();
+  ~PlainTableIterator() override;
 
   bool Valid() const override;
 
@@ -104,7 +104,7 @@ PlainTableReader::PlainTableReader(
       user_key_len_(static_cast<uint32_t>(table_properties->fixed_key_len)),
       prefix_extractor_(prefix_extractor),
       enable_bloom_(false),
-      bloom_(6, nullptr),
+      bloom_(6),
       file_info_(std::move(file), storage_options,
                  static_cast<uint32_t>(table_properties->data_size)),
       ioptions_(ioptions),
@@ -120,7 +120,8 @@ Status PlainTableReader::Open(
     std::unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
     std::unique_ptr<TableReader>* table_reader, const int bloom_bits_per_key,
     double hash_table_ratio, size_t index_sparseness, size_t huge_page_tlb_size,
-    bool full_scan_mode, const SliceTransform* prefix_extractor) {
+    bool full_scan_mode, const bool immortal_table,
+    const SliceTransform* prefix_extractor) {
   if (file_size > PlainTableIndex::kMaxFileSize) {
     return Status::NotSupported("File is too large for PlainTableReader!");
   }
@@ -181,6 +182,10 @@ Status PlainTableReader::Open(
     new_reader->full_scan_mode_ = true;
   }
 
+  if (immortal_table && new_reader->file_info_.is_mmap_mode) {
+    new_reader->dummy_cleanable_.reset(new Cleanable());
+  }
+
   *table_reader = std::move(new_reader);
   return s;
 }
@@ -201,7 +206,8 @@ InternalIterator* PlainTableReader::NewIterator(
 }
 
 Status PlainTableReader::PopulateIndexRecordList(
-    PlainTableIndexBuilder* index_builder, vector<uint32_t>* prefix_hashes) {
+    PlainTableIndexBuilder* index_builder,
+    std::vector<uint32_t>* prefix_hashes) {
   Slice prev_key_prefix_slice;
   std::string prev_key_prefix_buf;
   uint32_t pos = data_start_offset_;
@@ -251,10 +257,9 @@ Status PlainTableReader::PopulateIndexRecordList(
   return s;
 }
 
-void PlainTableReader::AllocateAndFillBloom(int bloom_bits_per_key,
-                                            int num_prefixes,
-                                            size_t huge_page_tlb_size,
-                                            vector<uint32_t>* prefix_hashes) {
+void PlainTableReader::AllocateAndFillBloom(
+    int bloom_bits_per_key, int num_prefixes, size_t huge_page_tlb_size,
+    std::vector<uint32_t>* prefix_hashes) {
   if (!IsTotalOrderMode()) {
     uint32_t bloom_total_bits = num_prefixes * bloom_bits_per_key;
     if (bloom_total_bits > 0) {
@@ -266,7 +271,7 @@ void PlainTableReader::AllocateAndFillBloom(int bloom_bits_per_key,
   }
 }
 
-void PlainTableReader::FillBloom(vector<uint32_t>* prefix_hashes) {
+void PlainTableReader::FillBloom(std::vector<uint32_t>* prefix_hashes) {
   assert(bloom_.IsInitialized());
   for (auto prefix_hash : *prefix_hashes) {
     bloom_.AddHash(prefix_hash);
@@ -598,7 +603,8 @@ Status PlainTableReader::Get(const ReadOptions& /*ro*/, const Slice& target,
     // can we enable the fast path?
     if (internal_comparator_.Compare(found_key, parsed_target) >= 0) {
       bool dont_care __attribute__((__unused__));
-      if (!get_context->SaveValue(found_key, found_value, &dont_care)) {
+      if (!get_context->SaveValue(found_key, found_value, &dont_care,
+                                  dummy_cleanable_.get())) {
         break;
       }
     }

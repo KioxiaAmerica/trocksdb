@@ -1,12 +1,76 @@
 # Rocksdb Change Log
-## 5.18.3 (2/11/2019)
+## 6.1.2 (6/4/2019)
 ### Bug Fixes
-* Fix possible LSM corruption when both range deletions and subcompactions are used. The symptom of this corruption is L1+ files overlapping in the user key space.
+* Fix flush's/compaction's merge processing logic which allowed `Put`s covered by range tombstones to reappear. Note `Put`s may exist even if the user only ever called `Merge()` due to an internal conversion during compaction to the bottommost level.
+
+## 6.1.1 (4/9/2019)
+### New Features
+* When reading from option file/string/map, customized comparators and/or merge operators can be filled according to object registry.
+### Public API Change
+### Bug Fixes
+* Fix a bug in 2PC where a sequence of txn prepare, memtable flush, and crash could result in losing the prepared transaction.
+* Fix a bug in Encryption Env which could cause encrypted files to be read beyond file boundaries.
+
+## 6.1.0 (3/27/2019)
+### New Features
+* Introduce two more stats levels, kExceptHistogramOrTimers and kExceptTimers.
+* Added a feature to perform data-block sampling for compressibility, and report stats to user.
+* Add support for trace filtering.
+* Add DBOptions.avoid_unnecessary_blocking_io. If true, we avoid file deletion when destorying ColumnFamilyHandle and Iterator. Instead, a job is scheduled to delete the files in background.
+
+### Public API Change
+* Remove bundled fbson library.
+* statistics.stats_level_ becomes atomic. It is preferred to use statistics.set_stats_level() and statistics.get_stats_level() to access it.
+* Introduce a new IOError subcode, PathNotFound, to indicate trying to open a nonexistent file or directory for read.
+* Add initial support for multiple db instances sharing the same data in single-writer, multi-reader mode.
+* Removed some "using std::xxx" from public headers.
+
+### Bug Fixes
+* Fix JEMALLOC_CXX_THROW macro missing from older Jemalloc versions, causing build failures on some platforms.
+* Fix SstFileReader not able to open file ingested with write_glbal_seqno=true.
+
+## 6.0.0 (2/19/2019)
+### New Features
+* Enabled checkpoint on readonly db (DBImplReadOnly).
+* Make DB ignore dropped column families while committing results of atomic flush.
+* RocksDB may choose to preopen some files even if options.max_open_files != -1. This may make DB open slightly longer.
+* For users of dictionary compression with ZSTD v0.7.0+, we now reuse the same digested dictionary when compressing each of an SST file's data blocks for faster compression speeds.
+* For all users of dictionary compression who set `cache_index_and_filter_blocks == true`, we now store dictionary data used for decompression in the block cache for better control over memory usage. For users of ZSTD v1.1.4+ who compile with -DZSTD_STATIC_LINKING_ONLY, this includes a digested dictionary, which is used to increase decompression speed.
+* Add support for block checksums verification for external SST files before ingestion.
+* Introduce stats history which periodically saves Statistics snapshots and added `GetStatsHistory` API to retrieve these snapshots.
+* Add a place holder in manifest which indicate a record from future that can be safely ignored.
+* Add support for trace sampling.
+* Enable properties block checksum verification for block-based tables.
+* For all users of dictionary compression, we now generate a separate dictionary for compressing each bottom-level SST file. Previously we reused a single dictionary for a whole compaction to bottom level. The new approach achieves better compression ratios; however, it uses more memory and CPU for buffering/sampling data blocks and training dictionaries.
+* Add whole key bloom filter support in memtable.
+* Files written by `SstFileWriter` will now use dictionary compression if it is configured in the file writer's `CompressionOptions`.
 
 ## 5.18.2 (01/31/2019)
 ### Public API Change
+* Disallow CompactionFilter::IgnoreSnapshots() = false, because it is not very useful and the behavior is confusing. The filter will filter everything if there is no snapshot declared by the time the compaction starts. However, users can define a snapshot after the compaction starts and before it finishes and this new snapshot won't be repeatable, because after the compaction finishes, some keys may be dropped.
+* CompactionPri = kMinOverlappingRatio also uses compensated file size, which boosts file with lots of tombstones to be compacted first.
+* Transaction::GetForUpdate is extended with a do_validate parameter with default value of true. If false it skips validating the snapshot before doing the read. Similarly ::Merge, ::Put, ::Delete, and ::SingleDelete are extended with assume_tracked with default value of false. If true it indicates that call is assumed to be after a ::GetForUpdate.
+* `TableProperties::num_entries` and `TableProperties::num_deletions` now also account for number of range tombstones.
+* Remove geodb, spatial_db, document_db, json_document, date_tiered_db, and redis_lists.
+* With "ldb ----try_load_options", when wal_dir specified by the option file doesn't exist, ignore it.
 * Change time resolution in FileOperationInfo.
 * Deleting Blob files also go through SStFileManager.
+* Remove CuckooHash memtable.
+* The counter stat `number.block.not_compressed` now also counts blocks not compressed due to poor compression ratio.
+* Remove ttl option from `CompactionOptionsFIFO`. The option has been deprecated and ttl in `ColumnFamilyOptions` is used instead.
+* Support SST file ingestion across multiple column families via DB::IngestExternalFiles. See the function's comment about atomicity.
+* Remove Lua compaction filter.
+
+### Bug Fixes
+* Fix a deadlock caused by compaction and file ingestion waiting for each other in the event of write stalls.
+* Fix a memory leak when files with range tombstones are read in mmap mode and block cache is enabled
+* Fix handling of corrupt range tombstone blocks such that corruptions cannot cause deleted keys to reappear
+* Lock free MultiGet
+* Fix incorrect `NotFound` point lookup result when querying the endpoint of a file that has been extended by a range tombstone.
+* Fix with pipelined write, write leaders's callback failure lead to the whole write group fail.
+
+### Change Default Options
+* Change options.compaction_pri's default to kMinOverlappingRatio
 
 ## 5.18.0 (11/30/2018)
 ### New Features

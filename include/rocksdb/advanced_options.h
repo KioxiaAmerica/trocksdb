@@ -70,13 +70,6 @@ struct CompactionOptionsFIFO {
   // Default: 1GB
   uint64_t max_table_files_size;
 
-  // Drop files older than TTL. TTL based deletion will take precedence over
-  // size based deletion if ttl > 0.
-  // delete if sst_file_creation_time < (current_time - ttl)
-  // unit: seconds. Ex: 1 day = 1 * 24 * 60 * 60
-  // Default: 0 (disabled)
-  uint64_t ttl = 0;
-
   // If true, try to do compaction to compact smaller files into larger ones.
   // Minimum files to compact follows options.level0_file_num_compaction_trigger
   // and compaction won't trigger if average compact bytes per del file is
@@ -86,10 +79,8 @@ struct CompactionOptionsFIFO {
   bool allow_compaction = false;
 
   CompactionOptionsFIFO() : max_table_files_size(1 * 1024 * 1024 * 1024) {}
-  CompactionOptionsFIFO(uint64_t _max_table_files_size, bool _allow_compaction,
-                        uint64_t _ttl = 0)
+  CompactionOptionsFIFO(uint64_t _max_table_files_size, bool _allow_compaction)
       : max_table_files_size(_max_table_files_size),
-        ttl(_ttl),
         allow_compaction(_allow_compaction) {}
 };
 
@@ -288,6 +279,15 @@ struct AdvancedColumnFamilyOptions {
   //
   // Dynamically changeable through SetOptions() API
   double memtable_prefix_bloom_size_ratio = 0.0;
+
+  // Enable whole key bloom filter in memtable. Note this will only take effect
+  // if memtable_prefix_bloom_size_ratio is not 0. Enabling whole key filtering
+  // can potentially reduce CPU usage for point-look-ups.
+  //
+  // Default: false (disable)
+  //
+  // Dynamically changeable through SetOptions() API
+  bool memtable_whole_key_filtering = false;
 
   // Page size for huge page for the arena used by the memtable. If <=0, it
   // won't allocate from huge page but from malloc.
@@ -536,8 +536,8 @@ struct AdvancedColumnFamilyOptions {
 
   // If level compaction_style = kCompactionStyleLevel, for each level,
   // which files are prioritized to be picked to compact.
-  // Default: kByCompensatedSize
-  CompactionPri compaction_pri = kByCompensatedSize;
+  // Default: kMinOverlappingRatio
+  CompactionPri compaction_pri = kMinOverlappingRatio;
 
   // The options needed to support Universal Style compactions
   //
@@ -550,7 +550,7 @@ struct AdvancedColumnFamilyOptions {
   //
   // Dynamically changeable through SetOptions() API
   // Dynamic change example:
-  // SetOptions("compaction_options_fifo", "{max_table_files_size=100;ttl=2;}")
+  // SetOptions("compaction_options_fifo", "{max_table_files_size=100;}")
   CompactionOptionsFIFO compaction_options_fifo;
 
   // An iteration->Next() sequentially skips over keys with the same
@@ -639,14 +639,24 @@ struct AdvancedColumnFamilyOptions {
   // Dynamically changeable through SetOptions() API
   bool report_bg_io_stats = false;
 
-  // Non-bottom-level files older than TTL will go through the compaction
-  // process. This needs max_open_files to be set to -1.
-  // Enabled only for level compaction for now.
+  // Files older than TTL will go through the compaction process.
+  // Supported in Level and FIFO compaction.
+  // Pre-req: This needs max_open_files to be set to -1.
+  // In Level: Non-bottom-level files older than TTL will go through the
+  //           compation process.
+  // In FIFO: Files older than TTL will be deleted.
+  // unit: seconds. Ex: 1 day = 1 * 24 * 60 * 60
   //
   // Default: 0 (disabled)
   //
   // Dynamically changeable through SetOptions() API
   uint64_t ttl = 0;
+
+  // If this option is set then 1 in N blocks are compressed
+  // using a fast (lz4) and slow (zstd) compression algorithm.
+  // The compressibility is reported as stats and the stored
+  // data is left uncompressed (unless compression is also requested).
+  uint64_t sample_for_compression = 0;
 
   // Create ColumnFamilyOptions with default values for all fields
   AdvancedColumnFamilyOptions();

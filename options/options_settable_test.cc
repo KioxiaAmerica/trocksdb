@@ -266,6 +266,8 @@ TEST_F(OptionsSettableTest, DBOptionsAllFieldsSettable) {
                              "manifest_preallocation_size=1222;"
                              "allow_mmap_writes=false;"
                              "stats_dump_period_sec=70127;"
+                             "stats_persist_period_sec=54321;"
+                             "stats_history_buffer_size=14159;"
                              "allow_fallocate=true;"
                              "allow_mmap_reads=false;"
                              "use_direct_reads=false;"
@@ -292,7 +294,8 @@ TEST_F(OptionsSettableTest, DBOptionsAllFieldsSettable) {
                              "two_write_queues=false;"
                              "manual_wal_flush=false;"
                              "seq_per_batch=false;"
-                             "atomic_flush=false",
+                             "atomic_flush=false;"
+                             "avoid_unnecessary_blocking_io=false",
                              new_options));
 
   ASSERT_EQ(unset_bytes_base, NumUnsetBytes(new_options_ptr, sizeof(DBOptions),
@@ -353,6 +356,8 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
        sizeof(std::shared_ptr<TableFactory>)},
       {offset_of(&ColumnFamilyOptions::cf_paths),
        sizeof(std::vector<DbPath>)},
+      {offset_of(&ColumnFamilyOptions::compaction_thread_limiter),
+       sizeof(std::shared_ptr<ConcurrentTaskLimiter>)},
 #ifdef INDIRECT_VALUE_SUPPORT
       {offset_of(&ColumnFamilyOptions::vlogring_activation_level),
        sizeof(std::vector<uint32_t>)},
@@ -419,6 +424,7 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
   options->soft_rate_limit = 0;
   options->purge_redundant_kvs_while_flush = false;
   options->max_mem_compaction_level = 0;
+  options->compaction_filter = nullptr;
 
   char* new_options_ptr = new char[sizeof(ColumnFamilyOptions)];
   ColumnFamilyOptions* new_options =
@@ -461,6 +467,7 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
       "max_write_buffer_number_to_maintain=84;"
       "merge_operator=aabcxehazrMergeOperator;"
       "memtable_prefix_bloom_size_ratio=0.4642;"
+      "memtable_whole_key_filtering=true;"
       "memtable_insert_with_hint_prefix_extractor=rocksdb.CappedPrefix.13;"
       "paranoid_file_checks=true;"
       "force_consistency_checks=true;"
@@ -474,17 +481,17 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
       "disable_auto_compactions=false;"
       "report_bg_io_stats=true;"
       "ttl=60;"
-      "compaction_options_fifo={max_table_files_size=3;ttl=100;allow_"
+      "sample_for_compression=0;"
+      "compaction_options_fifo={max_table_files_size=3;allow_"
       "compaction=false;};"
-
 #ifdef INDIRECT_VALUE_SUPPORT
       "allow_trivial_move=false;"
       "vlog_direct_IO=false;"
       "compaction_score_limit_L0=1000.0;"
 #endif
-      ;
-  ASSERT_OK(GetColumnFamilyOptionsFromString(
-      *options, optionstring, new_options));
+      ,new_options));
+//  ASSERT_OK(GetColumnFamilyOptionsFromString(
+//      *options, optionstring, new_options));
 
   ASSERT_EQ(unset_bytes_base,
             NumUnsetBytes(new_options_ptr, sizeof(ColumnFamilyOptions),

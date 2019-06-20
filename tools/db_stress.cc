@@ -100,6 +100,8 @@ DEFINE_uint64(seed, 2341234, "Seed for PRNG");
 static const bool FLAGS_seed_dummy __attribute__((__unused__)) =
     RegisterFlagValidator(&FLAGS_seed, &ValidateUint32Range);
 
+DEFINE_bool(read_only, false, "True if open DB in read-only mode during tests");
+
 DEFINE_int64(max_key, 1 * KB* KB,
              "Max number of key/values to place in database");
 
@@ -133,7 +135,12 @@ DEFINE_bool(test_batches_snapshots, false,
             "\t(b) No long validation at the end (more speed up)\n"
             "\t(c) Test snapshot and atomicity of batch writes");
 
-DEFINE_bool(atomic_flush, false, "If true, the test enables atomic flush\n");
+DEFINE_bool(atomic_flush, false,
+            "If set, enables atomic flush in the options.\n");
+
+DEFINE_bool(test_atomic_flush, false,
+            "If set, runs the stress test dedicated to verifying atomic flush "
+            "functionality. Setting this implies `atomic_flush=true`.\n");
 
 DEFINE_int32(threads, 32, "Number of concurrent threads to run.");
 
@@ -202,6 +209,10 @@ DEFINE_double(memtable_prefix_bloom_size_ratio,
               rocksdb::Options().memtable_prefix_bloom_size_ratio,
               "creates prefix blooms for memtables, each with size "
               "`write_buffer_size * memtable_prefix_bloom_size_ratio`.");
+
+DEFINE_bool(memtable_whole_key_filtering,
+            rocksdb::Options().memtable_whole_key_filtering,
+            "Enable whole key filtering in memtables.");
 
 DEFINE_int32(open_files, rocksdb::Options().max_open_files,
              "Maximum number of files to keep open at the same time "
@@ -367,6 +378,9 @@ DEFINE_string(kill_prefix_blacklist, "",
 extern std::vector<std::string> rocksdb_kill_prefix_blacklist;
 
 DEFINE_bool(disable_wal, false, "If true, do not write WAL for write.");
+
+DEFINE_uint64(recycle_log_file_num, rocksdb::Options().recycle_log_file_num,
+              "Number of old WAL files to keep around for later recycling");
 
 DEFINE_int64(target_file_size_base, rocksdb::Options().target_file_size_base,
              "Target level-1 file size for compaction");
@@ -1281,7 +1295,8 @@ class DbStressListener : public EventListener {
     }
     assert(info.job_id > 0 || FLAGS_compact_files_one_in > 0);
     if (info.status.ok() && info.file_size > 0) {
-      assert(info.table_properties.data_size > 0);
+      assert(info.table_properties.data_size > 0 ||
+             info.table_properties.num_range_deletions > 0);
       assert(info.table_properties.raw_key_size > 0);
       assert(info.table_properties.num_entries > 0);
     }
@@ -1378,7 +1393,8 @@ class StressTest {
         txn_db_(nullptr),
 #endif
         new_column_family_name_(1),
-        num_times_reopened_(0) {
+        num_times_reopened_(0),
+        db_preload_finished_(false) {
     if (FLAGS_destroy_db_initially) {
       std::vector<std::string> files;
       FLAGS_env->GetChildren(FLAGS_db, &files);
@@ -1387,7 +1403,14 @@ class StressTest {
           FLAGS_env->DeleteFile(FLAGS_db + "/" + files[i]);
         }
       }
-      DestroyDB(FLAGS_db, Options());
+      Options options;
+      options.env = FLAGS_env;
+      Status s = DestroyDB(FLAGS_db, options);
+      if (!s.ok()) {
+        fprintf(stderr, "Cannot destroy original db: %s\n",
+                s.ToString().c_str());
+        exit(1);
+      }
     }
   }
 
@@ -1505,6 +1528,13 @@ class StressTest {
     Open();
     BuildOptionsTable();
     SharedState shared(this);
+
+    if (FLAGS_read_only) {
+      now = FLAGS_env->NowMicros();
+      fprintf(stdout, "%s Preloading db with %" PRIu64 " KVs\n",
+              FLAGS_env->TimeToString(now / 1000000).c_str(), FLAGS_max_key);
+      PreloadDbAndReopenAsReadOnly(FLAGS_max_key, &shared);
+    }
     uint32_t n = shared.GetNumThreads();
 
     now = FLAGS_env->NowMicros();
@@ -1755,6 +1785,93 @@ class StressTest {
     return Status::OK();
   }
 
+  // Currently PreloadDb has to be single-threaded.
+  void PreloadDbAndReopenAsReadOnly(int64_t number_of_keys,
+                                    SharedState* shared) {
+    WriteOptions write_opts;
+    write_opts.disableWAL = FLAGS_disable_wal;
+    if (FLAGS_sync) {
+      write_opts.sync = true;
+    }
+    char value[100];
+    int cf_idx = 0;
+    Status s;
+    for (auto cfh : column_families_) {
+      for (int64_t k = 0; k != number_of_keys; ++k) {
+        std::string key_str = Key(k);
+        Slice key = key_str;
+        size_t sz = GenerateValue(0 /*value_base*/, value, sizeof(value));
+        Slice v(value, sz);
+        shared->Put(cf_idx, k, 0, true /* pending */);
+
+        if (FLAGS_use_merge) {
+          if (!FLAGS_use_txn) {
+            s = db_->Merge(write_opts, cfh, key, v);
+          } else {
+#ifndef ROCKSDB_LITE
+            Transaction* txn;
+            s = NewTxn(write_opts, &txn);
+            if (s.ok()) {
+              s = txn->Merge(cfh, key, v);
+              if (s.ok()) {
+                s = CommitTxn(txn);
+              }
+            }
+#endif
+          }
+        } else {
+          if (!FLAGS_use_txn) {
+            s = db_->Put(write_opts, cfh, key, v);
+          } else {
+#ifndef ROCKSDB_LITE
+            Transaction* txn;
+            s = NewTxn(write_opts, &txn);
+            if (s.ok()) {
+              s = txn->Put(cfh, key, v);
+              if (s.ok()) {
+                s = CommitTxn(txn);
+              }
+            }
+#endif
+          }
+        }
+
+        shared->Put(cf_idx, k, 0, false /* pending */);
+        if (!s.ok()) {
+          break;
+        }
+      }
+      if (!s.ok()) {
+        break;
+      }
+      ++cf_idx;
+    }
+    if (s.ok()) {
+      s = db_->Flush(FlushOptions(), column_families_);
+    }
+    if (s.ok()) {
+      for (auto cf : column_families_) {
+        delete cf;
+      }
+      column_families_.clear();
+      delete db_;
+      db_ = nullptr;
+#ifndef ROCKSDB_LITE
+      txn_db_ = nullptr;
+#endif
+
+      db_preload_finished_.store(true);
+      auto now = FLAGS_env->NowMicros();
+      fprintf(stdout, "%s Reopening database in read-only\n",
+              FLAGS_env->TimeToString(now / 1000000).c_str());
+      // Reopen as read-only, can ignore all options related to updates
+      Open();
+    } else {
+      fprintf(stderr, "Failed to preload db");
+      exit(1);
+    }
+  }
+
   Status SetOptions(ThreadState* thread) {
     assert(FLAGS_set_options_one_in > 0);
     std::unordered_map<std::string, std::string> opts;
@@ -1842,8 +1959,7 @@ class StressTest {
           if (thread->shared->AllVotedReopen()) {
             thread->shared->GetStressTest()->Reopen();
             thread->shared->GetCondVar()->SignalAll();
-          }
-          else {
+          } else {
             thread->shared->GetCondVar()->Wait();
           }
           // Commenting this out as we don't want to reset stats on each open.
@@ -1865,28 +1981,6 @@ class StressTest {
       MaybeClearOneColumnFamily(thread);
 
 #ifndef ROCKSDB_LITE
-      if (FLAGS_checkpoint_one_in > 0 &&
-          thread->rand.Uniform(FLAGS_checkpoint_one_in) == 0) {
-        std::string checkpoint_dir =
-            FLAGS_db + "/.checkpoint" + ToString(thread->tid);
-        DestroyDB(checkpoint_dir, Options());
-        Checkpoint* checkpoint;
-        Status s = Checkpoint::Create(db_, &checkpoint);
-        if (s.ok()) {
-          s = checkpoint->CreateCheckpoint(checkpoint_dir);
-        }
-        std::vector<std::string> files;
-        if (s.ok()) {
-          s = FLAGS_env->GetChildren(checkpoint_dir, &files);
-        }
-        DestroyDB(checkpoint_dir, Options());
-        delete checkpoint;
-        if (!s.ok()) {
-          printf("A checkpoint operation failed with: %s\n",
-                 s.ToString().c_str());
-        }
-      }
-
       if (FLAGS_compact_files_one_in > 0 &&
           thread->rand.Uniform(FLAGS_compact_files_one_in) == 0) {
         auto* random_cf =
@@ -2000,6 +2094,14 @@ class StressTest {
         if (!s.ok()) {
           VerificationAbort(shared, "Backup/restore gave inconsistent state",
                             s);
+        }
+      }
+
+      if (FLAGS_checkpoint_one_in > 0 &&
+          thread->rand.Uniform(FLAGS_checkpoint_one_in) == 0) {
+        Status s = TestCheckpoint(thread, rand_column_families, rand_keys);
+        if (!s.ok()) {
+          VerificationAbort(shared, "Checkpoint gave inconsistent state", s);
         }
       }
 
@@ -2202,6 +2304,17 @@ class StressTest {
             "TestBackupRestore\n");
     std::terminate();
   }
+
+  virtual Status TestCheckpoint(
+      ThreadState* /* thread */,
+      const std::vector<int>& /* rand_column_families */,
+      const std::vector<int64_t>& /* rand_keys */) {
+    assert(false);
+    fprintf(stderr,
+            "RocksDB lite does not support "
+            "TestCheckpoint\n");
+    std::terminate();
+  }
 #else  // ROCKSDB_LITE
   virtual Status TestBackupRestore(ThreadState* thread,
                                    const std::vector<int>& rand_column_families,
@@ -2289,6 +2402,79 @@ class StressTest {
     }
     return s;
   }
+
+  virtual Status TestCheckpoint(ThreadState* thread,
+                                const std::vector<int>& rand_column_families,
+                                const std::vector<int64_t>& rand_keys) {
+    // Note the column families chosen by `rand_column_families` cannot be
+    // dropped while the locks for `rand_keys` are held. So we should not have
+    // to worry about accessing those column families throughout this function.
+    assert(rand_column_families.size() == rand_keys.size());
+    std::string checkpoint_dir =
+        FLAGS_db + "/.checkpoint" + ToString(thread->tid);
+    DestroyDB(checkpoint_dir, Options());
+    Checkpoint* checkpoint = nullptr;
+    Status s = Checkpoint::Create(db_, &checkpoint);
+    if (s.ok()) {
+      s = checkpoint->CreateCheckpoint(checkpoint_dir);
+    }
+    std::vector<ColumnFamilyHandle*> cf_handles;
+    DB* checkpoint_db = nullptr;
+    if (s.ok()) {
+      delete checkpoint;
+      checkpoint = nullptr;
+      Options options(options_);
+      options.listeners.clear();
+      std::vector<ColumnFamilyDescriptor> cf_descs;
+      // TODO(ajkr): `column_family_names_` is not safe to access here when
+      // `clear_column_family_one_in != 0`. But we can't easily switch to
+      // `ListColumnFamilies` to get names because it won't necessarily give
+      // the same order as `column_family_names_`.
+      if (FLAGS_clear_column_family_one_in == 0) {
+        for (const auto& name : column_family_names_) {
+          cf_descs.emplace_back(name, ColumnFamilyOptions(options));
+        }
+        s = DB::OpenForReadOnly(DBOptions(options), checkpoint_dir, cf_descs,
+                                &cf_handles, &checkpoint_db);
+      }
+    }
+    if (checkpoint_db != nullptr) {
+      for (size_t i = 0; s.ok() && i < rand_column_families.size(); ++i) {
+        std::string key_str = Key(rand_keys[i]);
+        Slice key = key_str;
+        std::string value;
+        Status get_status = checkpoint_db->Get(
+            ReadOptions(), cf_handles[rand_column_families[i]], key, &value);
+        bool exists =
+            thread->shared->Exists(rand_column_families[i], rand_keys[i]);
+        if (get_status.ok()) {
+          if (!exists) {
+            s = Status::Corruption(
+                "key exists in checkpoint but not in original db");
+          }
+        } else if (get_status.IsNotFound()) {
+          if (exists) {
+            s = Status::Corruption(
+                "key exists in original db but not in checkpoint");
+          }
+        } else {
+          s = get_status;
+        }
+      }
+      for (auto cfh : cf_handles) {
+        delete cfh;
+      }
+      cf_handles.clear();
+      delete checkpoint_db;
+      checkpoint_db = nullptr;
+    }
+    DestroyDB(checkpoint_dir, Options());
+    if (!s.ok()) {
+      fprintf(stderr, "A checkpoint operation failed with: %s\n",
+              s.ToString().c_str());
+    }
+    return s;
+  }
 #endif  // ROCKSDB_LITE
 
   void VerificationAbort(SharedState* shared, std::string msg, Status s) const {
@@ -2310,6 +2496,8 @@ class StressTest {
     fprintf(stdout, "Format version            : %d\n", FLAGS_format_version);
     fprintf(stdout, "TransactionDB             : %s\n",
             FLAGS_use_txn ? "true" : "false");
+    fprintf(stdout, "Read only mode            : %s\n",
+            FLAGS_read_only ? "true" : "false");
     fprintf(stdout, "Atomic flush              : %s\n",
             FLAGS_atomic_flush ? "true" : "false");
     fprintf(stdout, "Column families           : %d\n", FLAGS_column_families);
@@ -2409,6 +2597,8 @@ class StressTest {
           FLAGS_max_write_buffer_number_to_maintain;
       options_.memtable_prefix_bloom_size_ratio =
           FLAGS_memtable_prefix_bloom_size_ratio;
+      options_.memtable_whole_key_filtering =
+          FLAGS_memtable_whole_key_filtering;
       options_.max_background_compactions = FLAGS_max_background_compactions;
       options_.max_background_flushes = FLAGS_max_background_flushes;
       options_.compaction_style =
@@ -2425,6 +2615,8 @@ class StressTest {
       options_.use_direct_reads = FLAGS_use_direct_reads;
       options_.use_direct_io_for_flush_and_compaction =
           FLAGS_use_direct_io_for_flush_and_compaction;
+      options_.recycle_log_file_num =
+          static_cast<size_t>(FLAGS_recycle_log_file_num);
       options_.target_file_size_base = FLAGS_target_file_size_base;
       options_.target_file_size_multiplier = FLAGS_target_file_size_multiplier;
       options_.max_bytes_for_level_base = FLAGS_max_bytes_for_level_base;
@@ -2579,8 +2771,13 @@ class StressTest {
           new DbStressListener(FLAGS_db, options_.db_paths, cf_descriptors));
       options_.create_missing_column_families = true;
       if (!FLAGS_use_txn) {
-        s = DB::Open(DBOptions(options_), FLAGS_db, cf_descriptors,
-                     &column_families_, &db_);
+        if (db_preload_finished_.load() && FLAGS_read_only) {
+          s = DB::OpenForReadOnly(DBOptions(options_), FLAGS_db, cf_descriptors,
+                                  &column_families_, &db_);
+        } else {
+          s = DB::Open(DBOptions(options_), FLAGS_db, cf_descriptors,
+                       &column_families_, &db_);
+        }
       } else {
 #ifndef ROCKSDB_LITE
         TransactionDBOptions txn_db_options;
@@ -2665,6 +2862,7 @@ class StressTest {
   int num_times_reopened_;
   std::unordered_map<std::string, std::vector<std::string>> options_table_;
   std::vector<std::string> options_index_;
+  std::atomic<bool> db_preload_finished_;
 };
 
 class NonBatchedOpsStressTest : public StressTest {
@@ -3579,6 +3777,66 @@ class AtomicFlushStressTest : public StressTest {
     return s;
   }
 
+#ifdef ROCKSDB_LITE
+  virtual Status TestCheckpoint(
+      ThreadState* /* thread */,
+      const std::vector<int>& /* rand_column_families */,
+      const std::vector<int64_t>& /* rand_keys */) {
+    assert(false);
+    fprintf(stderr,
+            "RocksDB lite does not support "
+            "TestCheckpoint\n");
+    std::terminate();
+  }
+#else
+  virtual Status TestCheckpoint(
+      ThreadState* thread, const std::vector<int>& /* rand_column_families */,
+      const std::vector<int64_t>& /* rand_keys */) {
+    std::string checkpoint_dir =
+        FLAGS_db + "/.checkpoint" + ToString(thread->tid);
+    DestroyDB(checkpoint_dir, Options());
+    Checkpoint* checkpoint = nullptr;
+    Status s = Checkpoint::Create(db_, &checkpoint);
+    if (s.ok()) {
+      s = checkpoint->CreateCheckpoint(checkpoint_dir);
+    }
+    std::vector<ColumnFamilyHandle*> cf_handles;
+    DB* checkpoint_db = nullptr;
+    if (s.ok()) {
+      delete checkpoint;
+      checkpoint = nullptr;
+      Options options(options_);
+      options.listeners.clear();
+      std::vector<ColumnFamilyDescriptor> cf_descs;
+      // TODO(ajkr): `column_family_names_` is not safe to access here when
+      // `clear_column_family_one_in != 0`. But we can't easily switch to
+      // `ListColumnFamilies` to get names because it won't necessarily give
+      // the same order as `column_family_names_`.
+      if (FLAGS_clear_column_family_one_in == 0) {
+        for (const auto& name : column_family_names_) {
+          cf_descs.emplace_back(name, ColumnFamilyOptions(options));
+        }
+        s = DB::OpenForReadOnly(DBOptions(options), checkpoint_dir, cf_descs,
+                                &cf_handles, &checkpoint_db);
+      }
+    }
+    if (checkpoint_db != nullptr) {
+      for (auto cfh : cf_handles) {
+        delete cfh;
+      }
+      cf_handles.clear();
+      delete checkpoint_db;
+      checkpoint_db = nullptr;
+    }
+    DestroyDB(checkpoint_dir, Options());
+    if (!s.ok()) {
+      fprintf(stderr, "A checkpoint operation failed with: %s\n",
+              s.ToString().c_str());
+    }
+    return s;
+  }
+#endif  // !ROCKSDB_LITE
+
   virtual void VerifyDb(ThreadState* thread) const {
     ReadOptions options(FLAGS_verify_checksum, true);
     // We must set total_order_seek to true because we are doing a SeekToFirst
@@ -3782,6 +4040,21 @@ int main(int argc, char** argv) {
             "Error: clear_column_family_one_in must be 0 when using backup\n");
     exit(1);
   }
+  if (FLAGS_test_atomic_flush) {
+    FLAGS_atomic_flush = true;
+  }
+  if (FLAGS_read_only) {
+    if (FLAGS_writepercent != 0 || FLAGS_delpercent != 0 ||
+        FLAGS_delrangepercent != 0) {
+      fprintf(stderr, "Error: updates are not supported in read only mode\n");
+      exit(1);
+    } else if (FLAGS_checkpoint_one_in > 0 &&
+               FLAGS_clear_column_family_one_in > 0) {
+      fprintf(stdout,
+              "Warn: checkpoint won't be validated since column families may "
+              "be dropped.\n");
+    }
+  }
 
   // Choose a location for the test database if none given with --db=<path>
   if (FLAGS_db.empty()) {
@@ -3795,7 +4068,7 @@ int main(int argc, char** argv) {
   rocksdb_kill_prefix_blacklist = SplitString(FLAGS_kill_prefix_blacklist);
 
   std::unique_ptr<rocksdb::StressTest> stress;
-  if (FLAGS_atomic_flush) {
+  if (FLAGS_test_atomic_flush) {
     stress.reset(new rocksdb::AtomicFlushStressTest());
   } else if (FLAGS_test_batches_snapshots) {
     stress.reset(new rocksdb::BatchedOpsStressTest());

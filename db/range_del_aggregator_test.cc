@@ -24,15 +24,15 @@ static auto bytewise_icmp = InternalKeyComparator(BytewiseComparator());
 
 std::unique_ptr<InternalIterator> MakeRangeDelIter(
     const std::vector<RangeTombstone>& range_dels) {
-    std::vector<std::string> keys, values;
-    for (const auto& range_del : range_dels) {
-      auto key_and_value = range_del.Serialize();
-      keys.push_back(key_and_value.first.Encode().ToString());
-      values.push_back(key_and_value.second.ToString());
-    }
+  std::vector<std::string> keys, values;
+  for (const auto& range_del : range_dels) {
+    auto key_and_value = range_del.Serialize();
+    keys.push_back(key_and_value.first.Encode().ToString());
+    values.push_back(key_and_value.second.ToString());
+  }
   return std::unique_ptr<test::VectorIterator>(
       new test::VectorIterator(keys, values));
-    }
+}
 
 std::vector<std::unique_ptr<FragmentedRangeTombstoneList>>
 MakeFragmentedTombstoneLists(
@@ -42,9 +42,9 @@ MakeFragmentedTombstoneLists(
     auto range_del_iter = MakeRangeDelIter(range_dels);
     fragment_lists.emplace_back(new FragmentedRangeTombstoneList(
         std::move(range_del_iter), bytewise_icmp));
-      }
+  }
   return fragment_lists;
-    }
+}
 
 struct TruncatedIterScanTestCase {
   ParsedInternalKey start;
@@ -73,7 +73,7 @@ struct IsRangeOverlappedTestCase {
 
 ParsedInternalKey UncutEndpoint(const Slice& s) {
   return ParsedInternalKey(s, kMaxSequenceNumber, kTypeRangeDeletion);
-  }
+}
 
 ParsedInternalKey InternalValue(const Slice& key, SequenceNumber seq) {
   return ParsedInternalKey(key, seq, kTypeValue);
@@ -120,7 +120,7 @@ void VerifySeek(TruncatedRangeDelIterator* iter,
       EXPECT_EQ(0, icmp.Compare(iter->start_key(), test_case.start));
       EXPECT_EQ(0, icmp.Compare(iter->end_key(), test_case.end));
       EXPECT_EQ(test_case.seq, iter->seq());
-}
+    }
   }
 }
 
@@ -136,7 +136,7 @@ void VerifySeekForPrev(
       EXPECT_EQ(0, icmp.Compare(iter->start_key(), test_case.start));
       EXPECT_EQ(0, icmp.Compare(iter->end_key(), test_case.end));
       EXPECT_EQ(test_case.seq, iter->seq());
-}
+    }
   }
 }
 
@@ -147,7 +147,7 @@ void VerifyShouldDelete(RangeDelAggregator* range_del_agg,
         test_case.result,
         range_del_agg->ShouldDelete(
             test_case.lookup_key, RangeDelPositioningMode::kForwardTraversal));
-}
+  }
   for (auto it = test_cases.rbegin(); it != test_cases.rend(); ++it) {
     const auto& test_case = *it;
     EXPECT_EQ(
@@ -163,7 +163,7 @@ void VerifyIsRangeOverlapped(
   for (const auto& test_case : test_cases) {
     EXPECT_EQ(test_case.result,
               range_del_agg->IsRangeOverlapped(test_case.start, test_case.end));
-}
+  }
 }
 
 void CheckIterPosition(const RangeTombstone& tombstone,
@@ -186,7 +186,7 @@ void VerifyFragmentedRangeDels(
   for (size_t i = 0; i < expected_tombstones.size(); i++, iter->Next()) {
     ASSERT_TRUE(iter->Valid());
     CheckIterPosition(expected_tombstones[i], iter);
-}
+  }
   EXPECT_FALSE(iter->Valid());
 }
 
@@ -378,7 +378,7 @@ TEST_F(RangeDelAggregatorTest, MultipleItersInAggregator) {
         new FragmentedRangeTombstoneIterator(fragment_list.get(), bytewise_icmp,
                                              kMaxSequenceNumber));
     range_del_agg.AddTombstones(std::move(input_iter));
-}
+  }
 
   VerifyShouldDelete(&range_del_agg, {{InternalValue("a", 19), true},
                                       {InternalValue("b", 19), false},

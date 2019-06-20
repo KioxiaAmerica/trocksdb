@@ -35,54 +35,77 @@ Tracer::Tracer(Env* env, const TraceOptions& trace_options,
                std::unique_ptr<TraceWriter>&& trace_writer)
     : env_(env),
       trace_options_(trace_options),
-      trace_writer_(std::move(trace_writer)) {
+      trace_writer_(std::move(trace_writer)),
+      trace_request_count_ (0) {
   WriteHeader();
 }
 
 Tracer::~Tracer() { trace_writer_.reset(); }
 
 Status Tracer::Write(WriteBatch* write_batch) {
-  if (IsTraceFileOverMax()) {
+  TraceType trace_type = kTraceWrite;
+  if (ShouldSkipTrace(trace_type)) {
     return Status::OK();
   }
   Trace trace;
   trace.ts = env_->NowMicros();
-  trace.type = kTraceWrite;
+  trace.type = trace_type;
   trace.payload = write_batch->Data();
   return WriteTrace(trace);
 }
 
 Status Tracer::Get(ColumnFamilyHandle* column_family, const Slice& key) {
-  if (IsTraceFileOverMax()) {
+  TraceType trace_type = kTraceGet;
+  if (ShouldSkipTrace(trace_type)) {
     return Status::OK();
   }
   Trace trace;
   trace.ts = env_->NowMicros();
-  trace.type = kTraceGet;
+  trace.type = trace_type;
   EncodeCFAndKey(&trace.payload, column_family->GetID(), key);
   return WriteTrace(trace);
 }
 
 Status Tracer::IteratorSeek(const uint32_t& cf_id, const Slice& key) {
-  if (IsTraceFileOverMax()) {
+  TraceType trace_type = kTraceIteratorSeek;
+  if (ShouldSkipTrace(trace_type)) {
     return Status::OK();
   }
   Trace trace;
   trace.ts = env_->NowMicros();
-  trace.type = kTraceIteratorSeek;
+  trace.type = trace_type;
   EncodeCFAndKey(&trace.payload, cf_id, key);
   return WriteTrace(trace);
 }
 
 Status Tracer::IteratorSeekForPrev(const uint32_t& cf_id, const Slice& key) {
-  if (IsTraceFileOverMax()) {
+  TraceType trace_type = kTraceIteratorSeekForPrev;
+  if (ShouldSkipTrace(trace_type)) {
     return Status::OK();
   }
   Trace trace;
   trace.ts = env_->NowMicros();
-  trace.type = kTraceIteratorSeekForPrev;
+  trace.type = trace_type;
   EncodeCFAndKey(&trace.payload, cf_id, key);
   return WriteTrace(trace);
+}
+
+bool Tracer::ShouldSkipTrace(const TraceType& trace_type) {
+  if (IsTraceFileOverMax()) {
+    return true;
+  }
+  if ((trace_options_.filter & kTraceFilterGet
+    && trace_type == kTraceGet)
+   || (trace_options_.filter & kTraceFilterWrite
+    && trace_type == kTraceWrite)) {
+    return true;
+  }
+  ++trace_request_count_;
+  if (trace_request_count_ < trace_options_.sampling_frequency) {
+    return true;
+  }
+  trace_request_count_ = 0;
+  return false;
 }
 
 bool Tracer::IsTraceFileOverMax() {

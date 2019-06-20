@@ -51,6 +51,7 @@ AdvancedColumnFamilyOptions::AdvancedColumnFamilyOptions(const Options& options)
       inplace_callback(options.inplace_callback),
       memtable_prefix_bloom_size_ratio(
           options.memtable_prefix_bloom_size_ratio),
+      memtable_whole_key_filtering(options.memtable_whole_key_filtering),
       memtable_huge_page_size(options.memtable_huge_page_size),
       memtable_insert_with_hint_prefix_extractor(
           options.memtable_insert_with_hint_prefix_extractor),
@@ -86,7 +87,8 @@ AdvancedColumnFamilyOptions::AdvancedColumnFamilyOptions(const Options& options)
       paranoid_file_checks(options.paranoid_file_checks),
       force_consistency_checks(options.force_consistency_checks),
       report_bg_io_stats(options.report_bg_io_stats),
-      ttl(options.ttl) {
+      ttl(options.ttl),
+      sample_for_compression(options.sample_for_compression) {
   assert(memtable_factory.get() != nullptr);
   if (max_bytes_for_level_multiplier_additional.size() <
       static_cast<unsigned int>(num_levels)) {
@@ -171,12 +173,12 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
     ROCKS_LOG_HEADER(
         log,
         "        Options.bottommost_compression_opts.max_dict_bytes: "
-        "%" ROCKSDB_PRIszt,
+        "%" PRIu32,
         bottommost_compression_opts.max_dict_bytes);
     ROCKS_LOG_HEADER(
         log,
         "        Options.bottommost_compression_opts.zstd_max_train_bytes: "
-        "%" ROCKSDB_PRIszt,
+        "%" PRIu32,
         bottommost_compression_opts.zstd_max_train_bytes);
     ROCKS_LOG_HEADER(
         log, "                 Options.bottommost_compression_opts.enabled: %s",
@@ -189,11 +191,11 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
                      compression_opts.strategy);
     ROCKS_LOG_HEADER(
         log,
-        "        Options.compression_opts.max_dict_bytes: %" ROCKSDB_PRIszt,
+        "        Options.compression_opts.max_dict_bytes: %" PRIu32,
         compression_opts.max_dict_bytes);
     ROCKS_LOG_HEADER(log,
                      "        Options.compression_opts.zstd_max_train_bytes: "
-                     "%" ROCKSDB_PRIszt,
+                     "%" PRIu32,
                      compression_opts.zstd_max_train_bytes);
     ROCKS_LOG_HEADER(log,
                      "                 Options.compression_opts.enabled: %s",
@@ -405,8 +407,6 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
     ROCKS_LOG_HEADER(log,
                      "Options.compaction_options_fifo.allow_compaction: %d",
                      compaction_options_fifo.allow_compaction);
-    ROCKS_LOG_HEADER(log, "Options.compaction_options_fifo.ttl: %" PRIu64,
-                     compaction_options_fifo.ttl);
     std::string collector_names;
     for (const auto& collector_factory : table_properties_collector_factories) {
       collector_names.append(collector_factory->Name());
@@ -426,6 +426,9 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
     ROCKS_LOG_HEADER(
         log, "              Options.memtable_prefix_bloom_size_ratio: %f",
         memtable_prefix_bloom_size_ratio);
+    ROCKS_LOG_HEADER(log,
+                     "              Options.memtable_whole_key_filtering: %d",
+                     memtable_whole_key_filtering);
 
     ROCKS_LOG_HEADER(log, "  Options.memtable_huge_page_size: %" ROCKSDB_PRIszt,
                      memtable_huge_page_size);
@@ -446,7 +449,8 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
                      force_consistency_checks);
     ROCKS_LOG_HEADER(log, "               Options.report_bg_io_stats: %d",
                      report_bg_io_stats);
-    ROCKS_LOG_HEADER(log, "                              Options.ttl: %d", ttl);
+    ROCKS_LOG_HEADER(log, "                              Options.ttl: %" PRIu64,
+                     ttl);
 }  // ColumnFamilyOptions::Dump
 
 void Options::Dump(Logger* log) const {
@@ -538,6 +542,10 @@ DBOptions* DBOptions::OldDefaults(int rocksdb_major_version,
 
 ColumnFamilyOptions* ColumnFamilyOptions::OldDefaults(
     int rocksdb_major_version, int rocksdb_minor_version) {
+  if (rocksdb_major_version < 5 ||
+      (rocksdb_major_version == 5 && rocksdb_minor_version <= 18)) {
+    compaction_pri = CompactionPri::kByCompensatedSize;
+  }
   if (rocksdb_major_version < 4 ||
       (rocksdb_major_version == 4 && rocksdb_minor_version < 7)) {
     write_buffer_size = 4 << 20;
@@ -551,7 +559,6 @@ ColumnFamilyOptions* ColumnFamilyOptions::OldDefaults(
   } else if (rocksdb_major_version == 5 && rocksdb_minor_version < 2) {
     level0_stop_writes_trigger = 30;
   }
-  compaction_pri = CompactionPri::kByCompensatedSize;
 
   return this;
 }

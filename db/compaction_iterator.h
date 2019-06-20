@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <deque>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "db/compaction.h"
@@ -144,6 +145,14 @@ class CompactionIterator {
   // or seqnum be zero-ed out even if all other conditions for it are met.
   inline bool ikeyNotNeededForIncrementalSnapshot();
 
+  inline bool KeyCommitted(SequenceNumber sequence) {
+    return snapshot_checker_ == nullptr ||
+           snapshot_checker_->CheckInSnapshot(sequence, kMaxSequenceNumber) ==
+               SnapshotCheckerResult::kInSnapshot;
+  }
+
+  bool IsInEarliestSnapshot(SequenceNumber sequence);
+
 #ifdef INDIRECT_VALUE_SUPPORT
 // When indirect values are enabled, the compaction input must pass through a stage that counts all the indirect references in the input stream.  This is how
 // we account for size and frag of the VLogRings
@@ -155,6 +164,13 @@ class CompactionIterator {
   const Comparator* cmp_;
   MergeHelper* merge_helper_;
   const std::vector<SequenceNumber>* snapshots_;
+  // List of snapshots released during compaction.
+  // findEarliestVisibleSnapshot() find them out from return of
+  // snapshot_checker, and make sure they will not be returned as
+  // earliest visible snapshot of an older value.
+  // See WritePreparedTransactionTest::ReleaseSnapshotDuringCompaction3.
+  std::unordered_set<SequenceNumber> released_snapshots_;
+  std::vector<SequenceNumber>::const_iterator earliest_snapshot_iter_;
   const SequenceNumber earliest_write_conflict_snapshot_;
   const SnapshotChecker* const snapshot_checker_;
   Env* env_;
@@ -170,7 +186,6 @@ class CompactionIterator {
   bool visible_at_tip_;
   SequenceNumber earliest_snapshot_;
   SequenceNumber latest_snapshot_;
-  bool ignore_snapshots_;
 
   // State
   //

@@ -35,15 +35,15 @@ TruncatedRangeDelIterator::TruncatedRangeDelIterator(
     auto& parsed_smallest = pinned_bounds_.back();
     if (!ParseInternalKey(smallest->Encode(), &parsed_smallest)) {
       assert(false);
-}
+    }
     smallest_ = &parsed_smallest;
   }
   if (largest != nullptr) {
     pinned_bounds_.emplace_back();
     auto& parsed_largest = pinned_bounds_.back();
     if (!ParseInternalKey(largest->Encode(), &parsed_largest)) {
-    assert(false);
-  }
+      assert(false);
+    }
     if (parsed_largest.type == kTypeRangeDeletion &&
         parsed_largest.sequence == kMaxSequenceNumber) {
       // The file boundary has been artificially extended by a range tombstone.
@@ -64,7 +64,7 @@ TruncatedRangeDelIterator::TruncatedRangeDelIterator(
       // the truncated end key can cover the largest key in this sstable, reduce
       // its sequence number by 1.
       parsed_largest.sequence -= 1;
-}
+    }
     largest_ = &parsed_largest;
   }
 }
@@ -75,7 +75,7 @@ bool TruncatedRangeDelIterator::Valid() const {
           icmp_->Compare(*smallest_, iter_->parsed_end_key()) < 0) &&
          (largest_ == nullptr ||
           icmp_->Compare(iter_->parsed_start_key(), *largest_) < 0);
-  }
+}
 
 void TruncatedRangeDelIterator::Next() { iter_->TopNext(); }
 
@@ -95,9 +95,9 @@ void TruncatedRangeDelIterator::Seek(const Slice& target) {
       icmp_->user_comparator()->Compare(target, smallest_->user_key) < 0) {
     iter_->Seek(smallest_->user_key);
     return;
-        }
+  }
   iter_->Seek(target);
-        }
+}
 
 // NOTE: target is a user key
 void TruncatedRangeDelIterator::SeekForPrev(const Slice& target) {
@@ -106,30 +106,30 @@ void TruncatedRangeDelIterator::SeekForPrev(const Slice& target) {
                      *smallest_) < 0) {
     iter_->Invalidate();
     return;
-      }
+  }
   if (largest_ != nullptr &&
       icmp_->user_comparator()->Compare(largest_->user_key, target) < 0) {
     iter_->SeekForPrev(largest_->user_key);
     return;
-      }
+  }
   iter_->SeekForPrev(target);
-      }
+}
 
 void TruncatedRangeDelIterator::SeekToFirst() {
   if (smallest_ != nullptr) {
     iter_->Seek(smallest_->user_key);
     return;
-      }
+  }
   iter_->SeekToTopFirst();
-      }
+}
 
 void TruncatedRangeDelIterator::SeekToLast() {
   if (largest_ != nullptr) {
     iter_->SeekForPrev(largest_->user_key);
     return;
-      }
-  iter_->SeekToTopLast();
   }
+  iter_->SeekToTopLast();
+}
 
 std::map<SequenceNumber, std::unique_ptr<TruncatedRangeDelIterator>>
 TruncatedRangeDelIterator::SplitBySnapshot(
@@ -179,15 +179,15 @@ bool ForwardRangeDelIterator::ShouldDelete(const ParsedInternalKey& parsed) {
     TruncatedRangeDelIterator* iter = PopInactiveIter();
     while (iter->Valid() && icmp_->Compare(iter->end_key(), parsed) <= 0) {
       iter->Next();
-  }
+    }
     PushIter(iter, parsed);
     assert(active_iters_.size() == active_seqnums_.size());
-    }
+  }
 
   return active_seqnums_.empty()
              ? false
              : (*active_seqnums_.begin())->seq() > parsed.sequence;
-  }
+}
 
 void ForwardRangeDelIterator::Invalidate() {
   unused_idx_ = 0;
@@ -222,22 +222,22 @@ bool ReverseRangeDelIterator::ShouldDelete(const ParsedInternalKey& parsed) {
     TruncatedRangeDelIterator* iter = PopInactiveIter();
     while (iter->Valid() && icmp_->Compare(parsed, iter->start_key()) < 0) {
       iter->Prev();
-      }
+    }
     PushIter(iter, parsed);
     assert(active_iters_.size() == active_seqnums_.size());
-    }
+  }
 
   return active_seqnums_.empty()
              ? false
              : (*active_seqnums_.begin())->seq() > parsed.sequence;
-    }
+}
 
 void ReverseRangeDelIterator::Invalidate() {
   unused_idx_ = 0;
   active_iters_.clear();
   active_seqnums_.clear();
   inactive_iters_.clear();
-  }
+}
 
 bool RangeDelAggregator::StripeRep::ShouldDelete(
     const ParsedInternalKey& parsed, RangeDelPositioningMode mode) {
@@ -253,7 +253,7 @@ bool RangeDelAggregator::StripeRep::ShouldDelete(
            it != iters_.end(); ++it, forward_iter_.IncUnusedIdx()) {
         auto& iter = *it;
         forward_iter_.AddNewIter(iter.get(), parsed);
-}
+      }
 
       return forward_iter_.ShouldDelete(parsed);
     case RangeDelPositioningMode::kBackwardTraversal:
@@ -264,7 +264,7 @@ bool RangeDelAggregator::StripeRep::ShouldDelete(
            it != iters_.end(); ++it, reverse_iter_.IncUnusedIdx()) {
         auto& iter = *it;
         reverse_iter_.AddNewIter(iter.get(), parsed);
-  }
+      }
 
       return reverse_iter_.ShouldDelete(parsed);
     default:
@@ -294,7 +294,7 @@ bool RangeDelAggregator::StripeRep::IsRangeOverlapped(const Slice& start,
       if (icmp_->Compare(start_ikey, iter->end_key()) < 0 &&
           icmp_->Compare(iter->start_key(), end_ikey) <= 0) {
         return true;
-    }
+      }
     }
 
     if (!checked_candidate_tombstones) {
@@ -305,11 +305,11 @@ bool RangeDelAggregator::StripeRep::IsRangeOverlapped(const Slice& start,
       if (iter->Valid() && icmp_->Compare(start_ikey, iter->end_key()) < 0 &&
           icmp_->Compare(iter->start_key(), end_ikey) <= 0) {
         return true;
-        }
       }
-        }
+    }
+  }
   return false;
-      }
+}
 
 void ReadRangeDelAggregator::AddTombstones(
     std::unique_ptr<FragmentedRangeTombstoneIterator> input_iter,
@@ -325,20 +325,20 @@ void ReadRangeDelAggregator::AddTombstones(
 bool ReadRangeDelAggregator::ShouldDelete(const ParsedInternalKey& parsed,
                                           RangeDelPositioningMode mode) {
   return rep_.ShouldDelete(parsed, mode);
-      }
+}
 
 bool ReadRangeDelAggregator::IsRangeOverlapped(const Slice& start,
                                                const Slice& end) {
   InvalidateRangeDelMapPositions();
   return rep_.IsRangeOverlapped(start, end);
-          }
+}
 
 void CompactionRangeDelAggregator::AddTombstones(
     std::unique_ptr<FragmentedRangeTombstoneIterator> input_iter,
     const InternalKey* smallest, const InternalKey* largest) {
   if (input_iter == nullptr || input_iter->empty()) {
     return;
-        }
+  }
   assert(input_iter->lower_bound() == 0);
   assert(input_iter->upper_bound() == kMaxSequenceNumber);
   parent_iters_.emplace_back(new TruncatedRangeDelIterator(
@@ -354,20 +354,20 @@ void CompactionRangeDelAggregator::AddTombstones(
       std::tie(it, inserted) = reps_.emplace(
           split_iter.first, StripeRep(icmp_, upper_bound, lower_bound));
       assert(inserted);
-        }
+    }
     assert(it != reps_.end());
     it->second.AddTombstones(std::move(split_iter.second));
-        }
-      }
+  }
+}
 
 bool CompactionRangeDelAggregator::ShouldDelete(const ParsedInternalKey& parsed,
                                                 RangeDelPositioningMode mode) {
   auto it = reps_.lower_bound(parsed.sequence);
   if (it == reps_.end()) {
     return false;
-      }
+  }
   return it->second.ShouldDelete(parsed, mode);
-    }
+}
 
 namespace {
 
@@ -387,6 +387,7 @@ class TruncatedRangeDelMergingIter : public InternalIterator {
         assert(child->lower_bound() == 0);
         assert(child->upper_bound() == kMaxSequenceNumber);
         children_.push_back(child.get());
+      }
     }
   }
 }
@@ -401,37 +402,37 @@ class TruncatedRangeDelMergingIter : public InternalIterator {
     for (auto& child : children_) {
       if (lower_bound_ != nullptr) {
         child->Seek(*lower_bound_);
-  } else {
+      } else {
         child->SeekToFirst();
-  }
+      }
       if (child->Valid()) {
         heap_.push(child);
-}
-  }
+      }
     }
+  }
 
   void Next() override {
     auto* top = heap_.top();
     top->InternalNext();
     if (top->Valid()) {
       heap_.replace_top(top);
-      } else {
+    } else {
       heap_.pop();
-      }
-      }
+    }
+  }
 
   Slice key() const override {
     auto* top = heap_.top();
     cur_start_key_.Set(top->start_key().user_key, top->seq(),
-                                        kTypeRangeDeletion);
+                       kTypeRangeDeletion);
     return cur_start_key_.Encode();
-      }
+  }
 
   Slice value() const override {
     auto* top = heap_.top();
     assert(top->end_key().sequence == kMaxSequenceNumber);
     return top->end_key().user_key;
-      }
+  }
 
   // Unused InternalIterator methods
   void Prev() override { assert(false); }
@@ -442,12 +443,12 @@ class TruncatedRangeDelMergingIter : public InternalIterator {
  private:
   bool BeforeEndKey(const TruncatedRangeDelIterator* iter) const {
     if (upper_bound_ == nullptr) {
-    return true;
-  }
+      return true;
+    }
     int cmp = icmp_->user_comparator()->Compare(iter->start_key().user_key,
                                                 *upper_bound_);
     return upper_bound_inclusive_ ? cmp <= 0 : cmp < 0;
-    }
+  }
 
   const InternalKeyComparator* icmp_;
   const Slice* lower_bound_;
@@ -470,8 +471,6 @@ CompactionRangeDelAggregator::NewIterator(const Slice* lower_bound,
       new TruncatedRangeDelMergingIter(icmp_, lower_bound, upper_bound,
                                        upper_bound_inclusive, parent_iters_));
 
-  // TODO: add tests where tombstone fragments can be outside of upper and lower
-  // bound range
   auto fragmented_tombstone_list =
       std::make_shared<FragmentedRangeTombstoneList>(
           std::move(merging_iter), *icmp_, true /* for_compaction */,
@@ -481,6 +480,6 @@ CompactionRangeDelAggregator::NewIterator(const Slice* lower_bound,
       new FragmentedRangeTombstoneIterator(
           fragmented_tombstone_list, *icmp_,
           kMaxSequenceNumber /* upper_bound */));
-  }
+}
 
 }  // namespace rocksdb

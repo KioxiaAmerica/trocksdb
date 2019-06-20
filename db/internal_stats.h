@@ -71,6 +71,7 @@ enum class LevelStatType {
   READ_MBPS,
   WRITE_MBPS,
   COMP_SEC,
+  COMP_CPU_SEC,
   COMP_COUNT,
   AVG_SEC,
   KEY_IN,
@@ -161,6 +162,7 @@ class InternalStats {
         cf_stats_value_{},
         cf_stats_count_{},
         comp_stats_(num_levels),
+        comp_stats_by_pri_(Env::Priority::TOTAL),
         file_read_latency_(num_levels),
         bg_error_count_(0),
         number_levels_(num_levels),
@@ -172,6 +174,7 @@ class InternalStats {
   // compactions that produced data for the specified "level".
   struct CompactionStats {
     uint64_t micros;
+    uint64_t cpu_micros;
 
     // The number of bytes read from all non-output levels
     uint64_t bytes_read_non_output_levels;
@@ -220,6 +223,7 @@ class InternalStats {
 
     explicit CompactionStats()
         : micros(0),
+          cpu_micros(0),
           bytes_read_non_output_levels(0),
           bytes_read_output_level(0),
           bytes_written(0),
@@ -245,6 +249,7 @@ class InternalStats {
 
     explicit CompactionStats(CompactionReason reason, int c)
         : micros(0),
+          cpu_micros(0),
           bytes_read_non_output_levels(0),
           bytes_read_output_level(0),
           bytes_written(0),
@@ -275,14 +280,14 @@ class InternalStats {
 
     explicit CompactionStats(const CompactionStats& c)
         : micros(c.micros),
+          cpu_micros(c.cpu_micros),
           bytes_read_non_output_levels(c.bytes_read_non_output_levels),
           bytes_read_output_level(c.bytes_read_output_level),
           bytes_written(c.bytes_written),
           bytes_moved(c.bytes_moved),
           num_input_files_in_non_output_levels(
               c.num_input_files_in_non_output_levels),
-          num_input_files_in_output_level(
-              c.num_input_files_in_output_level),
+          num_input_files_in_output_level(c.num_input_files_in_output_level),
           num_output_files(c.num_output_files),
           num_input_records(c.num_input_records),
           num_dropped_records(c.num_dropped_records),
@@ -302,6 +307,7 @@ class InternalStats {
 
     void Clear() {
       this->micros = 0;
+      this->cpu_micros = 0;
       this->bytes_read_non_output_levels = 0;
       this->bytes_read_output_level = 0;
       this->bytes_written = 0;
@@ -326,6 +332,7 @@ class InternalStats {
 
     void Add(const CompactionStats& c) {
       this->micros += c.micros;
+      this->cpu_micros += c.cpu_micros;
       this->bytes_read_non_output_levels += c.bytes_read_non_output_levels;
       this->bytes_read_output_level += c.bytes_read_output_level;
       this->bytes_written += c.bytes_written;
@@ -352,6 +359,7 @@ class InternalStats {
 
     void Subtract(const CompactionStats& c) {
       this->micros -= c.micros;
+      this->cpu_micros -= c.cpu_micros;
       this->bytes_read_non_output_levels -= c.bytes_read_non_output_levels;
       this->bytes_read_output_level -= c.bytes_read_output_level;
       this->bytes_written -= c.bytes_written;
@@ -397,8 +405,10 @@ class InternalStats {
     started_at_ = env_->NowMicros();
   }
 
-  void AddCompactionStats(int level, const CompactionStats& stats) {
+  void AddCompactionStats(int level, Env::Priority thread_pri,
+                          const CompactionStats& stats) {
     comp_stats_[level].Add(stats);
+    comp_stats_by_pri_[thread_pri].Add(stats);
   }
 
   void IncBytesMoved(int level, uint64_t amount) {
@@ -465,6 +475,8 @@ class InternalStats {
       std::map<int, std::map<RingStatType, double>>* level_stats,
       std::map<VLogStatType, double> *vlog_stats);
 #endif //INDIRECT_VALUE_SUPPORT
+  void DumpCFMapStatsByPriority(
+      std::map<int, std::map<LevelStatType, double>>* priorities_stats);
   void DumpCFMapStatsIOStalls(std::map<std::string, std::string>* cf_stats);
   void DumpCFStats(std::string* value);
   void DumpCFStatsNoFileHistogram(std::string* value);
@@ -479,6 +491,7 @@ class InternalStats {
   uint64_t cf_stats_count_[INTERNAL_CF_STATS_ENUM_MAX];
   // Per-ColumnFamily/level compaction stats
   std::vector<CompactionStats> comp_stats_;
+  std::vector<CompactionStats> comp_stats_by_pri_;
   std::vector<HistogramImpl> file_read_latency_;
 
   // Used to compute per-interval statistics
@@ -689,6 +702,7 @@ class InternalStats {
 
   struct CompactionStats {
     uint64_t micros;
+    uint64_t cpu_micros;
     uint64_t bytes_read_non_output_levels;
     uint64_t bytes_read_output_level;
     uint64_t bytes_written;
@@ -721,7 +735,8 @@ class InternalStats {
     void Subtract(const CompactionStats& /*c*/) {}
   };
 
-  void AddCompactionStats(int /*level*/, const CompactionStats& /*stats*/) {}
+  void AddCompactionStats(int /*level*/, Env::Priority /*thread_pri*/,
+                          const CompactionStats& /*stats*/) {}
 
   void IncBytesMoved(int /*level*/, uint64_t /*amount*/) {}
 

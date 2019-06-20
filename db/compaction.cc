@@ -270,6 +270,12 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
   if (max_subcompactions_ == 0) {
     max_subcompactions_ = immutable_cf_options_.max_subcompactions;
   }
+  if (!bottommost_level_) {
+    // Currently we only enable dictionary compression during compaction to the
+    // bottommost level.
+    output_compression_opts_.max_dict_bytes = 0;
+    output_compression_opts_.zstd_max_train_bytes = 0;
+  }
 
 #if DEBLEVEL&0x4000
   compactionno = Compaction::compactionnoshared++;
@@ -421,8 +427,8 @@ bool Compaction::KeyNotExistsBeyondOutputLevel(
         if (user_cmp->Compare(user_key, f->largest.user_key()) <= 0) {
           // We've advanced far enough
           if (user_cmp->Compare(user_key, f->smallest.user_key()) >= 0) {
-            // Key falls in this file's range, so definitely
-            // exists beyond output level
+            // Key falls in this file's range, so it may
+            // exist beyond output level
             return false;
           }
           break;

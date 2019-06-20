@@ -41,6 +41,7 @@ struct ImmutableMemTableOptions {
   size_t arena_block_size;
   uint32_t memtable_prefix_bloom_bits;
   size_t memtable_huge_page_size;
+  bool memtable_whole_key_filtering;
   bool inplace_update_support;
   size_t inplace_update_num_locks;
   UpdateStatus (*inplace_callback)(char* existing_value,
@@ -265,12 +266,16 @@ class MemTable {
     return num_deletes_.load(std::memory_order_relaxed);
   }
 
+  uint64_t get_data_size() const {
+    return data_size_.load(std::memory_order_relaxed);
+  }
+
   // Dynamically change the memtable's capacity. If set below the current usage,
   // the next key added will trigger a flush. Can only increase size when
   // memtable prefix bloom is disabled, since we can't easily allocate more
   // space.
   void UpdateWriteBufferSize(size_t new_write_buffer_size) {
-    if (prefix_bloom_ == nullptr ||
+    if (bloom_filter_ == nullptr ||
         new_write_buffer_size < write_buffer_size_) {
       write_buffer_size_.store(new_write_buffer_size,
                                std::memory_order_relaxed);
@@ -411,7 +416,7 @@ class MemTable {
   ConcurrentArena arena_;
   std::unique_ptr<MemTableRep> table_;
   std::unique_ptr<MemTableRep> range_del_table_;
-  bool is_range_del_table_empty_;
+  std::atomic_bool is_range_del_table_empty_;
 
   // Total data size of all data inserted
   std::atomic<uint64_t> data_size_;
@@ -450,7 +455,7 @@ class MemTable {
   std::vector<port::RWMutex> locks_;
 
   const SliceTransform* const prefix_extractor_;
-  std::unique_ptr<DynamicBloom> prefix_bloom_;
+  std::unique_ptr<DynamicBloom> bloom_filter_;
 
   std::atomic<FlushStateEnum> flush_state_;
 

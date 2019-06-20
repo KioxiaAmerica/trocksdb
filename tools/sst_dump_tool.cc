@@ -43,12 +43,14 @@
 
 namespace rocksdb {
 
-SstFileDumper::SstFileDumper(const std::string& file_path, bool verify_checksum,
+SstFileDumper::SstFileDumper(const Options& options,
+                             const std::string& file_path, bool verify_checksum,
                              bool output_hex)
     : file_name_(file_path),
       read_num_(0),
       verify_checksum_(verify_checksum),
       output_hex_(output_hex),
+      options_(options),
       ioptions_(options_),
       moptions_(ColumnFamilyOptions(options_)),
       internal_comparator_(BytewiseComparator()) {
@@ -214,7 +216,7 @@ int SstFileDumper::ShowAllCompressionSizes(
       int unknown_level = -1;
       TableBuilderOptions tb_opts(
           imoptions, moptions, ikc, &block_based_table_factories, i.first,
-          compress_opt, nullptr /* compression_dict */,
+          0 /* sample_for_compression */, compress_opt,
           false /* skip_filters */, column_family_name, unknown_level);
       uint64_t file_size = CalculateCompressedTableSize(tb_opts, block_size);
       fprintf(stdout, "Compression: %s", i.second);
@@ -417,7 +419,7 @@ void print_help() {
 
 }  // namespace
 
-int SSTDumpTool::Run(int argc, char** argv) {
+int SSTDumpTool::Run(int argc, char** argv, Options options) {
   const char* dir_or_file = nullptr;
   uint64_t read_num = std::numeric_limits<uint64_t>::max();
   std::string command;
@@ -545,7 +547,7 @@ int SSTDumpTool::Run(int argc, char** argv) {
   }
 
   std::vector<std::string> filenames;
-  rocksdb::Env* env = rocksdb::Env::Default();
+  rocksdb::Env* env = options.env;
   rocksdb::Status st = env->GetChildren(dir_or_file, &filenames);
   bool dir = true;
   if (!st.ok()) {
@@ -570,7 +572,7 @@ int SSTDumpTool::Run(int argc, char** argv) {
       filename = std::string(dir_or_file) + "/" + filename;
     }
 
-    rocksdb::SstFileDumper dumper(filename, verify_checksum,
+    rocksdb::SstFileDumper dumper(options, filename, verify_checksum,
                                   output_hex);
     if (!dumper.getStatus().ok()) {
       fprintf(stderr, "%s: %s\n", filename.c_str(),

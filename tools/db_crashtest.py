@@ -26,12 +26,14 @@ default_params = {
     "block_size": 16384,
     "cache_size": 1048576,
     "checkpoint_one_in": 1000000,
+    "compression_type": "snappy",
     "compression_max_dict_bytes": lambda: 16384 * random.randint(0, 1),
     "compression_zstd_max_train_bytes": lambda: 65536 * random.randint(0, 1),
     "clear_column_family_one_in": 0,
     "compact_files_one_in": 1000000,
     "compact_range_one_in": 1000000,
-    "delpercent": 5,
+    "delpercent": 4,
+    "delrangepercent": 1,
     "destroy_db_initially": 0,
     "enable_pipelined_write": lambda: random.randint(0, 1),
     "expected_values_path": expected_values_file.name,
@@ -46,6 +48,7 @@ default_params = {
     "prefixpercent": 5,
     "progress_reports": 0,
     "readpercent": 45,
+    "recycle_log_file_num": lambda: random.randint(0, 1),
     "reopen": 20,
     "snapshot_hold_ops": 100000,
     "subcompactions": lambda: random.randint(1, 4),
@@ -126,9 +129,9 @@ blackbox_simple_default_params = {
 whitebox_simple_default_params = {}
 
 atomic_flush_params = {
-    "atomic_flush": 1,
     "disable_wal": 1,
     "reopen": 0,
+    "test_atomic_flush": 1,
     # use small value for write_buffer_size so that RocksDB triggers flush
     # more frequently
     "write_buffer_size": 1024 * 1024,
@@ -147,6 +150,9 @@ def finalize_and_sanitize(src_params):
             dest_params["db"]):
         dest_params["use_direct_io_for_flush_and_compaction"] = 0
         dest_params["use_direct_reads"] = 0
+    if dest_params.get("test_batches_snapshots") == 1:
+        dest_params["delpercent"] += dest_params["delrangepercent"]
+        dest_params["delrangepercent"] = 0
     return dest_params
 
 

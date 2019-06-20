@@ -93,6 +93,16 @@ struct TransactionDBOptions {
   // logic in myrocks. This hack of simply not rolling back merge operands works
   // for the special way that myrocks uses this operands.
   bool rollback_merge_operands = false;
+
+ private:
+  // 128 entries
+  size_t wp_snapshot_cache_bits = static_cast<size_t>(7);
+  // 8m entry, 64MB size
+  size_t wp_commit_cache_bits = static_cast<size_t>(23);
+
+  friend class WritePreparedTxnDB;
+  friend class WritePreparedTransactionTestBase;
+  friend class MySQLStyleTransactionTest;
 };
 
 struct TransactionOptions {
@@ -116,7 +126,6 @@ struct TransactionOptions {
   // two non-equal keys to be equivalent.  Ie, cmp->Compare(a,b) should only
   // return 0 if
   // a.compare(b) returns 0.
-
 
   // If positive, specifies the wait timeout in milliseconds when
   // a transaction attempts to lock a key.

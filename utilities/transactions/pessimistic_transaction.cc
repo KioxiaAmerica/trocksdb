@@ -37,7 +37,7 @@ TransactionID PessimisticTransaction::GenTxnID() {
 
 PessimisticTransaction::PessimisticTransaction(
     TransactionDB* txn_db, const WriteOptions& write_options,
-    const TransactionOptions& txn_options)
+    const TransactionOptions& txn_options, const bool init)
     : TransactionBaseImpl(txn_db->GetRootDB(), write_options),
       txn_db_impl_(nullptr),
       expiration_time_(0),
@@ -51,7 +51,9 @@ PessimisticTransaction::PessimisticTransaction(
   txn_db_impl_ =
       static_cast_with_check<PessimisticTransactionDB, TransactionDB>(txn_db);
   db_impl_ = static_cast_with_check<DBImpl, DB>(db_);
-  Initialize(txn_options);
+  if (init) {
+    Initialize(txn_options);
+  }
 }
 
 void PessimisticTransaction::Initialize(const TransactionOptions& txn_options) {
@@ -193,22 +195,14 @@ Status PessimisticTransaction::Prepare() {
   }
 
   if (can_prepare) {
-    bool wal_already_marked = false;
     txn_state_.store(AWAITING_PREPARE);
     // transaction can't expire after preparation
     expiration_time_ = 0;
-    if (log_number_ > 0) {
-      assert(txn_db_impl_->GetTxnDBOptions().write_policy == WRITE_UNPREPARED);
-      wal_already_marked = true;
-    }
+    assert(log_number_ == 0 ||
+           txn_db_impl_->GetTxnDBOptions().write_policy == WRITE_UNPREPARED);
 
     s = PrepareInternal();
     if (s.ok()) {
-      assert(log_number_ != 0);
-      if (!wal_already_marked) {
-        dbimpl_->logs_with_prep_tracker()->MarkLogAsContainingPrepSection(
-            log_number_);
-      }
       txn_state_.store(PREPARED);
     }
   } else if (txn_state_ == LOCKS_STOLEN) {
@@ -230,10 +224,38 @@ Status WriteCommittedTxn::PrepareInternal() {
   WriteOptions write_options = write_options_;
   write_options.disableWAL = false;
   WriteBatchInternal::MarkEndPrepare(GetWriteBatch()->GetWriteBatch(), name_);
-  Status s =
-      db_impl_->WriteImpl(write_options, GetWriteBatch()->GetWriteBatch(),
-                          /*callback*/ nullptr, &log_number_, /*log_ref*/ 0,
-                          /* disable_memtable*/ true);
+  class MarkLogCallback : public PreReleaseCallback {
+   public:
+    MarkLogCallback(DBImpl* db, bool two_write_queues)
+        : db_(db), two_write_queues_(two_write_queues) {
+      (void)two_write_queues_;  // to silence unused private field warning
+    }
+    virtual Status Callback(SequenceNumber, bool is_mem_disabled,
+                            uint64_t log_number) override {
+#ifdef NDEBUG
+      (void)is_mem_disabled;
+#endif
+      assert(log_number != 0);
+      assert(!two_write_queues_ || is_mem_disabled);  // implies the 2nd queue
+      db_->logs_with_prep_tracker()->MarkLogAsContainingPrepSection(log_number);
+      return Status::OK();
+    }
+
+   private:
+    DBImpl* db_;
+    bool two_write_queues_;
+  } mark_log_callback(db_impl_,
+                      db_impl_->immutable_db_options().two_write_queues);
+
+  WriteCallback* const kNoWriteCallback = nullptr;
+  const uint64_t kRefNoLog = 0;
+  const bool kDisableMemtable = true;
+  SequenceNumber* const KIgnoreSeqUsed = nullptr;
+  const size_t kNoBatchCount = 0;
+  Status s = db_impl_->WriteImpl(
+      write_options, GetWriteBatch()->GetWriteBatch(), kNoWriteCallback,
+      &log_number_, kRefNoLog, kDisableMemtable, KIgnoreSeqUsed, kNoBatchCount,
+      &mark_log_callback);
   return s;
 }
 
@@ -457,18 +479,17 @@ Status PessimisticTransaction::LockBatch(WriteBatch* batch,
       }
     }
 
-    virtual Status PutCF(uint32_t column_family_id, const Slice& key,
-                         const Slice& /* unused */) override {
+    Status PutCF(uint32_t column_family_id, const Slice& key,
+                 const Slice& /* unused */) override {
       RecordKey(column_family_id, key);
       return Status::OK();
     }
-    virtual Status MergeCF(uint32_t column_family_id, const Slice& key,
-                           const Slice& /* unused */) override {
+    Status MergeCF(uint32_t column_family_id, const Slice& key,
+                   const Slice& /* unused */) override {
       RecordKey(column_family_id, key);
       return Status::OK();
     }
-    virtual Status DeleteCF(uint32_t column_family_id,
-                            const Slice& key) override {
+    Status DeleteCF(uint32_t column_family_id, const Slice& key) override {
       RecordKey(column_family_id, key);
       return Status::OK();
     }
@@ -515,7 +536,9 @@ Status PessimisticTransaction::LockBatch(WriteBatch* batch,
 // the snapshot time.
 Status PessimisticTransaction::TryLock(ColumnFamilyHandle* column_family,
                                        const Slice& key, bool read_only,
-                                       bool exclusive, bool skip_validate) {
+                                       bool exclusive, const bool do_validate,
+                                       const bool assume_tracked) {
+  assert(!assume_tracked || !do_validate);
   Status s;
   if (UNLIKELY(skip_concurrency_control_)) {
     return s;
@@ -559,7 +582,11 @@ Status PessimisticTransaction::TryLock(ColumnFamilyHandle* column_family,
   // any writes since this transaction's snapshot.
   // TODO(agiardullo): could optimize by supporting shared txn locks in the
   // future
-  if (skip_validate || snapshot_ == nullptr) {
+  if (!do_validate || snapshot_ == nullptr) {
+    if (assume_tracked && !previously_locked) {
+      s = Status::InvalidArgument(
+          "assume_tracked is set but it is not tracked yet");
+    }
     // Need to remember the earliest sequence number that we know that this
     // key has not been modified after.  This is useful if this same
     // transaction
@@ -628,7 +655,7 @@ Status PessimisticTransaction::ValidateSnapshot(
   // Otherwise we have either
   // 1: tracked_at_seq == kMaxSequenceNumber, i.e., first time tracking the key
   // 2: snap_seq < tracked_at_seq: last time we lock the key was via
-  // skip_validate option which means we had skipped ValidateSnapshot. In both
+  // do_validate=false which means we had skipped ValidateSnapshot. In both
   // cases we should do ValidateSnapshot now.
 
   *tracked_at_seq = snap_seq;

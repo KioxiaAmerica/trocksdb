@@ -31,6 +31,7 @@
 #include "util/logging.h"
 #include "util/mutexlock.h"
 #include "util/random.h"
+#include "util/sst_file_manager_impl.h"
 #include "util/stop_watch.h"
 #include "util/sync_point.h"
 #include "util/timer_queue.h"
@@ -45,13 +46,6 @@ int kBlockBasedTableVersionFormat = 2;
 
 namespace rocksdb {
 namespace blob_db {
-
-WalFilter::WalProcessingOption BlobReconcileWalFilter::LogRecordFound(
-    unsigned long long /*log_number*/, const std::string& /*log_file_name*/,
-    const WriteBatch& /*batch*/, WriteBatch* /*new_batch*/,
-    bool* /*batch_changed*/) {
-  return WalFilter::WalProcessingOption::kContinueProcessing;
-}
 
 bool BlobFileComparator::operator()(
     const std::shared_ptr<BlobFile>& lhs,
@@ -101,6 +95,7 @@ BlobDBImpl::BlobDBImpl(const std::string& dbname,
 }
 
 BlobDBImpl::~BlobDBImpl() {
+  tqueue_.shutdown();
   // CancelAllBackgroundWork(db_, true);
   Status s __attribute__((__unused__)) = Close();
   assert(s.ok());
@@ -186,6 +181,12 @@ Status BlobDBImpl::Open(std::vector<ColumnFamilyHandle*>* handles) {
     return s;
   }
   db_impl_ = static_cast_with_check<DBImpl, DB>(db_->GetRootDB());
+
+  // Add trash files in blob dir to file delete scheduler.
+  SstFileManagerImpl* sfm = static_cast<SstFileManagerImpl*>(
+      db_impl_->immutable_db_options().sst_file_manager.get());
+  DeleteScheduler::CleanupDirectory(env_, sfm, blob_dir_);
+
   UpdateLiveSSTSize();
 
   // Start background jobs.
@@ -204,9 +205,6 @@ void BlobDBImpl::StartBackgroundTasks() {
   tqueue_.add(
       kReclaimOpenFilesPeriodMillisecs,
       std::bind(&BlobDBImpl::ReclaimOpenFiles, this, std::placeholders::_1));
-  tqueue_.add(static_cast<int64_t>(
-                  bdb_options_.garbage_collection_interval_secs * 1000),
-              std::bind(&BlobDBImpl::RunGC, this, std::placeholders::_1));
   tqueue_.add(
       kDeleteObsoleteFilesPeriodMillisecs,
       std::bind(&BlobDBImpl::DeleteObsoleteFiles, this, std::placeholders::_1));
@@ -274,7 +272,7 @@ Status BlobDBImpl::OpenAllBlobFiles() {
       continue;
     } else if (!read_metadata_status.ok()) {
       ROCKS_LOG_ERROR(db_options_.info_log,
-                      "Unable to read metadata of blob file % " PRIu64
+                      "Unable to read metadata of blob file %" PRIu64
                       ", status: '%s'",
                       file_number, read_metadata_status.ToString().c_str());
       return read_metadata_status;
@@ -347,8 +345,9 @@ Status BlobDBImpl::CreateWriterLocked(const std::shared_ptr<BlobFile>& bfile) {
 
   uint64_t boffset = bfile->GetFileSize();
   if (debug_level_ >= 2 && boffset) {
-    ROCKS_LOG_DEBUG(db_options_.info_log, "Open blob file: %s with offset: %d",
-                    fpath.c_str(), boffset);
+    ROCKS_LOG_DEBUG(db_options_.info_log,
+                    "Open blob file: %s with offset: %" PRIu64, fpath.c_str(),
+                    boffset);
   }
 
   Writer::ElemType et = Writer::kEtNone;
@@ -358,8 +357,8 @@ Status BlobDBImpl::CreateWriterLocked(const std::shared_ptr<BlobFile>& bfile) {
     et = Writer::kEtRecord;
   } else if (bfile->file_size_) {
     ROCKS_LOG_WARN(db_options_.info_log,
-                   "Open blob file: %s with wrong size: %d", fpath.c_str(),
-                   boffset);
+                   "Open blob file: %s with wrong size: %" PRIu64,
+                   fpath.c_str(), boffset);
     return Status::Corruption("Invalid blob file size");
   }
 
@@ -500,7 +499,8 @@ Status BlobDBImpl::SelectBlobFileTTL(uint64_t expiration,
   *blob_file = NewBlobFile("SelectBlobFileTTL");
   assert(*blob_file != nullptr);
 
-  ROCKS_LOG_INFO(db_options_.info_log, "New blob file TTL range: %s %d %d",
+  ROCKS_LOG_INFO(db_options_.info_log,
+                 "New blob file TTL range: %s %" PRIu64 " %" PRIu64,
                  (*blob_file)->PathName().c_str(), exp_low, exp_high);
   LogFlush(db_options_.info_log);
 
@@ -575,8 +575,8 @@ class BlobDBImpl::BlobInserter : public WriteBatch::Handler {
 
   WriteBatch* batch() { return &batch_; }
 
-  virtual Status PutCF(uint32_t column_family_id, const Slice& key,
-                       const Slice& value) override {
+  Status PutCF(uint32_t column_family_id, const Slice& key,
+               const Slice& value) override {
     if (column_family_id != default_cf_id_) {
       return Status::NotSupported(
           "Blob DB doesn't support non-default column family.");
@@ -586,8 +586,7 @@ class BlobDBImpl::BlobInserter : public WriteBatch::Handler {
     return s;
   }
 
-  virtual Status DeleteCF(uint32_t column_family_id,
-                          const Slice& key) override {
+  Status DeleteCF(uint32_t column_family_id, const Slice& key) override {
     if (column_family_id != default_cf_id_) {
       return Status::NotSupported(
           "Blob DB doesn't support non-default column family.");
@@ -607,17 +606,17 @@ class BlobDBImpl::BlobInserter : public WriteBatch::Handler {
     return s;
   }
 
-  virtual Status SingleDeleteCF(uint32_t /*column_family_id*/,
-                                const Slice& /*key*/) override {
+  Status SingleDeleteCF(uint32_t /*column_family_id*/,
+                        const Slice& /*key*/) override {
     return Status::NotSupported("Not supported operation in blob db.");
   }
 
-  virtual Status MergeCF(uint32_t /*column_family_id*/, const Slice& /*key*/,
-                         const Slice& /*value*/) override {
+  Status MergeCF(uint32_t /*column_family_id*/, const Slice& /*key*/,
+                 const Slice& /*value*/) override {
     return Status::NotSupported("Not supported operation in blob db.");
   }
 
-  virtual void LogData(const Slice& blob) override { batch_.PutLogData(blob); }
+  void LogData(const Slice& blob) override { batch_.PutLogData(blob); }
 };
 
 Status BlobDBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
@@ -739,19 +738,19 @@ Status BlobDBImpl::PutBlobValue(const WriteOptions& /*options*/,
         RecordTick(statistics_, BLOB_DB_WRITE_BLOB_TTL);
       }
     } else {
-      ROCKS_LOG_ERROR(db_options_.info_log,
-                      "Failed to append blob to FILE: %s: KEY: %s VALSZ: %d"
-                      " status: '%s' blob_file: '%s'",
-                      blob_file->PathName().c_str(), key.ToString().c_str(),
-                      value.size(), s.ToString().c_str(),
-                      blob_file->DumpState().c_str());
+      ROCKS_LOG_ERROR(
+          db_options_.info_log,
+          "Failed to append blob to FILE: %s: KEY: %s VALSZ: %" ROCKSDB_PRIszt
+          " status: '%s' blob_file: '%s'",
+          blob_file->PathName().c_str(), key.ToString().c_str(), value.size(),
+          s.ToString().c_str(), blob_file->DumpState().c_str());
     }
   }
 
   RecordTick(statistics_, BLOB_DB_NUM_KEYS_WRITTEN);
   RecordTick(statistics_, BLOB_DB_BYTES_WRITTEN, key.size() + value.size());
-  MeasureTime(statistics_, BLOB_DB_KEY_SIZE, key.size());
-  MeasureTime(statistics_, BLOB_DB_VALUE_SIZE, value.size());
+  RecordInHistogram(statistics_, BLOB_DB_KEY_SIZE, key.size());
+  RecordInHistogram(statistics_, BLOB_DB_VALUE_SIZE, value.size());
 
   return s;
 }
@@ -762,10 +761,13 @@ Slice BlobDBImpl::GetCompressedSlice(const Slice& raw,
     return raw;
   }
   StopWatch compression_sw(env_, statistics_, BLOB_DB_COMPRESSION_MICROS);
-  CompressionType ct = bdb_options_.compression;
-  CompressionContext compression_ctx(ct);
-  CompressBlock(raw, compression_ctx, &ct, kBlockBasedTableVersionFormat,
-                compression_output);
+  CompressionType type = bdb_options_.compression;
+  CompressionOptions opts;
+  CompressionContext context(type);
+  CompressionInfo info(opts, context, CompressionDict::GetEmptyDict(), type,
+                       0 /* sample_for_compression */);
+  CompressBlock(raw, info, &type, kBlockBasedTableVersionFormat, false,
+                compression_output, nullptr, nullptr);
   return *compression_output;
 }
 
@@ -1048,20 +1050,19 @@ Status BlobDBImpl::GetBlobValue(const Slice& key, const Slice& index_entry,
     ROCKS_LOG_DEBUG(db_options_.info_log,
                     "Failed to read blob from blob file %" PRIu64
                     ", blob_offset: %" PRIu64 ", blob_size: %" PRIu64
-                    ", key_size: " PRIu64 ", read " PRIu64
-                    " bytes, status: '%s'",
+                    ", key_size: %" ROCKSDB_PRIszt ", status: '%s'",
                     bfile->BlobFileNumber(), blob_index.offset(),
                     blob_index.size(), key.size(), s.ToString().c_str());
     return s;
   }
   if (blob_record.size() != record_size) {
-    ROCKS_LOG_DEBUG(db_options_.info_log,
-                    "Failed to read blob from blob file %" PRIu64
-                    ", blob_offset: %" PRIu64 ", blob_size: %" PRIu64
-                    ", key_size: " PRIu64 ", read " PRIu64
-                    " bytes, status: '%s'",
-                    bfile->BlobFileNumber(), blob_index.offset(),
-                    blob_index.size(), key.size(), s.ToString().c_str());
+    ROCKS_LOG_DEBUG(
+        db_options_.info_log,
+        "Failed to read blob from blob file %" PRIu64 ", blob_offset: %" PRIu64
+        ", blob_size: %" PRIu64 ", key_size: %" ROCKSDB_PRIszt
+        ", read %" ROCKSDB_PRIszt " bytes, expected %" PRIu64 " bytes",
+        bfile->BlobFileNumber(), blob_index.offset(), blob_index.size(),
+        key.size(), blob_record.size(), record_size);
 
     return Status::Corruption("Failed to retrieve blob from blob index.");
   }
@@ -1073,7 +1074,7 @@ Status BlobDBImpl::GetBlobValue(const Slice& key, const Slice& index_entry,
     ROCKS_LOG_DEBUG(db_options_.info_log,
                     "Unable to decode CRC from blob file %" PRIu64
                     ", blob_offset: %" PRIu64 ", blob_size: %" PRIu64
-                    ", key size: %" PRIu64 ", status: '%s'",
+                    ", key size: %" ROCKSDB_PRIszt ", status: '%s'",
                     bfile->BlobFileNumber(), blob_index.offset(),
                     blob_index.size(), key.size(), s.ToString().c_str());
     return Status::Corruption("Unable to decode checksum.");
@@ -1101,9 +1102,11 @@ Status BlobDBImpl::GetBlobValue(const Slice& key, const Slice& index_entry,
     {
       StopWatch decompression_sw(env_, statistics_,
                                  BLOB_DB_DECOMPRESSION_MICROS);
-      UncompressionContext uncompression_ctx(bfile->compression());
+      UncompressionContext context(bfile->compression());
+      UncompressionInfo info(context, UncompressionDict::GetEmptyDict(),
+                             bfile->compression());
       s = UncompressBlockContentsForCompressionType(
-          uncompression_ctx, blob_value.data(), blob_value.size(), &contents,
+          info, blob_value.data(), blob_value.size(), &contents,
           kBlockBasedTableVersionFormat, *(cfh->cfd()->ioptions()));
     }
     value->PinSelf(contents.data);
@@ -1172,9 +1175,9 @@ std::pair<bool, int64_t> BlobDBImpl::SanityCheck(bool aborted) {
   }
 
   ROCKS_LOG_INFO(db_options_.info_log, "Starting Sanity Check");
-  ROCKS_LOG_INFO(db_options_.info_log, "Number of files %" PRIu64,
+  ROCKS_LOG_INFO(db_options_.info_log, "Number of files %" ROCKSDB_PRIszt,
                  blob_files_.size());
-  ROCKS_LOG_INFO(db_options_.info_log, "Number of open files %" PRIu64,
+  ROCKS_LOG_INFO(db_options_.info_log, "Number of open files %" ROCKSDB_PRIszt,
                  open_ttl_files_.size());
 
   for (auto bfile : open_ttl_files_) {
@@ -1312,6 +1315,9 @@ std::pair<bool, int64_t> BlobDBImpl::EvictExpiredFiles(bool aborted) {
     return std::make_pair(false, -1);
   }
 
+  TEST_SYNC_POINT("BlobDBImpl::EvictExpiredFiles:0");
+  TEST_SYNC_POINT("BlobDBImpl::EvictExpiredFiles:1");
+
   std::vector<std::shared_ptr<BlobFile>> process_files;
   uint64_t now = EpochNow();
   {
@@ -1325,6 +1331,10 @@ std::pair<bool, int64_t> BlobDBImpl::EvictExpiredFiles(bool aborted) {
       }
     }
   }
+
+  TEST_SYNC_POINT("BlobDBImpl::EvictExpiredFiles:2");
+  TEST_SYNC_POINT("BlobDBImpl::EvictExpiredFiles:3");
+  TEST_SYNC_POINT_CALLBACK("BlobDBImpl::EvictExpiredFiles:cb", nullptr);
 
   SequenceNumber seq = GetLatestSequenceNumber();
   {
@@ -1408,7 +1418,7 @@ class BlobDBImpl::GarbageCollectionWriteCallback : public WriteCallback {
                                  SequenceNumber upper_bound)
       : cfd_(cfd), key_(key), upper_bound_(upper_bound) {}
 
-  virtual Status Callback(DB* db) override {
+  Status Callback(DB* db) override {
     auto* db_impl = reinterpret_cast<DBImpl*>(db);
     auto* sv = db_impl->GetAndRefSuperVersion(cfd_);
     SequenceNumber latest_seq = 0;
@@ -1435,7 +1445,7 @@ class BlobDBImpl::GarbageCollectionWriteCallback : public WriteCallback {
     return s;
   }
 
-  virtual bool AllowWriteBatching() override { return false; }
+  bool AllowWriteBatching() override { return false; }
 
  private:
   ColumnFamilyData* cfd_;
@@ -1466,7 +1476,7 @@ Status BlobDBImpl::GCFileAndUpdateLSM(const std::shared_ptr<BlobFile>& bfptr,
       bfptr->OpenRandomAccessReader(env_, db_options_, env_options_);
   if (!reader) {
     ROCKS_LOG_ERROR(db_options_.info_log,
-                    "File sequential reader could not be opened",
+                    "File sequential reader could not be opened for %s",
                     bfptr->PathName().c_str());
     return Status::IOError("failed to create sequential reader");
   }

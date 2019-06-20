@@ -9,8 +9,8 @@
 
 #include "table/format.h"
 
-#include <string>
 #include <inttypes.h>
+#include <string>
 
 #include "monitoring/perf_context_imp.h"
 #include "monitoring/statistics.h"
@@ -45,7 +45,7 @@ const uint64_t kPlainTableMagicNumber = 0;
 
 bool ShouldReportDetailedTime(Env* env, Statistics* stats) {
   return env != nullptr && stats != nullptr &&
-         stats->stats_level_ > kExceptDetailedTimers;
+         stats->get_stats_level() > kExceptDetailedTimers;
 }
 
 void BlockHandle::EncodeTo(std::string* dst) const {
@@ -56,8 +56,7 @@ void BlockHandle::EncodeTo(std::string* dst) const {
 }
 
 Status BlockHandle::DecodeFrom(Slice* input) {
-  if (GetVarint64(input, &offset_) &&
-      GetVarint64(input, &size_)) {
+  if (GetVarint64(input, &offset_) && GetVarint64(input, &size_)) {
     return Status::OK();
   } else {
     // reset in case failure after partially decoding
@@ -159,7 +158,7 @@ Status Footer::DecodeFrom(Slice* input) {
   assert(input != nullptr);
   assert(input->size() >= kMinEncodedLength);
 
-  const char *magic_ptr =
+  const char* magic_ptr =
       input->data() + input->size() - kMagicNumberLengthByte;
   const uint32_t magic_lo = DecodeFixed32(magic_ptr);
   const uint32_t magic_hi = DecodeFixed32(magic_ptr + 4);
@@ -234,9 +233,10 @@ Status ReadFooterFromFile(RandomAccessFileReader* file,
                           uint64_t file_size, Footer* footer,
                           uint64_t enforce_table_magic_number) {
   if (file_size < Footer::kMinEncodedLength) {
-    return Status::Corruption(
-      "file is too short (" + ToString(file_size) + " bytes) to be an "
-      "sstable: " + file->file_name());
+    return Status::Corruption("file is too short (" + ToString(file_size) +
+                              " bytes) to be an "
+                              "sstable: " +
+                              file->file_name());
   }
 
   char footer_space[Footer::kMaxEncodedLength];
@@ -257,9 +257,10 @@ Status ReadFooterFromFile(RandomAccessFileReader* file,
   // Check that we actually read the whole footer from the file. It may be
   // that size isn't correct.
   if (footer_input.size() < Footer::kMinEncodedLength) {
-    return Status::Corruption(
-      "file is too short (" + ToString(file_size) + " bytes) to be an "
-      "sstable" + file->file_name());
+    return Status::Corruption("file is too short (" + ToString(file_size) +
+                              " bytes) to be an "
+                              "sstable" +
+                              file->file_name());
   }
 
   s = footer->DecodeFrom(&footer_input);
@@ -269,31 +270,30 @@ Status ReadFooterFromFile(RandomAccessFileReader* file,
   if (enforce_table_magic_number != 0 &&
       enforce_table_magic_number != footer->table_magic_number()) {
     return Status::Corruption(
-      "Bad table magic number: expected "
-      + ToString(enforce_table_magic_number) + ", found "
-      + ToString(footer->table_magic_number())
-      + " in " + file->file_name());
+        "Bad table magic number: expected " +
+        ToString(enforce_table_magic_number) + ", found " +
+        ToString(footer->table_magic_number()) + " in " + file->file_name());
   }
   return Status::OK();
 }
 
 Status UncompressBlockContentsForCompressionType(
-    const UncompressionContext& uncompression_ctx, const char* data, size_t n,
+    const UncompressionInfo& uncompression_info, const char* data, size_t n,
     BlockContents* contents, uint32_t format_version,
     const ImmutableCFOptions& ioptions, MemoryAllocator* allocator) {
   CacheAllocationPtr ubuf;
 
-  assert(uncompression_ctx.type() != kNoCompression &&
+  assert(uncompression_info.type() != kNoCompression &&
          "Invalid compression type");
 
-  StopWatchNano timer(ioptions.env,
-    ShouldReportDetailedTime(ioptions.env, ioptions.statistics));
+  StopWatchNano timer(ioptions.env, ShouldReportDetailedTime(
+                                        ioptions.env, ioptions.statistics));
   int decompress_size = 0;
-  switch (uncompression_ctx.type()) {
+  switch (uncompression_info.type()) {
     case kSnappyCompression: {
       size_t ulength = 0;
       static char snappy_corrupt_msg[] =
-        "Snappy not supported or corrupted Snappy compressed block contents";
+          "Snappy not supported or corrupted Snappy compressed block contents";
       if (!Snappy_GetUncompressedLength(data, n, &ulength)) {
         return Status::Corruption(snappy_corrupt_msg);
       }
@@ -306,12 +306,12 @@ Status UncompressBlockContentsForCompressionType(
     }
     case kZlibCompression:
       ubuf = Zlib_Uncompress(
-          uncompression_ctx, data, n, &decompress_size,
+          uncompression_info, data, n, &decompress_size,
           GetCompressFormatForVersion(kZlibCompression, format_version),
           allocator);
       if (!ubuf) {
         static char zlib_corrupt_msg[] =
-          "Zlib not supported or corrupted Zlib compressed block contents";
+            "Zlib not supported or corrupted Zlib compressed block contents";
         return Status::Corruption(zlib_corrupt_msg);
       }
       *contents = BlockContents(std::move(ubuf), decompress_size);
@@ -323,31 +323,31 @@ Status UncompressBlockContentsForCompressionType(
           allocator);
       if (!ubuf) {
         static char bzip2_corrupt_msg[] =
-          "Bzip2 not supported or corrupted Bzip2 compressed block contents";
+            "Bzip2 not supported or corrupted Bzip2 compressed block contents";
         return Status::Corruption(bzip2_corrupt_msg);
       }
       *contents = BlockContents(std::move(ubuf), decompress_size);
       break;
     case kLZ4Compression:
       ubuf = LZ4_Uncompress(
-          uncompression_ctx, data, n, &decompress_size,
+          uncompression_info, data, n, &decompress_size,
           GetCompressFormatForVersion(kLZ4Compression, format_version),
           allocator);
       if (!ubuf) {
         static char lz4_corrupt_msg[] =
-          "LZ4 not supported or corrupted LZ4 compressed block contents";
+            "LZ4 not supported or corrupted LZ4 compressed block contents";
         return Status::Corruption(lz4_corrupt_msg);
       }
       *contents = BlockContents(std::move(ubuf), decompress_size);
       break;
     case kLZ4HCCompression:
       ubuf = LZ4_Uncompress(
-          uncompression_ctx, data, n, &decompress_size,
+          uncompression_info, data, n, &decompress_size,
           GetCompressFormatForVersion(kLZ4HCCompression, format_version),
           allocator);
       if (!ubuf) {
         static char lz4hc_corrupt_msg[] =
-          "LZ4HC not supported or corrupted LZ4HC compressed block contents";
+            "LZ4HC not supported or corrupted LZ4HC compressed block contents";
         return Status::Corruption(lz4hc_corrupt_msg);
       }
       *contents = BlockContents(std::move(ubuf), decompress_size);
@@ -358,14 +358,15 @@ Status UncompressBlockContentsForCompressionType(
       ubuf.reset(XPRESS_Uncompress(data, n, &decompress_size));
       if (!ubuf) {
         static char xpress_corrupt_msg[] =
-          "XPRESS not supported or corrupted XPRESS compressed block contents";
+            "XPRESS not supported or corrupted XPRESS compressed block "
+            "contents";
         return Status::Corruption(xpress_corrupt_msg);
       }
       *contents = BlockContents(std::move(ubuf), decompress_size);
       break;
     case kZSTD:
     case kZSTDNotFinalCompression:
-      ubuf = ZSTD_Uncompress(uncompression_ctx, data, n, &decompress_size,
+      ubuf = ZSTD_Uncompress(uncompression_info, data, n, &decompress_size,
                              allocator);
       if (!ubuf) {
         static char zstd_corrupt_msg[] =
@@ -378,11 +379,12 @@ Status UncompressBlockContentsForCompressionType(
       return Status::Corruption("bad block type");
   }
 
-  if(ShouldReportDetailedTime(ioptions.env, ioptions.statistics)){
-    MeasureTime(ioptions.statistics, DECOMPRESSION_TIMES_NANOS,
-      timer.ElapsedNanos());
+  if (ShouldReportDetailedTime(ioptions.env, ioptions.statistics)) {
+    RecordTimeToHistogram(ioptions.statistics, DECOMPRESSION_TIMES_NANOS,
+                          timer.ElapsedNanos());
   }
-  MeasureTime(ioptions.statistics, BYTES_DECOMPRESSED, contents->data.size());
+  RecordTimeToHistogram(ioptions.statistics, BYTES_DECOMPRESSED,
+                        contents->data.size());
   RecordTick(ioptions.statistics, NUMBER_BLOCK_DECOMPRESSED);
 
   return Status::OK();
@@ -395,14 +397,14 @@ Status UncompressBlockContentsForCompressionType(
 // buffer is returned via 'result' and it is upto the caller to
 // free this buffer.
 // format_version is the block format as defined in include/rocksdb/table.h
-Status UncompressBlockContents(const UncompressionContext& uncompression_ctx,
+Status UncompressBlockContents(const UncompressionInfo& uncompression_info,
                                const char* data, size_t n,
                                BlockContents* contents, uint32_t format_version,
                                const ImmutableCFOptions& ioptions,
                                MemoryAllocator* allocator) {
   assert(data[n] != kNoCompression);
-  assert(data[n] == uncompression_ctx.type());
-  return UncompressBlockContentsForCompressionType(uncompression_ctx, data, n,
+  assert(data[n] == uncompression_info.type());
+  return UncompressBlockContentsForCompressionType(uncompression_info, data, n,
                                                    contents, format_version,
                                                    ioptions, allocator);
 }

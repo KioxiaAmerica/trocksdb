@@ -28,13 +28,13 @@ namespace {
 class NoSleepEnv : public EnvWrapper {
  public:
   NoSleepEnv(Env* base) : EnvWrapper(base) {}
-  virtual void SleepForMicroseconds(int micros) override {
+  void SleepForMicroseconds(int micros) override {
     fake_time_ += static_cast<uint64_t>(micros);
   }
 
-  virtual uint64_t NowNanos() override { return fake_time_ * 1000; }
+  uint64_t NowNanos() override { return fake_time_ * 1000; }
 
-  virtual uint64_t NowMicros() override { return fake_time_; }
+  uint64_t NowMicros() override { return fake_time_; }
 
  private:
   uint64_t fake_time_ = 6666666666;
@@ -452,12 +452,12 @@ TEST_F(AutoRollLoggerTest, LogHeaderTest) {
     if (test_num == 0) {
       // Log some headers explicitly using Header()
       for (size_t i = 0; i < MAX_HEADERS; i++) {
-        Header(&logger, "%s %d", HEADER_STR.c_str(), i);
+        Header(&logger, "%s %" ROCKSDB_PRIszt, HEADER_STR.c_str(), i);
       }
     } else if (test_num == 1) {
       // HEADER_LEVEL should make this behave like calling Header()
       for (size_t i = 0; i < MAX_HEADERS; i++) {
-        ROCKS_LOG_HEADER(&logger, "%s %d", HEADER_STR.c_str(), i);
+        ROCKS_LOG_HEADER(&logger, "%s %" ROCKSDB_PRIszt, HEADER_STR.c_str(), i);
       }
     }
 

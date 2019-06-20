@@ -100,8 +100,8 @@ void TableReaderBenchmark(Options& opts, EnvOptions& env_options,
     tb = opts.table_factory->NewTableBuilder(
         TableBuilderOptions(
             ioptions, moptions, ikc, &int_tbl_prop_collector_factories,
-            CompressionType::kNoCompression, CompressionOptions(),
-            nullptr /* compression_dict */, false /* skip_filters */,
+            CompressionType::kNoCompression, 0 /* sample_for_compression */,
+            CompressionOptions(), false /* skip_filters */,
             kDefaultColumnFamilyName, unknown_level),
         0 /* column_family_id */, file_writer.get());
   } else {

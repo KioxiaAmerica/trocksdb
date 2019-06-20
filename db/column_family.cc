@@ -71,7 +71,14 @@ ColumnFamilyHandleImpl::~ColumnFamilyHandleImpl() {
     db_->FindObsoleteFiles(&job_context, false, true);
     mutex_->Unlock();
     if (job_context.HaveSomethingToDelete()) {
-      db_->PurgeObsoleteFiles(job_context);
+      bool defer_purge =
+          db_->immutable_db_options().avoid_unnecessary_blocking_io;
+      db_->PurgeObsoleteFiles(job_context, defer_purge);
+      if (defer_purge) {
+        mutex_->Lock();
+        db_->SchedulePurge();
+        mutex_->Unlock();
+      }
     }
     job_context.Clean();
   }
@@ -148,14 +155,10 @@ Status CheckCompressionSupported(const ColumnFamilyOptions& cf_options) {
     }
   }
   if (cf_options.compression_opts.zstd_max_train_bytes > 0) {
-    if (!CompressionTypeSupported(CompressionType::kZSTD)) {
-      // Dictionary trainer is available since v0.6.1, but ZSTD was marked
-      // stable only since v0.8.0. For now we enable the feature in stable
-      // versions only.
+    if (!ZSTD_TrainDictionarySupported()) {
       return Status::InvalidArgument(
-          "zstd dictionary trainer cannot be used because " +
-          CompressionTypeToString(CompressionType::kZSTD) +
-          " is not linked with the binary.");
+          "zstd dictionary trainer cannot be used because ZSTD 1.1.3+ "
+          "is not linked with the binary.");
     }
     if (cf_options.compression_opts.max_dict_bytes == 0) {
       return Status::InvalidArgument(

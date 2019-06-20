@@ -53,8 +53,8 @@ class BlockReadAmpBitmap {
       : bitmap_(nullptr),
         bytes_per_bit_pow_(0),
         statistics_(statistics),
-        rnd_(
-            Random::GetTLSInstance()->Uniform(static_cast<int>(bytes_per_bit))) {
+        rnd_(Random::GetTLSInstance()->Uniform(
+            static_cast<int>(bytes_per_bit))) {
     TEST_SYNC_POINT_CALLBACK("BlockReadAmpBitmap:rnd", &rnd_);
     assert(block_size > 0 && bytes_per_bit > 0);
 
@@ -64,8 +64,7 @@ class BlockReadAmpBitmap {
     }
 
     // num_bits_needed = ceil(block_size / bytes_per_bit)
-    size_t num_bits_needed =
-      ((block_size - 1) >> bytes_per_bit_pow_) + 1;
+    size_t num_bits_needed = ((block_size - 1) >> bytes_per_bit_pow_) + 1;
     assert(num_bits_needed > 0);
 
     // bitmap_size = ceil(num_bits_needed / kBitsPerEntry)
@@ -204,9 +203,9 @@ class Block {
 
  private:
   BlockContents contents_;
-  const char* data_;            // contents_.data.data()
-  size_t size_;                 // contents_.data.size()
-  uint32_t restart_offset_;     // Offset in data_ of restart array
+  const char* data_;         // contents_.data.data()
+  size_t size_;              // contents_.data.size()
+  uint32_t restart_offset_;  // Offset in data_ of restart array
   uint32_t num_restarts_;
   std::unique_ptr<BlockReadAmpBitmap> read_amp_bitmap_;
   // All keys in the block will have seqno = global_seqno_, regardless of
@@ -226,8 +225,8 @@ class BlockIter : public InternalIteratorBase<TValue> {
   void InitializeBase(const Comparator* comparator, const char* data,
                   uint32_t restarts, uint32_t num_restarts,
                       SequenceNumber global_seqno, bool block_contents_pinned) {
-    assert(data_ == nullptr);           // Ensure it is called only once
-    assert(num_restarts > 0);           // Ensure the param is valid
+    assert(data_ == nullptr);  // Ensure it is called only once
+    assert(num_restarts > 0);  // Ensure the param is valid
 
     comparator_ = comparator;
     data_ = data;
@@ -295,7 +294,7 @@ class BlockIter : public InternalIteratorBase<TValue> {
 
   // Index of restart block in which current_ or current_-1 falls
   uint32_t restart_index_;
-  uint32_t restarts_;       // Offset of restart array (list of fixed32)
+  uint32_t restarts_;  // Offset of restart array (list of fixed32)
   // current_ is offset in data_ of current entry.  >= restarts_ if !Valid
   uint32_t current_;
   IterKey key_;
@@ -395,7 +394,17 @@ class DataBlockIter final : public BlockIter<Slice> {
 
   virtual void Next() override;
 
+  // Try to advance to the next entry in the block. If there is data corruption
+  // or error, report it to the caller instead of aborting the process. May
+  // incur higher CPU overhead because we need to perform check on every entry.
+  void NextOrReport();
+
   virtual void SeekToFirst() override;
+
+  // Try to seek to the first entry in the block. If there is data corruption
+  // or error, report it to caller instead of aborting the process. May incur
+  // higher CPU overhead because we need to perform check on every entry.
+  void SeekToFirstOrReport();
 
   virtual void SeekToLast() override;
 
@@ -439,6 +448,7 @@ class DataBlockIter final : public BlockIter<Slice> {
   DataBlockHashIndex* data_block_hash_index_;
   const Comparator* user_comparator_;
 
+  template <typename DecodeEntryFunc>
   inline bool ParseNextDataKey(const char* limit = nullptr);
 
   inline int Compare(const IterKey& ikey, const Slice& b) const {
@@ -537,8 +547,7 @@ class IndexBlockIter final : public BlockIter<BlockHandle> {
 
   bool PrefixSeek(const Slice& target, uint32_t* index);
   bool BinaryBlockIndexSeek(const Slice& target, uint32_t* block_ids,
-                            uint32_t left, uint32_t right,
-                            uint32_t* index);
+                            uint32_t left, uint32_t right, uint32_t* index);
   inline int CompareBlockKey(uint32_t block_index, const Slice& target);
 
   inline int Compare(const Slice& a, const Slice& b) const {

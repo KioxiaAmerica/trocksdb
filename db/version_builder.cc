@@ -412,7 +412,7 @@ printf("\nfiles after editing:");
           MaybeAddFile(vstorage, level, *base_iter++);
         }
       }
-      }
+    }
 
     CheckConsistency(vstorage);
 #if DEBLEVEL&32
@@ -420,17 +420,60 @@ printf("\n");
 #endif
   }
 
-  void LoadTableHandlers(InternalStats* internal_stats, int max_threads,
-                         bool prefetch_index_and_filter_in_cache,
-                         const SliceTransform* prefix_extractor) {
+  Status LoadTableHandlers(InternalStats* internal_stats, int max_threads,
+                           bool prefetch_index_and_filter_in_cache,
+                           bool is_initial_load,
+                           const SliceTransform* prefix_extractor) {
     assert(table_cache_ != nullptr);
+
+    size_t table_cache_capacity = table_cache_->get_cache()->GetCapacity();
+    bool always_load = (table_cache_capacity == TableCache::kInfiniteCapacity);
+    size_t max_load = port::kMaxSizet;
+
+    if (!always_load) {
+      // If it is initial loading and not set to always laoding all the
+      // files, we only load up to kInitialLoadLimit files, to limit the
+      // time reopening the DB.
+      const size_t kInitialLoadLimit = 16;
+      size_t load_limit;
+      // If the table cache is not 1/4 full, we pin the table handle to
+      // file metadata to avoid the cache read costs when reading the file.
+      // The downside of pinning those files is that LRU won't be followed
+      // for those files. This doesn't matter much because if number of files
+      // of the DB excceeds table cache capacity, eventually no table reader
+      // will be pinned and LRU will be followed.
+      if (is_initial_load) {
+        load_limit = std::min(kInitialLoadLimit, table_cache_capacity / 4);
+      } else {
+        load_limit = table_cache_capacity / 4;
+      }
+
+      size_t table_cache_usage = table_cache_->get_cache()->GetUsage();
+      if (table_cache_usage >= load_limit) {
+        // TODO (yanqin) find a suitable status code.
+        return Status::OK();
+      } else {
+        max_load = load_limit - table_cache_usage;
+      }
+    }
+
     // <file metadata, level>
     std::vector<std::pair<FileMetaData*, int>> files_meta;
+    std::vector<Status> statuses;
     for (int level = 0; level < num_levels_; level++) {
       for (auto& file_meta_pair : levels_[level].added_files) {
         auto* file_meta = file_meta_pair.second;
-        assert(!file_meta->table_reader_handle);
-        files_meta.emplace_back(file_meta, level);
+        // If the file has been opened before, just skip it.
+        if (!file_meta->table_reader_handle) {
+          files_meta.emplace_back(file_meta, level);
+          statuses.emplace_back(Status::OK());
+        }
+        if (files_meta.size() >= max_load) {
+          break;
+        }
+      }
+      if (files_meta.size() >= max_load) {
+        break;
       }
     }
 
@@ -444,7 +487,7 @@ printf("\n");
 
         auto* file_meta = files_meta[file_idx].first;
         int level = files_meta[file_idx].second;
-        table_cache_->FindTable(
+        statuses[file_idx] = table_cache_->FindTable(
             env_options_, *(base_vstorage_->InternalComparator()),
             file_meta->fd, &file_meta->table_reader_handle, prefix_extractor,
                                 false /*no_io */, true /* record_read_stats */,
@@ -458,15 +501,22 @@ printf("\n");
       }
     });
 
-      std::vector<port::Thread> threads;
+    std::vector<port::Thread> threads;
     for (int i = 1; i < max_threads; i++) {
-        threads.emplace_back(load_handlers_func);
-      }
-    load_handlers_func();
-      for (auto& t : threads) {
-        t.join();
-      }
+      threads.emplace_back(load_handlers_func);
     }
+    load_handlers_func();
+    for (auto& t : threads) {
+      t.join();
+    }
+  }
+  for (const auto& s : statuses) {
+    if (!s.ok()) {
+      return s;
+    }
+  }
+  return Status::OK();
+}
 
   void MaybeAddFile(VersionStorageInfo* vstorage, int level, FileMetaData* f) {
     if (levels_[level].deleted_files.count(f->fd.GetNumber()) > 0) {
@@ -546,12 +596,13 @@ void VersionBuilder::SaveTo(VersionStorageInfo* vstorage, ColumnFamilyData* /*cf
   rep_->SaveTo(vstorage);
 }
 
-void VersionBuilder::LoadTableHandlers(InternalStats* internal_stats,
-                                       int max_threads,
-                                       bool prefetch_index_and_filter_in_cache,
-                                       const SliceTransform* prefix_extractor) {
-  rep_->LoadTableHandlers(internal_stats, max_threads,
-                          prefetch_index_and_filter_in_cache, prefix_extractor);
+Status VersionBuilder::LoadTableHandlers(
+    InternalStats* internal_stats, int max_threads,
+    bool prefetch_index_and_filter_in_cache, bool is_initial_load,
+    const SliceTransform* prefix_extractor) {
+  return rep_->LoadTableHandlers(internal_stats, max_threads,
+                                 prefetch_index_and_filter_in_cache,
+                                 is_initial_load, prefix_extractor);
 }
 
 void VersionBuilder::MaybeAddFile(VersionStorageInfo* vstorage, int level,

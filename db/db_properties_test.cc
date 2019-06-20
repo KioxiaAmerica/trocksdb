@@ -249,18 +249,17 @@ void GetExpectedTableProperties(
   const int kDeletionCount = kTableCount * kDeletionsPerTable;
   const int kMergeCount = kTableCount * kMergeOperandsPerTable;
   const int kRangeDeletionCount = kTableCount * kRangeDeletionsPerTable;
-  const int kKeyCount = kPutCount + kDeletionCount + kMergeCount;
+  const int kKeyCount = kPutCount + kDeletionCount + kMergeCount + kRangeDeletionCount;
   const int kAvgSuccessorSize = kKeySize / 5;
   int kEncodingSavePerKey = kKeySize / 4;
 #ifdef INDIRECT_VALUE_SUPPORT
   if(vringlevels.size())kEncodingSavePerKey = std::min(2,kKeySize / 10);  // empirical.  Using random keys it's very unlikely to share bytes
 #endif //INDIRECT_VALUE_SUPPORT
-  expected_tp->raw_key_size =
-      (kKeyCount + kRangeDeletionCount) * (kKeySize + 8);
+  expected_tp->raw_key_size = kKeyCount * (kKeySize + 8);
   expected_tp->raw_value_size =
       (kPutCount + kMergeCount + kRangeDeletionCount) * kValueSize;
   expected_tp->num_entries = kKeyCount;
-  expected_tp->num_deletions = kDeletionCount;
+  expected_tp->num_deletions = kDeletionCount + kRangeDeletionCount;
   expected_tp->num_merge_operands = kMergeCount;
   expected_tp->num_range_deletions = kRangeDeletionCount;
   expected_tp->num_data_blocks =
@@ -414,7 +413,15 @@ TEST_F(DBPropertiesTest, ReadLatencyHistogramByLevel) {
   options.target_file_size_base = 98 << 10;
   options.max_write_buffer_number = 2;
   options.statistics = rocksdb::CreateDBStatistics();
-  options.max_open_files = 100;
+  options.max_open_files = 11;  // Make sure no proloading of table readers
+
+  // RocksDB sanitize max open files to at least 20. Modify it back.
+  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+      "SanitizeOptions::AfterChangeMaxOpenFiles", [&](void* arg) {
+        int* max_open_files = static_cast<int*>(arg);
+        *max_open_files = 11;
+      });
+  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
 
   BlockBasedTableOptions table_options;
   table_options.no_block_cache = true;
@@ -462,6 +469,7 @@ TEST_F(DBPropertiesTest, ReadLatencyHistogramByLevel) {
 
   // Reopen and issue iterating. See thee latency tracked
   ReopenWithColumnFamilies({"default", "pikachu"}, options);
+  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
   ASSERT_TRUE(dbfull()->GetProperty("rocksdb.cf-file-histogram", &prop));
   ASSERT_EQ(std::string::npos, prop.find("** Level 0 read latency histogram"));
   ASSERT_EQ(std::string::npos, prop.find("** Level 1 read latency histogram"));
@@ -1122,7 +1130,7 @@ class CountingUserTblPropCollector : public TablePropertiesCollector {
     return Status::OK();
   }
 
-  virtual UserCollectedProperties GetReadableProperties() const override {
+  UserCollectedProperties GetReadableProperties() const override {
     return UserCollectedProperties{};
   }
 
@@ -1138,7 +1146,7 @@ class CountingUserTblPropCollectorFactory
       uint32_t expected_column_family_id)
       : expected_column_family_id_(expected_column_family_id),
         num_created_(0) {}
-  virtual TablePropertiesCollector* CreateTablePropertiesCollector(
+  TablePropertiesCollector* CreateTablePropertiesCollector(
       TablePropertiesCollectorFactory::Context context) override {
     EXPECT_EQ(expected_column_family_id_, context.column_family_id);
     num_created_++;
@@ -1186,7 +1194,7 @@ class CountingDeleteTabPropCollector : public TablePropertiesCollector {
 class CountingDeleteTabPropCollectorFactory
     : public TablePropertiesCollectorFactory {
  public:
-  virtual TablePropertiesCollector* CreateTablePropertiesCollector(
+  TablePropertiesCollector* CreateTablePropertiesCollector(
       TablePropertiesCollectorFactory::Context /*context*/) override {
     return new CountingDeleteTabPropCollector();
   }
@@ -1460,7 +1468,7 @@ TEST_F(DBPropertiesTest, EstimateOldestKeyTime) {
   }
 
   options.compaction_style = kCompactionStyleFIFO;
-  options.compaction_options_fifo.ttl = 300;
+  options.ttl = 300;
   options.compaction_options_fifo.allow_compaction = false;
   DestroyAndReopen(options);
 

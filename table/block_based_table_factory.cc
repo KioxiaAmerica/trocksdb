@@ -217,12 +217,13 @@ TableBuilder* BlockBasedTableFactory::NewTableBuilder(
       table_options_, table_builder_options.internal_comparator,
       table_builder_options.int_tbl_prop_collector_factories, column_family_id,
       file, table_builder_options.compression_type,
+      table_builder_options.sample_for_compression,
       table_builder_options.compression_opts,
-      table_builder_options.compression_dict,
       table_builder_options.skip_filters,
       table_builder_options.column_family_name,
       table_builder_options.creation_time,
-      table_builder_options.oldest_key_time);
+      table_builder_options.oldest_key_time,
+      table_builder_options.target_file_size);
 
   return table_builder;
 }
@@ -298,6 +299,12 @@ std::string BlockBasedTableFactory::GetPrintableTableOptions() const {
   ret.append(buffer);
   snprintf(buffer, kBufferSize, "  index_type: %d\n",
            table_options_.index_type);
+  ret.append(buffer);
+  snprintf(buffer, kBufferSize, "  data_block_index_type: %d\n",
+           table_options_.data_block_index_type);
+  ret.append(buffer);
+  snprintf(buffer, kBufferSize, "  data_block_hash_table_util_ratio: %lf\n",
+           table_options_.data_block_hash_table_util_ratio);
   ret.append(buffer);
   snprintf(buffer, kBufferSize, "  hash_index_allow_collision: %d\n",
            table_options_.hash_index_allow_collision);

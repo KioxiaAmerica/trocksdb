@@ -76,8 +76,8 @@ class BlockHandle {
   static const BlockHandle kNullBlockHandle;
 };
 
-inline uint32_t GetCompressFormatForVersion(
-    CompressionType compression_type, uint32_t version) {
+inline uint32_t GetCompressFormatForVersion(CompressionType compression_type,
+                                            uint32_t version) {
 #ifdef NDEBUG
   (void)compression_type;
 #endif
@@ -195,7 +195,7 @@ inline CompressionType get_block_compression_type(const char* block_data,
 }
 
 struct BlockContents {
-  Slice data;     // Actual contents of data
+  Slice data;  // Actual contents of data
   CacheAllocationPtr allocation;
 
 #ifndef NDEBUG
@@ -277,16 +277,18 @@ extern Status ReadBlockContents(
 // free this buffer.
 // For description of compress_format_version and possible values, see
 // util/compression.h
-extern Status UncompressBlockContents(
-    const UncompressionContext& uncompression_ctx, const char* data, size_t n,
-    BlockContents* contents, uint32_t compress_format_version,
-    const ImmutableCFOptions& ioptions, MemoryAllocator* allocator = nullptr);
+extern Status UncompressBlockContents(const UncompressionInfo& info,
+                                      const char* data, size_t n,
+                                      BlockContents* contents,
+                                      uint32_t compress_format_version,
+                                      const ImmutableCFOptions& ioptions,
+                                      MemoryAllocator* allocator = nullptr);
 
 // This is an extension to UncompressBlockContents that accepts
 // a specific compression type. This is used by un-wrapped blocks
 // with no compression header.
 extern Status UncompressBlockContentsForCompressionType(
-    const UncompressionContext& uncompression_ctx, const char* data, size_t n,
+    const UncompressionInfo& info, const char* data, size_t n,
     BlockContents* contents, uint32_t compress_format_version,
     const ImmutableCFOptions& ioptions, MemoryAllocator* allocator = nullptr);
 

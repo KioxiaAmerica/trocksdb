@@ -362,7 +362,7 @@ class Repairer {
       Env* env;
       std::shared_ptr<Logger> info_log;
       uint64_t lognum;
-      virtual void Corruption(size_t bytes, const Status& s) override {
+      void Corruption(size_t bytes, const Status& s) override {
         // We print error messages for corruption, but continue repairing.
         ROCKS_LOG_ERROR(info_log, "Log #%" PRIu64 ": dropping %d bytes; %s",
                         lognum, static_cast<int>(bytes), s.ToString().c_str());
@@ -390,8 +390,7 @@ class Repairer {
     // propagating bad information (like overly large sequence
     // numbers).
     log::Reader reader(db_options_.info_log, std::move(lfile_reader), &reporter,
-                       true /*enable checksum*/, log,
-                       false /* retry_after_eof */);
+                       true /*enable checksum*/, log);
 
     // Initialize per-column family memtables
     for (auto* cfd : *vset_.GetColumnFamilySet()) {
@@ -457,10 +456,11 @@ class Repairer {
           &meta, cfd->internal_comparator(),
           cfd->int_tbl_prop_collector_factories(), cfd->GetID(), cfd->GetName(),
           {}, kMaxSequenceNumber, snapshot_checker, kNoCompression,
-          CompressionOptions(), false, nullptr /* internal_stats */,
-          TableFileCreationReason::kRecovery, nullptr /* event_logger */,
-          0 /* job_id */, Env::IO_HIGH, nullptr /* table_properties */,
-          -1 /* level */, current_time, 0, write_hint
+          0 /* sample_for_compression */, CompressionOptions(), false,
+          nullptr /* internal_stats */, TableFileCreationReason::kRecovery,
+          nullptr /* event_logger */, 0 /* job_id */, Env::IO_HIGH,
+          nullptr /* table_properties */, -1 /* level */, current_time,
+          write_hint
 #ifdef INDIRECT_VALUE_SUPPORT
           ,nullptr /* cfd */, nullptr /* vlog_flush_info */
 #endif

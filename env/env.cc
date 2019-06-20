@@ -30,6 +30,8 @@ std::string Env::PriorityToString(Env::Priority priority) {
       return "Low";
     case Env::Priority::HIGH:
       return "High";
+    case Env::Priority::USER:
+      return "User";
     case Env::Priority::TOTAL:
       assert(false);
   }
@@ -138,6 +140,8 @@ void Logger::Logv(const InfoLogLevel log_level, const char* format, va_list ap) 
     // are INFO level. We don't want to add extra costs to those existing
     // logging.
     Logv(format, ap);
+  } else if (log_level == InfoLogLevel::HEADER_LEVEL) {
+    LogHeader(format, ap);
   } else {
     char new_format[500];
     snprintf(new_format, sizeof(new_format) - 1, "[%s] %s",

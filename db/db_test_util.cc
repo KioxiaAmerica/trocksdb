@@ -101,22 +101,22 @@ DBTestBase::~DBTestBase() {
 bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
 #ifdef ROCKSDB_LITE
     // These options are not supported in ROCKSDB_LITE
-  if (option_config == kHashSkipList ||
-      option_config == kPlainTableFirstBytePrefix ||
-      option_config == kPlainTableCappedPrefix ||
-      option_config == kPlainTableCappedPrefixNonMmap ||
-      option_config == kPlainTableAllBytesPrefix ||
-      option_config == kVectorRep || option_config == kHashLinkList ||
-      option_config == kHashCuckoo || option_config == kUniversalCompaction ||
-      option_config == kUniversalCompactionMultiLevel ||
+    if (option_config == kHashSkipList ||
+        option_config == kPlainTableFirstBytePrefix ||
+        option_config == kPlainTableCappedPrefix ||
+        option_config == kPlainTableCappedPrefixNonMmap ||
+        option_config == kPlainTableAllBytesPrefix ||
+        option_config == kVectorRep || option_config == kHashLinkList ||
+        option_config == kUniversalCompaction ||
+        option_config == kUniversalCompactionMultiLevel ||
 #ifdef INDIRECT_VALUE_SUPPORT
-      option_config == kUniversalCompactionMultiLevelInd ||
-      option_config == kUniversalCompactionInd ||
+        option_config == kUniversalCompactionMultiLevelInd ||
+        option_config == kUniversalCompactionInd ||
 #endif
-      option_config == kUniversalSubcompactions ||
-      option_config == kFIFOCompaction ||
-      option_config == kConcurrentSkipList) {
-    return true;
+        option_config == kUniversalSubcompactions ||
+        option_config == kFIFOCompaction ||
+        option_config == kConcurrentSkipList) {
+      return true;
     }
 #endif
 
@@ -154,9 +154,6 @@ bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
          option_config == kBlockBasedTableWithWholeKeyHashIndexInd ||
 #endif
          option_config == kBlockBasedTableWithWholeKeyHashIndex)) {
-      return true;
-    }
-    if ((skip_mask & kSkipHashCuckoo) && (option_config == kHashCuckoo)) {
       return true;
     }
     if ((skip_mask & kSkipFIFOCompaction) && option_config == kFIFOCompaction) {
@@ -376,11 +373,6 @@ Options DBTestBase::GetOptions(
       options.prefix_extractor.reset(NewFixedPrefixTransform(1));
       options.memtable_factory.reset(
           NewHashLinkListRepFactory(4, 0, 3, true, 4));
-      options.allow_concurrent_memtable_write = false;
-      break;
-    case kHashCuckoo:
-      options.memtable_factory.reset(
-          NewHashCuckooRepFactory(options.write_buffer_size));
       options.allow_concurrent_memtable_write = false;
       break;
 #ifdef INDIRECT_VALUE_SUPPORT
@@ -662,6 +654,7 @@ Status DBTestBase::TryReopenWithColumnFamilies(
     column_families.push_back(ColumnFamilyDescriptor(cfs[i], options[i]));
   }
   DBOptions db_opts = DBOptions(options[0]);
+  last_options_ = options[0];
   return DB::Open(db_opts, dbname_, column_families, &handles_, &db_);
 }
 
@@ -864,6 +857,31 @@ std::string DBTestBase::Get(int cf, const std::string& k,
     result = "NOT_FOUND";
   } else if (!s.ok()) {
     result = s.ToString();
+  }
+  return result;
+}
+
+std::vector<std::string> DBTestBase::MultiGet(std::vector<int> cfs,
+                                              const std::vector<std::string>& k,
+                                              const Snapshot* snapshot) {
+  ReadOptions options;
+  options.verify_checksums = true;
+  options.snapshot = snapshot;
+  std::vector<ColumnFamilyHandle*> handles;
+  std::vector<Slice> keys;
+  std::vector<std::string> result;
+
+  for (unsigned int i = 0; i < cfs.size(); ++i) {
+    handles.push_back(handles_[cfs[i]]);
+    keys.push_back(k[i]);
+  }
+  std::vector<Status> s = db_->MultiGet(options, handles, keys, &result);
+  for (unsigned int i = 0; i < s.size(); ++i) {
+    if (s[i].IsNotFound()) {
+      result[i] = "NOT_FOUND";
+    } else if (!s[i].ok()) {
+      result[i] = s[i].ToString();
+    }
   }
   return result;
 }

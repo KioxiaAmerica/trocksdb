@@ -500,6 +500,16 @@ bool AreEqualOptions(
     case OptionType::kInt:
       return (*reinterpret_cast<const int*>(offset1) ==
               *reinterpret_cast<const int*>(offset2));
+    case OptionType::kInt32T:
+      return (*reinterpret_cast<const int32_t*>(offset1) ==
+              *reinterpret_cast<const int32_t*>(offset2));
+    case OptionType::kInt64T:
+      {
+        int64_t v1, v2;
+        GetUnaligned(reinterpret_cast<const int64_t*>(offset1), &v1);
+        GetUnaligned(reinterpret_cast<const int64_t*>(offset2), &v2);
+        return (v1 == v2);
+      }
     case OptionType::kVectorInt:
       return (*reinterpret_cast<const std::vector<int>*>(offset1) ==
               *reinterpret_cast<const std::vector<int>*>(offset2));
@@ -582,7 +592,7 @@ bool AreEqualOptions(
       CompactionOptionsFIFO rhs =
           *reinterpret_cast<const CompactionOptionsFIFO*>(offset2);
       if (lhs.max_table_files_size == rhs.max_table_files_size &&
-          lhs.ttl == rhs.ttl && lhs.allow_compaction == rhs.allow_compaction) {
+          lhs.allow_compaction == rhs.allow_compaction) {
         return true;
       }
       return false;

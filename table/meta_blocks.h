@@ -83,6 +83,11 @@ bool NotifyCollectTableCollectorsOnAdd(
     const std::vector<std::unique_ptr<IntTblPropCollector>>& collectors,
     Logger* info_log);
 
+void NotifyCollectTableCollectorsOnBlockAdd(
+    const std::vector<std::unique_ptr<IntTblPropCollector>>& collectors,
+    uint64_t blockRawBytes, uint64_t blockCompressedBytesFast,
+    uint64_t blockCompressedBytesSlow);
+
 // NotifyCollectTableCollectorsOnAdd() triggers the `Finish` event for all
 // property collectors. The collected properties will be added to `builder`.
 bool NotifyCollectTableCollectorsOnFinish(
@@ -96,7 +101,9 @@ bool NotifyCollectTableCollectorsOnFinish(
 Status ReadProperties(const Slice& handle_value, RandomAccessFileReader* file,
                       FilePrefetchBuffer* prefetch_buffer, const Footer& footer,
                       const ImmutableCFOptions& ioptions,
-                      TableProperties** table_properties,
+                      TableProperties** table_properties, bool verify_checksum,
+                      BlockHandle* block_handle,
+                      CacheAllocationPtr* verification_buf,
                       bool compression_type_missing = false,
                       MemoryAllocator* memory_allocator = nullptr);
 
