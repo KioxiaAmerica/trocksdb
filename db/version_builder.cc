@@ -187,7 +187,7 @@ class VersionBuilder::Rep {
                   external_file_seqno == 0)) {
               fprintf(stderr,
                       "L0 file with seqno %" PRIu64 " %" PRIu64
-                              " vs. file with global_seqno %" PRIu64 "\n",
+                      " vs. file with global_seqno %" PRIu64 "\n",
                       f1->fd.smallest_seqno, f1->fd.largest_seqno,
                       external_file_seqno);
               abort();
@@ -490,7 +490,7 @@ printf("\n");
         statuses[file_idx] = table_cache_->FindTable(
             env_options_, *(base_vstorage_->InternalComparator()),
             file_meta->fd, &file_meta->table_reader_handle, prefix_extractor,
-                                false /*no_io */, true /* record_read_stats */,
+            false /*no_io */, true /* record_read_stats */,
             internal_stats->GetFileReadHist(level), false, level,
             prefetch_index_and_filter_in_cache);
         if (file_meta->table_reader_handle != nullptr) {
@@ -509,13 +509,12 @@ printf("\n");
     for (auto& t : threads) {
       t.join();
     }
-  }
-  for (const auto& s : statuses) {
-    if (!s.ok()) {
-      return s;
+    for (const auto& s : statuses) {
+      if (!s.ok()) {
+        return s;
+      }
     }
-  }
-  return Status::OK();
+    return Status::OK();
 }
 
   void MaybeAddFile(VersionStorageInfo* vstorage, int level, FileMetaData* f) {

@@ -27,7 +27,6 @@ struct VLogRingRestartInfo;
 // of edits to a particular state without creating intermediate
 // Versions that contain full copies of the intermediate state.
 class VersionBuilder {
-  class Rep;
  public:
   VersionBuilder(const EnvOptions& env_options, TableCache* table_cache,
                  VersionStorageInfo* base_vstorage, Logger* info_log = nullptr);
@@ -37,7 +36,7 @@ class VersionBuilder {
                                   int level);
   bool CheckConsistencyForNumLevels();
   void Apply(VersionEdit* edit);
-  void SaveTo(VersionStorageInfo* vstorage);
+  void SaveTo(VersionStorageInfo* vstorage, ColumnFamilyData *cfd = nullptr);
   Status LoadTableHandlers(InternalStats* internal_stats, int max_threads,
                            bool prefetch_index_and_filter_in_cache,
                            bool is_initial_load,
@@ -48,6 +47,7 @@ class VersionBuilder {
 #endif
 
  private:
+  class Rep;
   Rep* rep_;
 };
 

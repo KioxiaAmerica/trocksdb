@@ -3169,7 +3169,6 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     bool ok = true;
     std::string compressed;
     CompressionOptions opts;
-    CompressionContext context(FLAGS_compression_type_e);
 #ifdef INDIRECT_VALUE_SUPPORT
     CompressionContext context(FLAGS_ring_compression_style_e);
 #else
@@ -3206,7 +3205,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
 #ifdef INDIRECT_VALUE_SUPPORT
     CompressionContext compression_ctx(FLAGS_ring_compression_style_e);
 #else
-    CompressionContext compression_ctx(FLAGS_compression_type_e,
+    CompressionContext compression_ctx(FLAGS_compression_type_e);
 #endif
     CompressionOptions compression_opts;
     CompressionInfo compression_info(

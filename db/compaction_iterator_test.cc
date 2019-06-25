@@ -169,7 +169,6 @@ class FakeCompaction : public CompactionIterator::CompactionProxy {
   Slice GetLargestUserKey() const override {
     return "\xff\xff\xff\xff\xff\xff\xff\xff\xff";
   }
-  virtual bool allow_ingest_behind() const override { return false; }
 #ifdef INDIRECT_VALUE_SUPPORT
   virtual CompactionReason compaction_reason() { return CompactionReason::kLevelMaxLevelSize; }
 #endif

@@ -76,7 +76,7 @@ int FindFileInRange(const InternalKeyComparator& icmp,
   const auto &b = file_level.files;
   return static_cast<int>(std::lower_bound(b + left,
                                            b + right, key, cmp) - b);
-    }
+}
 
 Status OverlapWithIterator(const Comparator* ucmp,
     const Slice& smallest_user_key,
@@ -95,7 +95,7 @@ Status OverlapWithIterator(const Comparator* ucmp,
     ParsedInternalKey seek_result;
     if (!ParseInternalKey(iter->key(), &seek_result)) {
       return Status::Corruption("DB have corrupted keys");
-}
+    }
 
     if (ucmp->Compare(seek_result.user_key, largest_user_key) <= 0) {
       *overlap = true;
@@ -533,6 +533,7 @@ class LevelIterator final : public InternalIterator {
     pinned_iters_mgr_ = pinned_iters_mgr;
     if (file_iter_.iter()) {
       file_iter_.SetPinnedItersMgr(pinned_iters_mgr);
+    }
   }
   bool IsKeyPinned() const override {
     return pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled() &&
@@ -552,7 +553,7 @@ class LevelIterator final : public InternalIterator {
   const Slice& file_smallest_key(size_t file_index) {
     assert(file_index < flevel_->num_files);
     return flevel_->files[file_index].smallest_key;
-    }
+  }
 
   bool KeyReachedUpperBound(const Slice& internal_key) {
     return read_options_.iterate_upper_bound != nullptr &&
@@ -1086,7 +1087,7 @@ void Version::AddIteratorsForLevel(const ReadOptions& read_options,
         cfd_->table_cache(), read_options, soptions,
         cfd_->internal_comparator(), &storage_info_.LevelFilesBrief(level),
         mutable_cf_options_.prefix_extractor.get(), should_sample_file_read(),
-                               cfd_->internal_stats()->GetFileReadHist(level),
+        cfd_->internal_stats()->GetFileReadHist(level),
         false /* for_compaction */, IsFilterSkipped(level), level,
         range_del_agg));
   }
@@ -1138,7 +1139,7 @@ Status Version::OverlapWithLevelIterator(const ReadOptions& read_options,
         &range_del_agg));
     status = OverlapWithIterator(
         ucmp, smallest_user_key, largest_user_key, iter.get(), overlap);
-    }
+  }
 
   if (status.ok() && *overlap == false &&
       range_del_agg.IsRangeOverlapped(smallest_user_key, largest_user_key)) {
@@ -1708,7 +1709,7 @@ void VersionStorageInfo::ComputeCompactionScore(
           score = std::max(
               static_cast<double>(GetExpiredTtlFilesCount(
                   immutable_cf_options, mutable_cf_options, files_[level])),
-                           score);
+                  score);
         }
 
       } else {
@@ -2262,14 +2263,14 @@ void VersionStorageInfo::GetOverlappingInputs(
           }
           if (end != nullptr && user_cmp->Compare(file_limit, user_end) > 0) {
           user_end = file_limit;
+          }
         }
       }
     }
-  }
     // if all the files left are not overlap, break
     if (!found_overlapping_file) {
       break;
-}
+    }
   }
 }
 
@@ -2302,8 +2303,8 @@ void VersionStorageInfo::GetCleanInputsWithinInterval(
   }
 
   GetOverlappingInputsRangeBinarySearch(level, begin, end, inputs,
-                                          hint_index, file_index,
-                                          true /* within_interval */);
+                                        hint_index, file_index,
+                                        true /* within_interval */);
 }
 
 // Store in "*inputs" all files in "level" that overlap [begin,end]
@@ -2382,7 +2383,7 @@ void VersionStorageInfo::GetOverlappingInputsRangeBinarySearch(
       **next_smallest = files_[level][end_index]->smallest;
     } else {
       *next_smallest = nullptr;
-}
+    }
   }
 }
 
@@ -2541,7 +2542,7 @@ const char* VersionStorageInfo::LevelSummary(
           scratch->buffer, sizeof(scratch->buffer),
           "base level %d level multiplier %.2f max bytes base %" PRIu64 " ",
           base_level_, level_multiplier_, level_max_bytes_[base_level_]);
-  }
+    }
   }
   len +=
       snprintf(scratch->buffer + len, sizeof(scratch->buffer) - len, "files[");
@@ -2988,7 +2989,7 @@ void VersionSet::AppendVersion(ColumnFamilyData* column_family_data,
 Status VersionSet::ProcessManifestWrites(
     std::deque<ManifestWriter>& writers, InstrumentedMutex* mu,
     Directory* db_directory, bool new_descriptor_log,
-                               const ColumnFamilyOptions* new_cf_options) {
+    const ColumnFamilyOptions* new_cf_options) {
   assert(!writers.empty());
   ManifestWriter& first_writer = writers.front();
   ManifestWriter* last_writer = &first_writer;
@@ -3050,7 +3051,7 @@ Status VersionSet::ProcessManifestWrites(
           }
         }
         continue;
-  }
+      }
       // We do a linear search on versions because versions is small.
       // TODO(yanqin) maybe consider unordered_map
       Version* version = nullptr;
@@ -3096,50 +3097,14 @@ Status VersionSet::ProcessManifestWrites(
       assert(!builder_guards.empty() &&
              builder_guards.size() == versions.size());
       auto* builder = builder_guards[i]->version_builder();
-      builder->SaveTo(versions[i]->storage_info(),last_writer->cfd);
+      //builder->SaveTo(versions[i]->storage_info(),last_writer->cfd);
+      builder->SaveTo(versions[i]->storage_info());
 #ifdef INDIRECT_VALUE_SUPPORT
       // Add the edits from this builder into the collected edits for this CF.
       Coalesce(accum_vlog_edits,builder->VLogAdditions(),true);
-// obsolete     accum_vlog_edits = builder->VLogAdditions();  // save the VLog edits to be applied later
 #endif
     }
   }
-
-#ifndef NDEBUG
-  // Verify that version edits of atomic groups have correct
-  // remaining_entries_.
-  size_t k = 0;
-  while (k < batch_edits.size()) {
-    while (k < batch_edits.size() && !batch_edits[k]->is_in_atomic_group_) {
-      ++k;
-    }
-    if (k == batch_edits.size()) {
-        break;
-      }
-    size_t i = k;
-    while (i < batch_edits.size()) {
-      if (!batch_edits[i]->is_in_atomic_group_) {
-        break;
-      }
-      assert(i - k + batch_edits[i]->remaining_entries_ ==
-             batch_edits[k]->remaining_entries_);
-      if (batch_edits[i]->remaining_entries_ == 0) {
-        ++i;
-        break;
-    }
-      ++i;
-  }
-    assert(batch_edits[i - 1]->is_in_atomic_group_);
-    assert(0 == batch_edits[i - 1]->remaining_entries_);
-    std::vector<VersionEdit*> tmp;
-    for (size_t j = k; j != i; ++j) {
-      tmp.emplace_back(batch_edits[j]);
-    }
-    TEST_SYNC_POINT_CALLBACK(
-        "VersionSet::ProcessManifestWrites:CheckOneAtomicGroup", &tmp);
-    k = i;
-  }
-#endif  // NDEBUG
 
 #ifndef NDEBUG
   // Verify that version edits of atomic groups have correct
@@ -3219,7 +3184,7 @@ Status VersionSet::ProcessManifestWrites(
             true /* prefetch_index_and_filter_in_cache */,
             false /* is_initial_load */,
             mutable_cf_options_ptrs[i]->prefix_extractor.get());
-    }
+      }
     }
 
     // This is fine because everything inside of this block is serialized --
@@ -3365,19 +3330,19 @@ Status VersionSet::ProcessManifestWrites(
       // For each column family, update its log number indicating that logs
       // with number smaller than this should be ignored.
       for (const auto version : versions) {
-      uint64_t max_log_number_in_batch  = 0;
+        uint64_t max_log_number_in_batch  = 0;
         uint32_t cf_id = version->cfd_->GetID();
         for (const auto& e : batch_edits) {
           if (e->has_log_number_ && e->column_family_ == cf_id) {
           max_log_number_in_batch =
               std::max(max_log_number_in_batch, e->log_number_);
+          }
         }
-      }
-      if (max_log_number_in_batch != 0) {
+        if (max_log_number_in_batch != 0) {
           assert(version->cfd_->GetLogNumber() <= max_log_number_in_batch);
           version->cfd_->SetLogNumber(max_log_number_in_batch);
+        }
       }
-    }
 
       uint64_t last_min_log_number_to_keep = 0;
       for (auto& e : batch_edits) {
@@ -3407,9 +3372,9 @@ Status VersionSet::ProcessManifestWrites(
     }
     ROCKS_LOG_ERROR(db_options_->info_log,
                     "Error in committing version edit to MANIFEST: %s",
-        version_edits.c_str());
+                    version_edits.c_str());
     for (auto v : versions) {
-    delete v;
+      delete v;
     }
     if (new_descriptor_log) {
       ROCKS_LOG_INFO(db_options_->info_log,
@@ -3435,14 +3400,14 @@ Status VersionSet::ProcessManifestWrites(
         break;
       }
     }
-      ready->status = s;
-      ready->done = true;
+    ready->status = s;
+    ready->done = true;
     if (need_signal) {
       ready->cv.Signal();
     }
     if (ready == last_writer) {
       break;
-  }
+    }
   }
   if (!manifest_writers_.empty()) {
     manifest_writers_.front()->cv.Signal();
@@ -3541,7 +3506,7 @@ void VersionSet::LogAndApplyCFHelper(VersionEdit* edit) {
   // upper bound on the sequence, it is ok to record
   // last_allocated_sequence_ as the last sequence.
   edit->SetLastSequence(db_options_->two_write_queues ? last_allocated_sequence_
-                            : last_sequence_);
+                                                      : last_sequence_);
   if (edit->is_column_family_drop_) {
     // if we drop column family, we have to make sure to save max column family,
     // so that we don't reuse existing ID
@@ -4027,11 +3992,11 @@ Status VersionSet::ListColumnFamilies(std::vector<std::string>* column_families,
   std::unique_ptr<SequentialFileReader> file_reader;
   {
     std::unique_ptr<SequentialFile> file;
-  s = env->NewSequentialFile(dscname, &file, soptions);
-  if (!s.ok()) {
-    return s;
-  }
-  file_reader.reset(new SequentialFileReader(std::move(file), dscname));
+    s = env->NewSequentialFile(dscname, &file, soptions);
+    if (!s.ok()) {
+      return s;
+    }
+    file_reader.reset(new SequentialFileReader(std::move(file), dscname));
   }
 
   std::map<uint32_t, std::string> column_family_names;
@@ -4300,8 +4265,8 @@ Status VersionSet::DumpManifest(Options& options, std::string& dscname,
 
       if (edit.has_min_log_number_to_keep_) {
         MarkMinLogNumberToKeep2PC(edit.min_log_number_to_keep_);
+      }
     }
-  }
   }
   file_reader.reset();
 
@@ -4657,7 +4622,7 @@ InternalIterator* VersionSet::MakeInputIterator(
             cfd->internal_comparator(), c->input_levels(which),
             c->mutable_cf_options()->prefix_extractor.get(),
             false /* should_sample */,
-                nullptr /* no per level latency histogram */,
+            nullptr /* no per level latency histogram */,
             true /* for_compaction */, false /* skip_filters */,
             static_cast<int>(which) /* level */, range_del_agg,
             c->boundaries(which));

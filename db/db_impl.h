@@ -605,11 +605,11 @@ class DBImpl : public DB {
     bool unprepared_;
 
     struct BatchInfo {
-    uint64_t log_number_;
+      uint64_t log_number_;
       // TODO(lth): For unprepared, the memory usage here can be big for
       // unprepared transactions. This is only useful for rollbacks, and we
       // can in theory just keep keyset for that.
-    WriteBatch* batch_;
+      WriteBatch* batch_;
       // Number of sub-batches. A new sub-batch is created if txn attempts to
       // insert a duplicate key,seq to memtable. This is currently used in
       // WritePreparedTxn/WriteUnpreparedTxn.
@@ -681,7 +681,7 @@ class DBImpl : public DB {
           log, name, batch, seq, batch_cnt, unprepared_batch);
     } else {
       rtxn->second->AddBatch(seq, log, batch, batch_cnt, unprepared_batch);
-  }
+    }
     logs_with_prep_tracker_.MarkLogAsContainingPrepSection(log);
   }
 
@@ -1047,8 +1047,7 @@ class DBImpl : public DB {
 
   Status ScheduleFlushes(WriteContext* context);
 
-  Status SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context,
-                        FlushReason flush_reason = FlushReason::kOthers);
+  Status SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context);
 
   void SelectColumnFamiliesForAtomicFlush(autovector<ColumnFamilyData*>* cfds);
 

@@ -145,8 +145,6 @@ class DBIter final: public Iterator {
         resolved_indirect_vals(std::vector<std::shared_ptr<std::string>>(16)),
 // obsolete         resolved_indirect_vals(std::vector<std::string>()),
 #endif
-        allow_blob_(allow_blob),
-        is_blob_(false),
         start_seqnum_(read_options.iter_start_seqnum)
           {
     RecordTick(statistics_, NO_ITERATOR_CREATED);
@@ -491,8 +489,6 @@ enum IndirectState : unsigned char {
   std::vector<std::shared_ptr<std::string>> resolved_indirect_vals;
 // obsolete   std::vector<std::string> resolved_indirect_vals;
 #endif
-  bool allow_blob_;
-  bool is_blob_;
   // for diff snapshots we want the lower bound on the seqnum;
   // if this value > 0 iterator will return internal keys
   SequenceNumber start_seqnum_;

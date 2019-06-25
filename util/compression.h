@@ -122,69 +122,6 @@ class ZSTDUncompressCachedData {
 };
 #endif  // (ZSTD_VERSION_NUMBER >= 500)
 }  // namespace rocksdb
-namespace rocksdb {
-// Need this for the context allocation override
-// On windows we need to do this explicitly
-#if (ZSTD_VERSION_NUMBER >= 500)
-#if defined(ROCKSDB_JEMALLOC) && defined(OS_WIN) && \
-    defined(ZSTD_STATIC_LINKING_ONLY)
-#define ROCKSDB_ZSTD_CUSTOM_MEM
-namespace port {
-ZSTD_customMem GetJeZstdAllocationOverrides();
-}  // namespace port
-#endif  // defined(ROCKSDB_JEMALLOC) && defined(OS_WIN) &&
-        // defined(ZSTD_STATIC_LINKING_ONLY)
-
-// Cached data represents a portion that can be re-used
-// If, in the future we have more than one native context to
-// cache we can arrange this as a tuple
-class ZSTDUncompressCachedData {
- public:
-  using ZSTDNativeContext = ZSTD_DCtx*;
-  ZSTDUncompressCachedData() {}
-  // Init from cache
-  ZSTDUncompressCachedData(const ZSTDUncompressCachedData& o) = delete;
-  ZSTDUncompressCachedData& operator=(const ZSTDUncompressCachedData&) = delete;
-  ZSTDUncompressCachedData(ZSTDUncompressCachedData&& o) ROCKSDB_NOEXCEPT
-      : ZSTDUncompressCachedData() {
-    *this = std::move(o);
-  }
-  ZSTDUncompressCachedData& operator=(ZSTDUncompressCachedData&& o)
-      ROCKSDB_NOEXCEPT {
-    assert(zstd_ctx_ == nullptr);
-    std::swap(zstd_ctx_, o.zstd_ctx_);
-    std::swap(cache_idx_, o.cache_idx_);
-    return *this;
-  }
-  ZSTDNativeContext Get() const { return zstd_ctx_; }
-  int64_t GetCacheIndex() const { return cache_idx_; }
-  void CreateIfNeeded() {
-    if (zstd_ctx_ == nullptr) {
-#ifdef ROCKSDB_ZSTD_CUSTOM_MEM
-      zstd_ctx_ =
-          ZSTD_createDCtx_advanced(port::GetJeZstdAllocationOverrides());
-#else   // ROCKSDB_ZSTD_CUSTOM_MEM
-      zstd_ctx_ = ZSTD_createDCtx();
-#endif  // ROCKSDB_ZSTD_CUSTOM_MEM
-      cache_idx_ = -1;
-    }
-  }
-  void InitFromCache(const ZSTDUncompressCachedData& o, int64_t idx) {
-    zstd_ctx_ = o.zstd_ctx_;
-    cache_idx_ = idx;
-  }
-  ~ZSTDUncompressCachedData() {
-    if (zstd_ctx_ != nullptr && cache_idx_ == -1) {
-      ZSTD_freeDCtx(zstd_ctx_);
-    }
-  }
-
- private:
-  ZSTDNativeContext zstd_ctx_ = nullptr;
-  int64_t cache_idx_ = -1;  // -1 means this instance owns the context
-};
-#endif  // (ZSTD_VERSION_NUMBER >= 500)
-}  // namespace rocksdb
 #endif  // ZSTD
 
 #if !(defined ZSTD) || !(ZSTD_VERSION_NUMBER >= 500)
@@ -1078,7 +1015,7 @@ inline bool LZ4_Compress(const CompressionInfo& info,
 inline CacheAllocationPtr LZ4_Uncompress(const UncompressionInfo& info,
                                          const char* input_data,
                                          size_t input_length,
-                            int* decompress_size,
+                                         int* decompress_size,
                                          uint32_t compress_format_version,
                                          MemoryAllocator* allocator = nullptr) {
 #ifdef LZ4
@@ -1115,7 +1052,7 @@ inline CacheAllocationPtr LZ4_Uncompress(const UncompressionInfo& info,
 #else   // up to r123
   *decompress_size = LZ4_decompress_safe(input_data, output.get(),
                                          static_cast<int>(input_length),
-                          static_cast<int>(output_len));
+                                         static_cast<int>(output_len));
   (void)ctx;
 #endif  // LZ4_VERSION_NUMBER >= 10400
 

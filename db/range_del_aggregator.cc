@@ -390,7 +390,6 @@ class TruncatedRangeDelMergingIter : public InternalIterator {
       }
     }
   }
-}
 
   bool Valid() const override {
     return !heap_.empty() && BeforeEndKey(heap_.top());

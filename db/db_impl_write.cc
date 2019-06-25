@@ -1082,22 +1082,22 @@ Status DBImpl::SwitchWAL(WriteContext* write_context) {
   if (immutable_db_options_.atomic_flush) {
     SelectColumnFamiliesForAtomicFlush(&cfds);
   } else {
-  for (auto cfd : *versions_->GetColumnFamilySet()) {
-    if (cfd->IsDropped()) {
-      continue;
-    }
-    if (cfd->OldestLogToKeep() <= oldest_alive_log) {
+    for (auto cfd : *versions_->GetColumnFamilySet()) {
+      if (cfd->IsDropped()) {
+        continue;
+      }
+      if (cfd->OldestLogToKeep() <= oldest_alive_log) {
         cfds.push_back(cfd);
       }
     }
   }
   for (const auto cfd : cfds) {
     cfd->Ref();
-      status = SwitchMemtable(cfd, write_context);
+    status = SwitchMemtable(cfd, write_context);
     cfd->Unref();
-      if (!status.ok()) {
-        break;
-      }
+    if (!status.ok()) {
+      break;
+    }
   }
   if (status.ok()) {
     if (immutable_db_options_.atomic_flush) {
@@ -1136,24 +1136,24 @@ Status DBImpl::HandleWriteBufferFull(WriteContext* write_context) {
   if (immutable_db_options_.atomic_flush) {
     SelectColumnFamiliesForAtomicFlush(&cfds);
   } else {
-  ColumnFamilyData* cfd_picked = nullptr;
-  SequenceNumber seq_num_for_cf_picked = kMaxSequenceNumber;
+    ColumnFamilyData* cfd_picked = nullptr;
+    SequenceNumber seq_num_for_cf_picked = kMaxSequenceNumber;
 
-  for (auto cfd : *versions_->GetColumnFamilySet()) {
-    if (cfd->IsDropped()) {
-      continue;
-    }
-    if (!cfd->mem()->IsEmpty()) {
-      // We only consider active mem table, hoping immutable memtable is
-      // already in the process of flushing.
-      uint64_t seq = cfd->mem()->GetCreationSeq();
-      if (cfd_picked == nullptr || seq < seq_num_for_cf_picked) {
-        cfd_picked = cfd;
-        seq_num_for_cf_picked = seq;
+    for (auto cfd : *versions_->GetColumnFamilySet()) {
+      if (cfd->IsDropped()) {
+        continue;
+      }
+      if (!cfd->mem()->IsEmpty()) {
+        // We only consider active mem table, hoping immutable memtable is
+        // already in the process of flushing.
+        uint64_t seq = cfd->mem()->GetCreationSeq();
+        if (cfd_picked == nullptr || seq < seq_num_for_cf_picked) {
+          cfd_picked = cfd;
+          seq_num_for_cf_picked = seq;
+        }
       }
     }
-  }
-  if (cfd_picked != nullptr) {
+    if (cfd_picked != nullptr) {
       cfds.push_back(cfd_picked);
     }
   }
@@ -1169,7 +1169,7 @@ Status DBImpl::HandleWriteBufferFull(WriteContext* write_context) {
       break;
     }
   }
-    if (status.ok()) {
+  if (status.ok()) {
     if (immutable_db_options_.atomic_flush) {
       AssignAtomicFlushSeq(cfds);
     }
@@ -1179,8 +1179,8 @@ Status DBImpl::HandleWriteBufferFull(WriteContext* write_context) {
     FlushRequest flush_req;
     GenerateFlushRequest(cfds, &flush_req);
     SchedulePendingFlush(flush_req, FlushReason::kWriteBufferFull);
-      MaybeScheduleFlushOrCompaction();
-    }
+    MaybeScheduleFlushOrCompaction();
+  }
   return status;
 }
 
@@ -1262,7 +1262,7 @@ Status DBImpl::DelayWrite(uint64_t num_bytes,
     // If writes are still stopped, it means we bailed due to a background
     // error
     s = Status::Incomplete(error_handler_.GetBGError().ToString());
-}
+  }
   if (error_handler_.IsDBStopped()) {
     s = error_handler_.GetBGError();
   }
@@ -1329,7 +1329,7 @@ Status DBImpl::ScheduleFlushes(WriteContext* context) {
   if (status.ok()) {
     if (immutable_db_options_.atomic_flush) {
       AssignAtomicFlushSeq(cfds);
-}
+    }
     FlushRequest flush_req;
     GenerateFlushRequest(cfds, &flush_req);
     SchedulePendingFlush(flush_req, FlushReason::kWriteBufferFull);
@@ -1356,8 +1356,7 @@ void DBImpl::NotifyOnMemTableSealed(ColumnFamilyData* /*cfd*/,
 
 // REQUIRES: mutex_ is held
 // REQUIRES: this thread is currently at the front of the writer queue
-Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context,
-                              FlushReason flush_reason) {
+Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context) {
   mutex_.AssertHeld();
   WriteThread::Writer nonmem_w;
   if (two_write_queues_) {

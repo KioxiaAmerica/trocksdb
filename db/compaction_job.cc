@@ -170,7 +170,6 @@ struct CompactionJob::SubcompactionState {
   std::vector<VLogRingRestartInfo> vlog_additions;
 #endif
 
-  std::string compression_dict;
   SubcompactionState(Compaction* c, Slice* _start, Slice* _end,
                      uint64_t size = 0)
       : compaction(c),
@@ -185,9 +184,7 @@ struct CompactionJob::SubcompactionState {
         approx_size(size),
         grandparent_index(0),
         overlapped_bytes(0),
-        seen_key(false),
-        compression_dict() {
-        //seen_key(false) {
+        seen_key(false) {
     assert(compaction != nullptr);
   }
 
@@ -213,7 +210,6 @@ struct CompactionJob::SubcompactionState {
 #ifdef INDIRECT_VALUE_SUPPORT
     vlog_additions = std::move(o.vlog_additions);
 #endif
-    compression_dict = std::move(o.compression_dict);
     return *this;
   }
 
@@ -232,7 +228,7 @@ struct CompactionJob::SubcompactionState {
     // Scan to find earliest grandparent file that contains key.
     while (grandparent_index < grandparents.size() &&
            icmp->Compare(internal_key,
-                         grandparents[grandparent_index]->largest.Encode()) >  // bug: this should check smallest key.  As written misses GPs that contain the key
+                         grandparents[grandparent_index]->largest.Encode()) >
                0) {
       if (seen_key) {
         overlapped_bytes += grandparents[grandparent_index]->fd.GetFileSize();
@@ -873,28 +869,10 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   }
 
 #else
-/*
-  // Create compaction filter and fail the compaction if
-  // IgnoreSnapshots() = false because it is not supported anymore
-  const CompactionFilter* compaction_filter =
-      cfd->ioptions()->compaction_filter;
-  std::unique_ptr<CompactionFilter> compaction_filter_from_factory = nullptr;
-  if (compaction_filter == nullptr) {
-    compaction_filter_from_factory =
-        sub_compact->compaction->CreateCompactionFilter();
-    compaction_filter = compaction_filter_from_factory.get();
-  }
-  if (compaction_filter != nullptr && !compaction_filter->IgnoreSnapshots()) {
-    sub_compact->status = Status::NotSupported(
-        "CompactionFilter::IgnoreSnapshots() = false is not supported "
-        "anymore.");
-    return;
-  }
-
+  /*
   CompactionRangeDelAggregator range_del_agg(&cfd->internal_comparator(),
                                              existing_snapshots_);
-*/
-
+  */
   // Although the v2 aggregator is what the level iterator(s) know about,
   // the AddTombstones calls will be propagated down to the v1 aggregator.
   std::unique_ptr<CompactionRangeDelAggregator> range_del_agg(
@@ -930,7 +908,6 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     prev_cpu_read_nanos = IOSTATS(cpu_read_nanos);
   }
 
-  /*
   const MutableCFOptions* mutable_cf_options =
       sub_compact->compaction->mutable_cf_options();
 
@@ -967,17 +944,25 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
     }
   }
 
-  auto compaction_filter = cfd->ioptions()->compaction_filter;
+  // Create compaction filter and fail the compaction if
+  // IgnoreSnapshots() = false because it is not supported anymore
+  const CompactionFilter* compaction_filter =
+      cfd->ioptions()->compaction_filter;
   std::unique_ptr<CompactionFilter> compaction_filter_from_factory = nullptr;
   if (compaction_filter == nullptr) {
     compaction_filter_from_factory =
         sub_compact->compaction->CreateCompactionFilter();
     compaction_filter = compaction_filter_from_factory.get();
   }
+  if (compaction_filter != nullptr && !compaction_filter->IgnoreSnapshots()) {
+    sub_compact->status = Status::NotSupported(
+        "CompactionFilter::IgnoreSnapshots() = false is not supported "
+        "anymore.");
+    return;
+  }
 #ifdef INDIRECT_VALUE_SUPPORT
   // really ought to make merge a pointer rather than a reference since it is not needed by Active Recycling
 #endif
-*/
   MergeHelper merge(
       env_, cfd->user_comparator(), cfd->ioptions()->merge_operator,
       compaction_filter, db_options_.info_log.get(),

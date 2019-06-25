@@ -337,8 +337,6 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
       {offset_of(
            &ColumnFamilyOptions::max_bytes_for_level_multiplier_additional),
        sizeof(std::vector<int>)},
-      {offset_of(&ColumnFamilyOptions::compaction_options_fifo),
-       sizeof(CompactionOptionsFIFO)},  // MSVC copies the padding for this struct when it initializes
       {offset_of(&ColumnFamilyOptions::memtable_factory),
        sizeof(std::shared_ptr<MemTableRepFactory>)},
       {offset_of(&ColumnFamilyOptions::table_properties_collector_factories),
@@ -433,7 +431,8 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
                       kColumnFamilyOptionsBlacklist);
 
   // Need to update the option string if a new option is added.
-  char optionstring[] =
+  ASSERT_OK(GetColumnFamilyOptionsFromString(
+      *options,
       "compaction_filter_factory=mpudlojcujCompactionFilterFactory;"
       "table_factory=PlainTable;"
       "prefix_extractor=rocksdb.CappedPrefix.13;"
@@ -489,9 +488,7 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
       "vlog_direct_IO=false;"
       "compaction_score_limit_L0=1000.0;"
 #endif
-      ,new_options));
-//  ASSERT_OK(GetColumnFamilyOptionsFromString(
-//      *options, optionstring, new_options));
+      , new_options));
 
   ASSERT_EQ(unset_bytes_base,
             NumUnsetBytes(new_options_ptr, sizeof(ColumnFamilyOptions),

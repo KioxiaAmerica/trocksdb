@@ -727,7 +727,6 @@ class DBTestBase : public testing::Test {
 
 #endif
 
-=======
     // This must be the last line
     kEnd,
   };

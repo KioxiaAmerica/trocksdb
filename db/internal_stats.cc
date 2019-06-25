@@ -83,9 +83,9 @@ void PrintLevelStatsHeader(char* buf, size_t len, const std::string& cf_name,
   };
   int line_size = snprintf(
       buf + written_size, len - written_size,
-      "%s    %s   %s     %s %s  %s %s %s %s %s %s %s %s %s %s %s %s %s %s",
+      "%s    %s   %s     %s %s  %s %s %s %s %s %s %s %s %s %s %s %s %s %s"
 #ifdef INDIRECT_VALUE_SUPPORT
-        " %s %s %s %s"
+      "%s %s %s %s"
 #endif
       "\n",
       // Note that we skip COMPACTED_FILES and merge it with Files column
