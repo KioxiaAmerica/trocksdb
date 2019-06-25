@@ -263,7 +263,7 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
          i++) {
       ROCKS_LOG_HEADER(
           log, "                    Options.min_indirect_val_size[%" ROCKSDB_PRIszt
-               "]: %d",
+               "]: %lu",
           i, min_indirect_val_size[i]);
     }
     for (size_t i = 0; i < fraction_remapped_during_compaction.size();
@@ -326,7 +326,7 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
          i++) {
       ROCKS_LOG_HEADER(
           log, "                        Options.vlogfile_max_size[%" ROCKSDB_PRIszt
-               "]: %u",
+               "]: %lu",
           i, vlogfile_max_size[i]);
     }
     for (size_t i = 0; i < compaction_picker_age_importance.size();

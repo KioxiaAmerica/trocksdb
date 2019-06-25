@@ -181,7 +181,7 @@ void MutableCFOptions::Dump(Logger* log) const {
          i++) {
       ROCKS_LOG_HEADER(
           log, "                 min_indirect_val_size[%" ROCKSDB_PRIszt
-               "]: %d",
+               "]: %ld",
           i, min_indirect_val_size[i]);
     }
     for (size_t i = 0; i < fraction_remapped_during_compaction.size();
@@ -237,14 +237,14 @@ void MutableCFOptions::Dump(Logger* log) const {
          i++) {
       ROCKS_LOG_HEADER(
           log, "active_recycling_size_trigger[%" PRIu64
-               "]: %d",
+               "]: %ld",
           i, active_recycling_size_trigger[i]);
     }
     for (size_t i = 0; i < vlogfile_max_size.size();
          i++) {
       ROCKS_LOG_HEADER(
           log, "                     vlogfile_max_size[%" ROCKSDB_PRIszt
-               "]: %d",
+               "]: %lu",
           i, vlogfile_max_size[i]);
     }
     for (size_t i = 0; i < compaction_picker_age_importance.size();

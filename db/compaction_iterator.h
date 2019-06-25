@@ -156,7 +156,7 @@ class CompactionIterator {
 #ifdef INDIRECT_VALUE_SUPPORT
 // When indirect values are enabled, the compaction input must pass through a stage that counts all the indirect references in the input stream.  This is how
 // we account for size and frag of the VLogRings
-  shared_ptr<VLogCountingIterator> input_;  // this iterator goes before input_ to count all the VLog references read during compaction
+  std::shared_ptr<VLogCountingIterator> input_;  // this iterator goes before input_ to count all the VLog references read during compaction
   InternalIterator* originput_;   // the iterator we were started with
 #else
   InternalIterator* input_;

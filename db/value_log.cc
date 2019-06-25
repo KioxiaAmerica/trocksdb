@@ -33,7 +33,7 @@ extern void ProbDelay() {
 // If there is an error, it just returns the input data
 extern CompressionType CompressForVLog(const std::string& raw,
                     CompressionType type,
-                    const CompressionContext& compression_context,
+		    const CompressionInfo& compression_info,
                     std::string* compressed_output) {
   bool compressok;  // true if compression succeeded
 
@@ -41,25 +41,25 @@ extern CompressionType CompressForVLog(const std::string& raw,
   // supported in this platform and (2) the compression rate is "good enough".
   switch (type) {
     case kSnappyCompression:
-      compressok = Snappy_Compress(compression_context, raw.data(), raw.size(),
+      compressok = Snappy_Compress(compression_info, raw.data(), raw.size(),
                           compressed_output);
       break;  // fall back to no compression.
     case kZlibCompression:
-      compressok = Zlib_Compress(compression_context,kVLogCompressionVersionFormat,
+      compressok = Zlib_Compress(compression_info,kVLogCompressionVersionFormat,
               raw.data(), raw.size(), compressed_output);
       break;  // fall back to no compression.
     case kBZip2Compression:
-      compressok = BZip2_Compress(compression_context,kVLogCompressionVersionFormat,
+      compressok = BZip2_Compress(compression_info,kVLogCompressionVersionFormat,
               raw.data(), raw.size(), compressed_output);
       break;  // fall back to no compression.
     case kLZ4Compression:
       compressok = LZ4_Compress(
-              compression_context,kVLogCompressionVersionFormat,
+              compression_info,kVLogCompressionVersionFormat,
               raw.data(), raw.size(), compressed_output); 
       break;  // fall back to no compression.
     case kLZ4HCCompression:
       compressok = LZ4HC_Compress(
-              compression_context,kVLogCompressionVersionFormat,
+              compression_info,kVLogCompressionVersionFormat,
               raw.data(), raw.size(), compressed_output);
       break;     // fall back to no compression.
     case kXpressCompression:
@@ -68,7 +68,7 @@ extern CompressionType CompressForVLog(const std::string& raw,
       break;
     case kZSTD:
     case kZSTDNotFinalCompression:
-      compressok = ZSTD_Compress(compression_context, raw.data(), raw.size(),
+      compressok = ZSTD_Compress(compression_info, raw.data(), raw.size(),
                         compressed_output);
       break;     // fall back to no compression.
     default: compressok = false; break;  // Do not recognize this compression type
@@ -591,7 +591,7 @@ ProbDelay();
   // EXCEPTIONS OK NOW
   size_t newsize = fd_ring[newcurrent].size();  // remember what we are going to print before we release the lock
   ReleaseLock();
-    ROCKS_LOG_INFO(immdbopts_->info_log,"VLogRing buffer has been resized, new buffer is %d, length=%" PRIu64 ", tailfile=%" PRIu64 ", headfile=%" PRIu64 "\n",newcurrent,newsize,tailfile,headfile);
+    ROCKS_LOG_INFO(immdbopts_->info_log,"VLogRing buffer has been resized, new buffer is %lu, length=%" PRIu64 ", tailfile=%" PRIu64 ", headfile=%" PRIu64 "\n",newcurrent,newsize,tailfile,headfile);
   AcquireLock();
 
   return newcurrent;  // let operation proceed
@@ -786,7 +786,7 @@ printf("Writing %" PRIu64 " sequential files, %" PRIu64 " values, %" PRIu64 " by
 
     // Buffer has been built.  Create the file as sequential, and write it out
     {
-      unique_ptr<WritableFile> writable_file;
+      std::unique_ptr<WritableFile> writable_file;
       iostatus = immdbopts_->env->NewWritableFile(pathnames.back(),&writable_file,envopts_);  // open the file
       if(!iostatus.ok()) {
         ROCKS_LOG_ERROR(immdbopts_->info_log,
@@ -1435,7 +1435,7 @@ printf("VLogInit cfd_=%p name=%s\n",cfd_,cfd_->GetName().data());
 // use these 3 lines when make_unique is supported    rings_.push_back(std::move(std::make_unique<VLogRing>(i /* ring# */, cfd_ /* ColumnFamilyData */, existing_vlog_files_for_cf /* filenames */,
 //      (VLogRingRefFileno)early_refs[i] /* earliest_ref */, (VLogRingRefFileno)cfd_->GetRingEnds()[i]/* latest_ref */,
 //      immdbopts /* immdbopts */, file_options)));
-    unique_ptr<VLogRing> vptr(new VLogRing(i /* ring# */, cfd_ /* ColumnFamilyData */, existing_vlog_files_for_cf /* filenames */,
+    std::unique_ptr<VLogRing> vptr(new VLogRing(i /* ring# */, cfd_ /* ColumnFamilyData */, existing_vlog_files_for_cf /* filenames */,
       existing_vlog_sizes_for_cf /* filesizes */, 
       &immdbopts /* immdbopts */, file_options));
     rings_.push_back(std::move(vptr));
@@ -1506,15 +1506,17 @@ Status VLog::VLogGet(
   uint64_t comptime = immdbopts_->env->NowMicros(); uint64_t compdur = comptime - readtime;
 
    // extract the compression type and decompress the data
-  unsigned char ctype = ringresult[dataoffset];
+  //unsigned char ctype = ringresult[dataoffset];
+  CompressionType ctype = (CompressionType) ringresult[dataoffset];
   if(ctype==CompressionType::kNoCompression) {
     // data is uncompressed; move it to the user's area
     result.assign(&ringresult[dataoffset+1],ref.Len()-(1+4));   // data starts at offset 1, and doesn't include 1-byte header or 4-byte trailer 
   } else {
     BlockContents contents;
-   const UncompressionContext ucontext((CompressionType)ctype);
+   const UncompressionContext ucontext(ctype);
+   const UncompressionInfo uinfo(ucontext,UncompressionDict::GetEmptyDict(),ctype);
 // scaf this moves the data twice, which we could avoid if we rewrite the subroutine
-    if(!(s = UncompressBlockContentsForCompressionType(ucontext,
+    if(!(s = UncompressBlockContentsForCompressionType(uinfo,
         &ringresult[dataoffset+1], ref.Len()-(1+4), &contents,
           kVLogCompressionVersionFormat,
         *(cfd_->ioptions()))).ok()){

@@ -460,7 +460,7 @@ class Repairer {
           nullptr /* internal_stats */, TableFileCreationReason::kRecovery,
           nullptr /* event_logger */, 0 /* job_id */, Env::IO_HIGH,
           nullptr /* table_properties */, -1 /* level */, current_time,
-          write_hint
+	  0 /* oldest_key_time */, write_hint
 #ifdef INDIRECT_VALUE_SUPPORT
           ,nullptr /* cfd */, nullptr /* vlog_flush_info */
 #endif

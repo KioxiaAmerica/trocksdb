@@ -273,7 +273,7 @@ class DBIter final: public Iterator {
         (const_cast<std::vector<std::shared_ptr<std::string>>&>(resolved_indirect_vals)).emplace_back(newstring);  // add a new empty string for upcoming read
 // obsolete         (const_cast<std::vector<std::string>&>(resolved_indirect_vals)).emplace_back();  // add a new empty string for upcoming read
         // resolve the value in the new string.
-        iter_->GetVlogForIteratorCF()->VLogGet(val,*(const_cast<std::vector<shared_ptr<std::string>>&>(resolved_indirect_vals)).back().get());   // turn the reference into a value, in the string
+        iter_->GetVlogForIteratorCF()->VLogGet(val,*(const_cast<std::vector<std::shared_ptr<std::string>>&>(resolved_indirect_vals)).back().get());   // turn the reference into a value, in the string
 // obsolete         iter_->GetVlogForIteratorCF()->VLogGet(val,const_cast<std::string&>(resolved_indirect_vals.back()));   // turn the reference into a value, in the string
         const_cast<IndirectState&>(indirect_state) = kISResolved;  // change state so we don't resolve again
       }

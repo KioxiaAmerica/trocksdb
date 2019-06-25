@@ -256,7 +256,10 @@ void IndirectIterator::ReadAndResolveInputBlock() {
   // They are immediately passed to Builder which must make a copy of the data.
 // obsolete   std::string indirectbuffer;   // temp area where we read indirect values that need to be remapped
   CompressionContext compressioncontext{compressiontype};  // scaf need initial dict
-
+  const CompressionInfo compression_info(CompressionOptions(),compressioncontext,
+		                         CompressionDict::GetEmptyDict(),
+		                         compressiontype,
+		                         0 /* _sample_for_compression */);
   std::vector<VLogRingRefFileOffset> outputrcdend; outputrcdend.reserve(compactionblockinitkeyalloc); // each entry here is the running total of the bytecounts that will be sent to the SST from each kv
   std::vector<NoInitChar> diskdata;  diskdata.reserve(initdiskallo); // where we accumulate the data to write
 
@@ -283,10 +286,10 @@ void IndirectIterator::ReadAndResolveInputBlock() {
     if(totalsstlen+bytesresvindiskdata > compactionblocksize  && recyciter_==nullptr){  // never break up an AR.  But they shouldn't get big anyway
       // main compaction block is full.  If the overflow is not empty, we have to stop and process the overflow
       ROCKS_LOG_WARN(current_vlog->immdbopts_->info_log,
-        "JOB [%" PRIu64 "] IndirectIterator: compaction batch full with %" PRIu64 " values",job_id_,diskrecl.size());
+        "JOB [%d] IndirectIterator: compaction batch full with %" PRIu64 " values",job_id_,diskrecl.size());
       if(valueclass2.size()!=0)break;  // if 2 full blocks, stop
       ROCKS_LOG_WARN(current_vlog->immdbopts_->info_log,
-        "JOB [%" PRIu64 "] IndirectIterator: empty batch found, switching over to it",job_id_);
+        "JOB [%d] IndirectIterator: empty batch found, switching over to it",job_id_);
       // Here when the first block fills.  The second block is empty, so we just swap the current block into the overflow, which will reset the current to empty
       outputrcdend2.swap(outputrcdend); diskdata2.swap(diskdata); keys2.swap(keys); keylens2.swap(keylens); passthroughdata2.swap(passthroughdata);
         passthroughrecl2.swap(passthroughrecl); diskfileref2.swap(diskfileref); valueclass2.swap(valueclass); diskrecl2.swap(diskrecl);
@@ -335,7 +338,7 @@ void IndirectIterator::ReadAndResolveInputBlock() {
       bytesintocompression += val.size();  // count length into compression
       std::string compresseddata;  // place the compressed string will go
       // Compress the data.  This will never fail; if there is an error, we just get uncompressed data
-      CompressionType ctype = CompressForVLog(std::string(val.data(),val.size()),compressiontype,compressioncontext,&compresseddata);
+      CompressionType ctype = CompressForVLog(std::string(val.data(),val.size()),compressiontype,compression_info,&compresseddata);
 #ifdef IITIMING
       iitimevec[2] += current_vlog->immdbopts_->env->NowMicros() - start_micros;  // point 2 - after compression
 #endif
@@ -455,14 +458,14 @@ void IndirectIterator::ReadAndResolveInputBlock() {
   // append the overflow to the main so that we can process them both together and avoid having a runt block
   if(valueclass2.size()!=0){
      ROCKS_LOG_WARN(current_vlog->immdbopts_->info_log,
-       "JOB [%" PRIu64 "] IndirectIterator: processing stacked compaction batch with %" PRIu64 " values",job_id_,diskrecl2.size());
+       "JOB [%d] IndirectIterator: processing stacked compaction batch with %" PRIu64 " values",job_id_,diskrecl2.size());
     // swap overflow back to main
     outputrcdend2.swap(outputrcdend); diskdata2.swap(diskdata); keys2.swap(keys); keylens2.swap(keylens); passthroughdata2.swap(passthroughdata);
       passthroughrecl2.swap(passthroughrecl); diskfileref2.swap(diskfileref); valueclass2.swap(valueclass); diskrecl2.swap(diskrecl);
     // if there are no more keys, combine the main and overflow
     if(!inputnotempty){
      ROCKS_LOG_WARN(current_vlog->immdbopts_->info_log,
-       "JOB [%" PRIu64 "] IndirectIterator: combining second compaction batch with %" PRIu64 " values",job_id_,diskrecl2.size());
+       "JOB [%d] IndirectIterator: combining second compaction batch with %" PRIu64 " values",job_id_,diskrecl2.size());
       // for the values that are running totals, add the main ending value to all the values in the overflow.  Only if the main is not empty & thus contains a valid ending value
       if(outputrcdend.size()){for(auto& atom : outputrcdend2)atom += outputrcdend.back();}
       if(diskrecl.size()){for(auto& atom : diskrecl2)atom += diskrecl.back();}
