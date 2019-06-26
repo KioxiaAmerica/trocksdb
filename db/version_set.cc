@@ -3097,8 +3097,12 @@ Status VersionSet::ProcessManifestWrites(
       assert(!builder_guards.empty() &&
              builder_guards.size() == versions.size());
       auto* builder = builder_guards[i]->version_builder();
-      //builder->SaveTo(versions[i]->storage_info(),last_writer->cfd);
+#ifdef INDIRECT_VALUE_SUPPORT
+      builder->SaveTo(versions[i]->storage_info(),last_writer->cfd);
+#else
       builder->SaveTo(versions[i]->storage_info());
+#endif
+
 #ifdef INDIRECT_VALUE_SUPPORT
       // Add the edits from this builder into the collected edits for this CF.
       Coalesce(accum_vlog_edits,builder->VLogAdditions(),true);
