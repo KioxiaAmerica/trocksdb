@@ -1290,6 +1290,10 @@ void InternalStats::DumpCFMapStats(
       } else {
         input_bytes = comp_stats_[level].bytes_read_non_output_levels;
       }
+      ROCKS_LOG_INFO(cfd_->ioptions()->info_log,
+        "InternalStats: comp_stats_[%d].bytes_written=%ld, comp_stats_[%d].vlog_bytes_written_comp=%ld, input_bytes[%d]=%ld",
+        level,comp_stats_[level].bytes_written,level,comp_stats_[level].vlog_bytes_written_comp,level,input_bytes);  // scafdebug
+
       double w_amp =
           (input_bytes == 0)
               ? 0.0
@@ -1320,6 +1324,10 @@ void InternalStats::DumpCFMapStats(
   double w_amp = compaction_stats_sum->bytes_written /
                  static_cast<double>(curr_ingest + 1);
 #endif // INDIRECT_VALUE_SUPPORT
+      ROCKS_LOG_INFO(cfd_->ioptions()->info_log,
+        "InternalStats: sum.bytes_written=%ld, sum.vlog_bytes_written_comp=%ld, curr_ingest=%ld",
+        compaction_stats_sum->bytes_written,compaction_stats_sum->vlog_bytes_written_comp,curr_ingest);  // scafdebug
+
   // Stats summary across levels
   std::map<LevelStatType, double> sum_stats;
   PrepareLevelStats(&sum_stats, total_files, total_files_being_compacted,
