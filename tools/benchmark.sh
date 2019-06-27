@@ -51,7 +51,7 @@ mb_written_per_sec=${MB_WRITE_PER_SEC:-0}
 num_nexts_per_seek=${NUM_NEXTS_PER_SEEK:-10}
 cache_size=${CACHE_SIZE:-$((17179869184))}
 compression_max_dict_bytes=${COMPRESSION_MAX_DICT_BYTES:-0}
-compression_type=${COMPRESSION_TYPE:-zstd}
+compression_type=${COMPRESSION_TYPE:-snappy}
 duration=${DURATION:-0}
 
 num_keys=${NUM_KEYS:-8000000000}
