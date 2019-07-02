@@ -36,7 +36,6 @@ extern CompressionType CompressForVLog(const std::string& raw,
 		    const CompressionInfo& compression_info,
                     std::string* compressed_output) {
   bool compressok;  // true if compression succeeded
-
   // Will return compressed block contents if (1) the compression method is
   // supported in this platform and (2) the compression rate is "good enough".
   switch (type) {
@@ -79,9 +78,9 @@ extern CompressionType CompressForVLog(const std::string& raw,
   // Compression method is not supported, or not good compression ratio, so just
   // fall back to uncompressed form.
     (*compressed_output).assign(raw);  // copy the input to the output
-    type = kNoCompression;
+    return (CompressionType) kNoCompression;
   }
-  return type;
+  return compression_info.type();
 }
 
 

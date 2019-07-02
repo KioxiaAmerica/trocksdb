@@ -289,8 +289,8 @@ struct UncompressionDict {
 };
 
 class CompressionContext {
- private:
 #if defined(ZSTD) && (ZSTD_VERSION_NUMBER >= 500)
+ private:
   ZSTD_CCtx* zstd_ctx_ = nullptr;
   void CreateNativeContext(CompressionType type) {
     if (type == kZSTD || type == kZSTDNotFinalCompression) {

@@ -255,11 +255,10 @@ void IndirectIterator::ReadAndResolveInputBlock() {
   // The Slices are references to pinned tables.  We copy them into our buffers.
   // They are immediately passed to Builder which must make a copy of the data.
 // obsolete   std::string indirectbuffer;   // temp area where we read indirect values that need to be remapped
-  CompressionContext compressioncontext{compressiontype};  // scaf need initial dict
-  const CompressionInfo compression_info(CompressionOptions(),compressioncontext,
-		                         CompressionDict::GetEmptyDict(),
-		                         compressiontype,
-		                         0 /* _sample_for_compression */);
+  CompressionOptions opts;  // scaf need initial dict
+  const CompressionContext context(compressiontype);  // scaf need initial dict
+  const CompressionInfo compression_info(opts, context, CompressionDict::GetEmptyDict(),
+                                         compressiontype, 0 /* _sample_for_compression */);
   std::vector<VLogRingRefFileOffset> outputrcdend; outputrcdend.reserve(compactionblockinitkeyalloc); // each entry here is the running total of the bytecounts that will be sent to the SST from each kv
   std::vector<NoInitChar> diskdata;  diskdata.reserve(initdiskallo); // where we accumulate the data to write
 
