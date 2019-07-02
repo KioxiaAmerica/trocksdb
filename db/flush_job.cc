@@ -442,6 +442,12 @@ Status FlushJob::WriteLevel0Table() {
   stats.vlog_bytes_written_raw=vlog_flush_info.vlog_bytes_written_raw;
   stats.vlog_bytes_remapped=vlog_flush_info.vlog_bytes_remapped;
   stats.vlog_files_created=vlog_flush_info.vlog_files_created;
+ // for some reason BYTES_FLUSHED is used for the write-amp calculation in internal_stats, so it needs to track the number of
+ // bytes ingested.  Unfortunately it is the output file size instead of the input size, which means that encoding/indexing overhead
+ // is not properly charged as write amp.  Moreover, if the flushed data is compressed, it is the compressed size that is used for
+ // write amp rather than the input size.  To make the numbers meaningful we add in the bytes written to VLog (BEFORE compression, as is proper).
+  cfd_->internal_stats()->AddCFStats(InternalStats::BYTES_FLUSHED,
+                                     vlog_flush_info.vlog_bytes_written_raw);
 #endif
   //MeasureTime(stats_, FLUSH_TIME, stats.micros);
   RecordTimeToHistogram(stats_, FLUSH_TIME, stats.micros);
