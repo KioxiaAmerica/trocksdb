@@ -2008,9 +2008,11 @@ void CompactionJob::UpdateCompactionStats() {
           sub_compact.num_input_records - sub_compact.num_output_records;
     }
   }
+#ifdef INDIRECT_VALUE_SUPPORT
       ROCKS_LOG_INFO(db_options_.info_log,
         "compaction: compaction_stats_.vlog_bytes_written_comp=%ld",
         compaction_stats_.vlog_bytes_written_comp);  // scafdebug
+#endif
 
 }
 
