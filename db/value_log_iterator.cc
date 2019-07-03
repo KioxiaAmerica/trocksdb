@@ -99,7 +99,8 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
   compaction_inputs_size((const_cast<Compaction *>(compaction))->inputs()->size()),
   compaction_max_output_file_size(compaction_output_level==0?0:compaction->max_output_file_size()),  // no size limit on SST files written to L0
   compaction_grandparents(&compaction->grandparents()),
-  compaction_comparator(&compaction->column_family_data()->internal_comparator())
+  compaction_comparator(&compaction->column_family_data()->internal_comparator()),
+  compaction_writebuffersize(0)
   { IndirectIteratorDo(); }
 
  IndirectIterator::IndirectIterator(  // this constructor used by flush
@@ -126,7 +127,8 @@ static void appendtovector(std::vector<NoInitChar> &charvec, const Slice &addend
   compaction_inputs_size(0),  // used only for AR.  0 is a flag indicating flush
   compaction_max_output_file_size(0),  // flush always write a single file
   compaction_grandparents(nullptr),
-  compaction_comparator(nullptr)
+  compaction_comparator(nullptr),
+  compaction_writebuffersize(mutable_cf_options.write_buffer_size)
   { IndirectIteratorDo(); }
 
 
@@ -189,16 +191,25 @@ printf("\n");
   // Get the compression information to use for this file
   compressiontype = compaction_mutable_cf_options->ring_compression_style[outputringno];
 
-  // Calculate the total size of keys+values that we will allow in a single compaction block.  This is enough to hold all the SSTs in max_compaction_bytes, plus 1 VLog file per each of those SSTs.  This is high for non-L0 compactions, which
-  // need only enough storage for references that are being copied; but the limit is needed mainly for initial manual compaction of the whole database, which comes from L0 and has to have all the (compressed) data.
-  // We will fill up to 2 compaction blocks before we start writing VLogs and SSTs
-  // File size of -1 means 'unlimited', and we use a guess.
-  double sstsizemult = compaction_mutable_cf_options->vlogfile_max_size[outputringno]>0 && compaction_mutable_cf_options->max_file_size[compaction_output_level]>0 ?
-     (double)compaction_mutable_cf_options->vlogfile_max_size[outputringno] / (double)compaction_mutable_cf_options->max_file_size[compaction_output_level] :  // normal value
-     5;  // if filesize unlimited, make the batch pretty big
-  // For some reason, if compaction->max_compaction_bytes() is HIGH_VALUE gcc overflows and ends up with compactionblocksize set to 0.  We try to avoid that case
-  double maxcompbytes = (double)std::min(maxcompactionblocksize,compaction_max_compaction_bytes);
-  compactionblocksize = std::min(maxcompactionblocksize,(size_t)(compactionblocksizefudge * maxcompbytes * (1 + sstsizemult)));
+  // Calculate the total size of keys+values that we will allow in a single compaction block.
+  double maxcompbytes;  // max size of compaction block
+  if(compaction_inputs_size){  // if compaction...
+    // This is enough to hold all the SSTs in max_compaction_bytes, plus 1 VLog file per each of those SSTs.  This is high for non-L0 compactions, which
+    // need only enough storage for references that are being copied; but the limit is needed mainly for initial manual compaction of the whole database, which comes from L0 and has to have all the (compressed) data.
+    // We will fill up to 2 compaction blocks before we start writing VLogs and SSTs
+    // File size of -1 means 'unlimited', and we use a guess.
+    double sstsizemult = compaction_mutable_cf_options->vlogfile_max_size[outputringno]>0 && compaction_mutable_cf_options->max_file_size[compaction_output_level]>0 ?
+       (double)compaction_mutable_cf_options->vlogfile_max_size[outputringno] / (double)compaction_mutable_cf_options->max_file_size[compaction_output_level] :  // normal value
+       5;  // if filesize unlimited, make the batch pretty big
+    // For some reason, if compaction->max_compaction_bytes() is HIGH_VALUE gcc overflows and ends up with compactionblocksize set to 0.  We try to avoid that case
+    maxcompbytes = (double)std::min(maxcompactionblocksize,compaction_max_compaction_bytes);  // size allowed for one compaction
+    maxcompbytes = compactionblocksizefudge * maxcompbytes * (1 + sstsizemult);  // expanded to make multiple blocks very unlikely
+  }else{
+    // for Flush, we just want to be big enough to hold the write buffers
+    maxcompbytes = compactionblocksizefudge * (double)compaction_writebuffersize;  // perhaps should multiply by min_write_buffer_number_to_merge, but how to access it?
+  }
+  // apply the size limits to the blocksize
+  compactionblocksize = std::min(maxcompactionblocksize,(size_t)maxcompbytes);
   // If something was specified funny, make sure the compaction block is big enough to allow progress
   compactionblocksize = std::max(mincompactionblocksize,compactionblocksize);
 

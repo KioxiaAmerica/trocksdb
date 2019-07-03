@@ -1,7 +1,3 @@
-// changes needed in main Rocks code:
-// FileMetaData needs a unique ID number for each SST in the system.  Could be unique per column family if that's easier
-// Manifest needs smallest file# referenced by the SST
-
 //  Copyright (c) 2017-present, Toshiba Memory America, Inc.  All rights reserved.
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
@@ -263,6 +259,7 @@ private:
   uint64_t compaction_max_output_file_size;
   const std::vector<FileMetaData*> *compaction_grandparents;
   const InternalKeyComparator *compaction_comparator;
+  uint64_t compaction_writebuffersize;  // for flush, expected size of flushed write buffers
 // obsolete   const Compaction *compaction_;  // the current compaction info
 
   // values set for all compaction blocks and used in ReadAndResolveInputBlock
