@@ -501,14 +501,14 @@ set(SOURCES
         db/convenience.cc
         db/db_filesnapshot.cc
         db/db_impl.cc
-        db/db_impl_write.cc
         db/db_impl_compaction_flush.cc
-        db/db_impl_files.cc
-        db/db_impl_open.cc
         db/db_impl_debug.cc
         db/db_impl_experimental.cc
+        db/db_impl_files.cc
+        db/db_impl_open.cc
         db/db_impl_readonly.cc
         db/db_impl_secondary.cc
+        db/db_impl_write.cc
         db/db_info_dumper.cc
         db/db_iter.cc
         db/dbformat.cc
@@ -520,8 +520,8 @@ set(SOURCES
         db/flush_job.cc
         db/flush_scheduler.cc
         db/forward_iterator.cc
-        db/internal_stats.cc
         db/in_memory_stats_history.cc
+        db/internal_stats.cc
         db/logs_with_prep_tracker.cc
         db/log_reader.cc
         db/log_writer.cc
@@ -551,6 +551,8 @@ set(SOURCES
         env/env_chroot.cc
         env/env_encryption.cc
         env/env_hdfs.cc
+	env/env_posix.cc
+        env/io_posix.cc
         env/mock_env.cc
         memtable/alloc_tracker.cc
         memtable/hash_linklist_rep.cc
@@ -566,7 +568,8 @@ set(SOURCES
         monitoring/perf_level.cc
         monitoring/statistics.cc
         monitoring/thread_status_impl.cc
-        monitoring/thread_status_updater.cc
+	monitoring/thread_status_updater.cc
+        monitoring/thread_status_updater_debug.cc
         monitoring/thread_status_util.cc
         monitoring/thread_status_util_debug.cc
         options/cf_options.cc
@@ -575,6 +578,7 @@ set(SOURCES
         options/options_helper.cc
         options/options_parser.cc
         options/options_sanity_check.cc
+	port/port_posix.cc
         port/stack_trace.cc
         table/adaptive_table_factory.cc
         table/block.cc
@@ -610,15 +614,11 @@ set(SOURCES
         table/sst_file_writer.cc
         table/table_properties.cc
         table/two_level_iterator.cc
-        tools/db_bench_tool.cc
         tools/dump/db_dump_tool.cc
-        tools/ldb_cmd.cc
-        tools/ldb_tool.cc
-        tools/sst_dump_tool.cc
-        tools/trace_analyzer_tool.cc
         util/arena.cc
         util/auto_roll_logger.cc
         util/bloom.cc
+	util/build_version.cc
         util/coding.cc
         util/compaction_job_stats_impl.cc
         util/comparator.cc
@@ -645,7 +645,6 @@ set(SOURCES
         util/string_util.cc
         util/sync_point.cc
         util/sync_point_impl.cc
-        util/testutil.cc
         util/thread_local.cc
         util/threadpool_imp.cc
         util/trace_replay.cc
@@ -656,27 +655,27 @@ set(SOURCES
         utilities/blob_db/blob_db.cc
         utilities/blob_db/blob_db_impl.cc
         utilities/blob_db/blob_db_impl_filesnapshot.cc
-        utilities/blob_db/blob_dump_tool.cc
         utilities/blob_db/blob_file.cc
+        utilities/blob_db/blob_log_format.cc
         utilities/blob_db/blob_log_reader.cc
         utilities/blob_db/blob_log_writer.cc
-        utilities/blob_db/blob_log_format.cc
         utilities/cassandra/cassandra_compaction_filter.cc
         utilities/cassandra/format.cc
         utilities/cassandra/merge_operator.cc
         utilities/checkpoint/checkpoint_impl.cc
         utilities/compaction_filters/remove_emptyvalue_compactionfilter.cc
+	utilities/convenience/info_log_finder.cc
         utilities/debug.cc
         utilities/env_mirror.cc
         utilities/env_timed.cc
         utilities/leveldb_options/leveldb_options.cc
         utilities/memory/memory_util.cc
-        utilities/merge_operators/bytesxor.cc
         utilities/merge_operators/max.cc
         utilities/merge_operators/put.cc
         utilities/merge_operators/string_append/stringappend.cc
         utilities/merge_operators/string_append/stringappend2.cc
         utilities/merge_operators/uint64add.cc
+        utilities/merge_operators/bytesxor.cc
         utilities/option_change_migration/option_change_migration.cc
         utilities/options/options_util.cc
         utilities/persistent_cache/block_cache_tier.cc
@@ -687,8 +686,8 @@ set(SOURCES
         utilities/simulator_cache/sim_cache.cc
         utilities/table_properties_collectors/compact_on_deletion_collector.cc
         utilities/trace/file_trace_reader_writer.cc
-        utilities/transactions/optimistic_transaction_db_impl.cc
         utilities/transactions/optimistic_transaction.cc
+        utilities/transactions/optimistic_transaction_db_impl.cc
         utilities/transactions/pessimistic_transaction.cc
         utilities/transactions/pessimistic_transaction_db.cc
         utilities/transactions/snapshot_checker.cc
