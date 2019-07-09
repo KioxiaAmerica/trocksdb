@@ -1222,7 +1222,7 @@ DEFINE_int32(active_recycling_sst_maxct,15,"AR SST max: maximum number of SSTs t
 
 DEFINE_int32(active_recycling_vlogfile_freed_min,7,"AR VLogFile min # freed: minimum number of VLogFiles to free per AR pass");
 
-DEFINE_int64(active_recycling_size_trigger,{1LL << 30}, //1GB
+DEFINE_uint64(active_recycling_size_trigger,{1LL << 30}, //1GB
 		"Fragmentation Trigger : start Active Recycling if the VLog is at least this big, and the fragmentation trigger is met. Default: 1GB");
 
 DEFINE_uint64(vlogfile_max_size,{40 * (1LL << 20)}, //40MB
@@ -3587,7 +3587,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     options.active_recycling_sst_minct = std::vector<int32_t>({FLAGS_active_recycling_sst_minct});
     options.active_recycling_sst_maxct = std::vector<int32_t>({FLAGS_active_recycling_sst_maxct});
     options.active_recycling_vlogfile_freed_min = std::vector<int32_t>({FLAGS_active_recycling_vlogfile_freed_min});
-    options.active_recycling_size_trigger = std::vector<int64_t>({FLAGS_active_recycling_size_trigger});
+    options.active_recycling_size_trigger = std::vector<uint64_t>({FLAGS_active_recycling_size_trigger});
     options.vlogfile_max_size = std::vector<uint64_t>({FLAGS_vlogfile_max_size});
     options.compaction_picker_age_importance = std::vector<int32_t>({FLAGS_compaction_picker_age_importance});
     options.ring_compression_style = std::vector<CompressionType>({FLAGS_ring_compression_style_e});

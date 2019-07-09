@@ -472,7 +472,7 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
       }
     }
   }
-
+  /* //obsolete - no longer applies due to changing active_recycling_size_trigger from int64_t to uint64_t
   for (size_t i = 0; i < result.active_recycling_size_trigger.size();
     ++i) {
     if (result.active_recycling_size_trigger[i] < 0) {
@@ -481,7 +481,7 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
       result.active_recycling_size_trigger[i] = 1LL<<30;
     }
   }
-
+  */
   for (size_t i = 0; i < result.active_recycling_vlogfile_freed_min.size();
     ++i) {
     if (result.active_recycling_vlogfile_freed_min[i] < 0) {
@@ -1161,7 +1161,7 @@ void ColumnFamilyData::CheckForActiveRecycle(std::vector<CompactionInputFiles>& 
     // 'large enough' means bigger than the user-specified limit, and also with more files than the deadband, so that any files we ask to delete will
     // actually be deleted
     ;
-    if((vlog_info[i].size<compoptions.active_recycling_size_trigger[i] /* obsolete && compoptions.active_recycling_size_trigger[i]!=armagictestingvalue */)   // VLog not big enough; if size_trigger is the testing value, always allow AR
+    if((vlog_info[i].size<(int64_t)compoptions.active_recycling_size_trigger[i] /* obsolete && compoptions.active_recycling_size_trigger[i]!=armagictestingvalue */)   // VLog not big enough; if size_trigger is the testing value, always allow AR
        || !vlog_->rings()[i]->NewFilesAreDeletable(compoptions.active_recycling_size_trigger[i])    // not enough VLog files
        || vlog_info[i].fragfrac<=0.01*compoptions.fragmentation_active_recycling_trigger[i])continue;  // Not enough fragmentation  convert pct to frac
     // AR found - fetch the files to be recycled and return them

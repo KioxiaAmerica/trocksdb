@@ -292,6 +292,15 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   // If left empty, db_paths will be used.
   // Default: empty
   std::vector<DbPath> cf_paths;
+
+  // Compaction concurrent thread limiter for the column family.
+  // If non-nullptr, use given concurrent thread limiter to control
+  // the max outstanding compaction tasks. Limiter can be shared with
+  // multiple column families across db instances.
+  //
+  // Default: nullptr
+  std::shared_ptr<ConcurrentTaskLimiter> compaction_thread_limiter = nullptr;
+
 #ifdef INDIRECT_VALUE_SUPPORT  // define column-family options
 
 // include VLog options for the CF here
@@ -355,7 +364,7 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   std::vector<int32_t> active_recycling_vlogfile_freed_min = std::vector<int32_t>({7});
   
   //Fragmentation Trigger : start Active Recycling if the VLog is at least this big, and the fragmentation trigger is met
-  std::vector<int64_t> active_recycling_size_trigger = std::vector<int64_t>({1LL<<30});  // default 1GB
+  std::vector<uint64_t> active_recycling_size_trigger = std::vector<uint64_t>({1LL<<30});  // default 1GB
   
   //Max VLog Filesize : recommended limit in bytes for a Vlog file
   std::vector<uint64_t> vlogfile_max_size = std::vector<uint64_t>({40 * (1LL << 20)});  // 40MB
@@ -369,14 +378,6 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   //Ring Compression Style: indicates what kind of compression will be applied to the data
   std::vector<CompressionType> ring_compression_style = std::vector<CompressionType>({kZlibCompression});
 #endif
-
-  // Compaction concurrent thread limiter for the column family.
-  // If non-nullptr, use given concurrent thread limiter to control
-  // the max outstanding compaction tasks. Limiter can be shared with
-  // multiple column families across db instances.
-  //
-  // Default: nullptr
-  std::shared_ptr<ConcurrentTaskLimiter> compaction_thread_limiter = nullptr;
 
   // Create ColumnFamilyOptions with default values for all fields
   ColumnFamilyOptions();

@@ -608,7 +608,6 @@ TEST_F(DBTest, ReadFromPersistedTier) {
         DestroyAndReopen(options);
       }
     }
-//} while (ChangeOptions(kSkipHashCuckoo));
   } while (ChangeOptions());
 }
 
@@ -778,8 +777,7 @@ TEST_F(DBTest, GetFromImmutableLayer) {
     ASSERT_EQ("NOT_FOUND", Get(0, "foo"));
     // Release sync calls
     env_->delay_sstable_sync_.store(false, std::memory_order_release);
-  } while (ChangeOptions(
-          ));
+  } while (ChangeOptions());
 }
 
 
