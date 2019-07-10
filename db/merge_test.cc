@@ -290,10 +290,8 @@ void testCounters(Counters& counters, DB* db, bool test_compaction) {
 
   if (test_compaction) {
     db->Flush(o);
-    assert(counters.assert_get("a")== 3);
 
     db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
-    assert(counters.assert_get("a")== 3);
 
     dumpDb(db);
 
@@ -406,10 +404,9 @@ void testSingleBatchSuccessiveMerge(DB* db, size_t max_num_merges,
 void runTest(const std::string& dbname, const bool use_ttl = false) {
   size_t num_vlogs = 0;
 #ifdef INDIRECT_VALUE_SUPPORT
-  for(num_vlogs = 0; num_vlogs<2;num_vlogs++){
-#else
-  {
+  for(num_vlogs = 0; num_vlogs<2;num_vlogs++)
 #endif
+  {
   {
     auto db = OpenDb(dbname, use_ttl,0,num_vlogs);
 
@@ -464,12 +461,9 @@ void runTest(const std::string& dbname, const bool use_ttl = false) {
       counters.add("test-key", 1);
       db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
     }
-
-    DB* reopen_db;
-    ASSERT_OK(DB::Open(Options(), dbname, &reopen_db));
+    auto reopen_db = OpenDb(dbname,false,0,num_vlogs);
     std::string value;
     ASSERT_TRUE(!(reopen_db->Get(ReadOptions(), "test-key", &value).ok()));
-    delete reopen_db;
     DestroyDB(dbname, Options());
   }
 
@@ -508,7 +502,7 @@ int main(int argc, char** argv) {
   rocksdb::use_compression = false;
   if (argc > 1) {
     rocksdb::use_compression = true;
-}
+  }
 
   rocksdb::port::InstallStackTraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
