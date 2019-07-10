@@ -376,29 +376,32 @@ Options DBTestBase::GetOptions(
       options.allow_concurrent_memtable_write = false;
       break;
 #ifdef INDIRECT_VALUE_SUPPORT
-      case kDirectIOInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
-        options.vlog_direct_IO = true;
+    case kDirectIOInd:
+      options.vlogring_activation_level=std::vector<int32_t>{0};
+      options.min_indirect_val_size[0]=0;
+      options.vlog_direct_IO = true;
+      // fall through to...
 #endif
-      case kDirectIO: {
-        options.use_direct_reads = true;
-        options.use_direct_io_for_flush_and_compaction = true;
-        options.compaction_readahead_size = 2 * 1024 * 1024;
-  #if !defined(OS_MACOSX) && !defined(OS_WIN) && !defined(OS_SOLARIS) && \
+    case kDirectIO: {
+      options.use_direct_reads = true;
+      options.use_direct_io_for_flush_and_compaction = true;
+      options.compaction_readahead_size = 2 * 1024 * 1024;
+#if !defined(OS_MACOSX) && !defined(OS_WIN) && !defined(OS_SOLARIS) && \
       !defined(OS_AIX) && !defined(OS_OPENBSD)
-        rocksdb::SyncPoint::GetInstance()->SetCallBack(
+      rocksdb::SyncPoint::GetInstance()->SetCallBack(
             "NewWritableFile:O_DIRECT", [&](void* arg) {
               int* val = static_cast<int*>(arg);
               *val &= ~O_DIRECT;
             });
-        rocksdb::SyncPoint::GetInstance()->SetCallBack(
+      rocksdb::SyncPoint::GetInstance()->SetCallBack(
             "NewRandomAccessFile:O_DIRECT", [&](void* arg) {
               int* val = static_cast<int*>(arg);
               *val &= ~O_DIRECT;
             });
-        rocksdb::SyncPoint::GetInstance()->EnableProcessing();
-  #endif
-        break;
-      }
+      rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+#endif
+      break;
+    }
 #endif  // ROCKSDB_LITE
 #ifdef INDIRECT_VALUE_SUPPORT
     case kMergePutInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
