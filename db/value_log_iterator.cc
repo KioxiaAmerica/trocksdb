@@ -212,9 +212,6 @@ printf("\n");
   compactionblocksize = std::min(maxcompactionblocksize,(size_t)maxcompbytes);
   // If something was specified funny, make sure the compaction block is big enough to allow progress
   compactionblocksize = std::max(mincompactionblocksize,compactionblocksize);
-ROCKS_LOG_INFO(current_vlog->immdbopts_->info_log,
-  "JOB [%d] IndirectIterator: compactionblocksize=%" PRIu64 " compaction_inputs_size=%" PRIu64 "maxcompbytes=%lf, compaction_writebuffersize=%lu",
-  job_id_,compactionblocksize,compaction_inputs_size,maxcompbytes,compaction_writebuffersize);  // scafdebug
 
   // Get the length in bytes of the smallest value that we will make indirect for the output level we are writing into
   minindirectlen = (size_t)compaction_mutable_cf_options->min_indirect_val_size[outputringno];

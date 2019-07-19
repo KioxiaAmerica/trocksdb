@@ -1304,9 +1304,6 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
   value_iter->getedit(sub_compact->vlog_additions, 
     sub_compact->compaction_job_stats.vlog_bytes_written_comp, sub_compact->compaction_job_stats.vlog_bytes_written_raw, sub_compact->compaction_job_stats.vlog_bytes_remapped,
     sub_compact->compaction_job_stats.vlog_files_created);
-      ROCKS_LOG_INFO(cfd->ioptions()->info_log,
-        "subcompaction: compaction_job_stats.vlog_bytes_written_comp=%ld",
-        sub_compact->compaction_job_stats.vlog_bytes_written_comp);  // scafdebug
 #if DEBLEVEL&0x2000
 if(sub_compact->compaction->compaction_reason() == CompactionReason::kActiveRecycling)
   printf("Active Recycling finished kv processing\n");
@@ -2009,9 +2006,9 @@ void CompactionJob::UpdateCompactionStats() {
     }
   }
 #ifdef INDIRECT_VALUE_SUPPORT
-      ROCKS_LOG_INFO(db_options_.info_log,
-        "compaction: compaction_stats_.vlog_bytes_written_comp=%ld",
-        compaction_stats_.vlog_bytes_written_comp);  // scafdebug
+// obsolete       ROCKS_LOG_INFO(db_options_.info_log,
+// obsolete         "compaction: compaction_stats_.vlog_bytes_written_comp=%ld",
+// obsolete         compaction_stats_.vlog_bytes_written_comp);  // scafdebug
 #endif
 
 }
