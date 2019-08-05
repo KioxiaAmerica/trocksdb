@@ -179,7 +179,7 @@ ColumnFamilyOptions BuildColumnFamilyOptions(
   cf_opts.max_bytes_for_level_multiplier =
       mutable_cf_options.max_bytes_for_level_multiplier;
   cf_opts.ttl = mutable_cf_options.ttl;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   cf_opts.allow_trivial_move =
       mutable_cf_options.allow_trivial_move;
   cf_opts.vlog_direct_IO =
@@ -610,14 +610,14 @@ bool ParseOptionHelper(char* opt_address, const OptionType& opt_type,
       return ParseEnum<InfoLogLevel>(
           info_log_level_string_map, value,
           reinterpret_cast<InfoLogLevel*>(opt_address));
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case OptionType::kVectorInt32:
       *reinterpret_cast<std::vector<int32_t>*>(opt_address) = ParseVectorInt32(value);
       break;
     case OptionType::kVectorInt64:
       *reinterpret_cast<std::vector<uint64_t>*>(opt_address) = ParseVectorInt64(value);
       break;
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
     case OptionType::kCompactionOptionsFIFO: {
       if (!FIFOCompactionOptionsSpecialCase(
               value, reinterpret_cast<CompactionOptionsFIFO*>(opt_address))) {
@@ -820,7 +820,7 @@ bool SerializeSingleOptionHelper(const char* opt_address,
       return SerializeEnum<InfoLogLevel>(
           info_log_level_string_map,
           *reinterpret_cast<const InfoLogLevel*>(opt_address), value);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case OptionType::kVectorInt32:
       return SerializeVectorInt32(
           *(reinterpret_cast<const std::vector<int32_t>*>(opt_address)), value);
@@ -829,7 +829,7 @@ bool SerializeSingleOptionHelper(const char* opt_address,
       return SerializeVectorInt64(
           *(reinterpret_cast<const std::vector<uint64_t>*>(opt_address)), value);
       break;
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
     case OptionType::kCompactionOptionsFIFO:
       return SerializeStruct<CompactionOptionsFIFO>(
           *reinterpret_cast<const CompactionOptionsFIFO*>(opt_address), value,
@@ -1837,7 +1837,7 @@ std::unordered_map<std::string, OptionTypeInfo>
          {offset_of(&ColumnFamilyOptions::disable_auto_compactions),
           OptionType::kBoolean, OptionVerificationType::kNormal, true,
           offsetof(struct MutableCFOptions, disable_auto_compactions)}},
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
         {"allow_trivial_move",
          {offset_of(&ColumnFamilyOptions::allow_trivial_move),
           OptionType::kBoolean, OptionVerificationType::kNormal, true,

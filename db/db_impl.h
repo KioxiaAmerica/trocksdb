@@ -735,7 +735,7 @@ class DBImpl : public DB {
   static Status CreateAndNewDirectory(Env* env, const std::string& dirname,
                                       std::unique_ptr<Directory>* directory);
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   Status OpenVLogs(const DBOptions& db_options);  // Called after versions have been initialized, to create and populate VLogs
 #endif
 

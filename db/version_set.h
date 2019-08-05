@@ -44,7 +44,7 @@
 #include "options/db_options.h"
 #include "port/port.h"
 #include "rocksdb/env.h"
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #include <math.h>
 #include "db/value_log.h"
 #endif
@@ -100,7 +100,7 @@ class VersionStorageInfo {
                      CompactionStyle compaction_style,
                      VersionStorageInfo* src_vstorage,
                      bool _force_consistency_checks
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                      ,ColumnFamilyData* cfd   // the goods on the column family this Version belongs to
 #endif
   );
@@ -112,7 +112,7 @@ class VersionStorageInfo {
 
   void SetFinalized();
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   ColumnFamilyData* GetCfd() { return cfd_; }
 
   // Return the low file# and range for the ring at this level.  If no ring, return 0 for file#
@@ -603,7 +603,7 @@ class VersionStorageInfo {
   // If set to true, we will run consistency checks even if RocksDB
   // is compiled in release mode
   bool force_consistency_checks_;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   ColumnFamilyData *cfd_;  // we need access to the cfd summary info, and through it to the VLog
 #endif
 
@@ -924,7 +924,7 @@ class VersionSet {
     return pending_manifest_file_number_;
   }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   std::vector<ObsoleteFileInfo>& obsolete_files() { return obsolete_files_; }
 #endif
 

@@ -18,7 +18,7 @@
 #include "db/snapshot_checker.h"
 #include "options/cf_options.h"
 #include "rocksdb/compaction_filter.h"
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #include "db/value_log.h"
 // obsolete #include "db/value_log_iterator.h"
 #endif
@@ -57,7 +57,7 @@ class CompactionIterator {
     virtual bool preserve_deletes() const {
       return compaction_->immutable_cf_options()->preserve_deletes;
     }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     virtual CompactionReason compaction_reason() { return const_cast<Compaction*>(compaction_)->compaction_reason(); }
 #endif
 
@@ -115,7 +115,7 @@ class CompactionIterator {
   bool Valid() const { return valid_; }
   const Slice& user_key() const { return current_user_key_; }
   const CompactionIterationStats& iter_stats() const { return iter_stats_; }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   void RingBytesRefd(std::vector<int64_t>& refbytes);  // the total length of all indirect data referred to, in each ring
 #endif
 
@@ -153,7 +153,7 @@ class CompactionIterator {
 
   bool IsInEarliestSnapshot(SequenceNumber sequence);
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 // When indirect values are enabled, the compaction input must pass through a stage that counts all the indirect references in the input stream.  This is how
 // we account for size and frag of the VLogRings
   std::shared_ptr<VLogCountingIterator> input_;  // this iterator goes before input_ to count all the VLog references read during compaction
@@ -237,7 +237,7 @@ class CompactionIterator {
   // Used to avoid purging uncommitted values. The application can specify
   // uncommitted values by providing a SnapshotChecker object.
   bool current_key_committed_;
-// obsolete #ifdef INDIRECT_VALUE_SUPPORT
+// obsolete #ifndef NO_INDIRECT_VALUE
 // obsolete   std::vector<int64_t> ring_bytes_refd_;  // for each ring, the total number of bytes referred to in the ring.  This represents all the indirect data going into compaction.  Anything that is not passed through becomes fragmentation
 // obsolete   void CountIndirectRefs(ValueType keytype, Slice& value);
 // obsolete #endif

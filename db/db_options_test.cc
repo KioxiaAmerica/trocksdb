@@ -130,12 +130,12 @@ TEST_F(DBOptionsTest, SetBytesPerSync) {
   options.disable_auto_compactions = true;
   options.compression = kNoCompression;
   options.env = env_;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   Reopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
   int counter = 0;
@@ -188,7 +188,7 @@ TEST_F(DBOptionsTest, SetWalBytesPerSync) {
   options.disable_auto_compactions = true;
   options.compression = kNoCompression;
   options.env = env_;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   Reopen(options);
@@ -302,7 +302,7 @@ TEST_F(DBOptionsTest, EnableAutoCompactionAndTriggerStall) {
           std::numeric_limits<uint64_t>::max();
       options.env = env_;
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       options.allow_trivial_move=true;
 #endif
       DestroyAndReopen(options);
@@ -396,7 +396,7 @@ TEST_F(DBOptionsTest, SetOptionsMayTriggerCompaction) {
   options.create_if_missing = true;
   options.level0_file_num_compaction_trigger = 1000;
   options.env = env_;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   Reopen(options);

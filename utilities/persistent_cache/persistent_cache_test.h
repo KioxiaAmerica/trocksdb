@@ -250,7 +250,7 @@ class PersistentCacheDBTest : public DBTestBase {
         {"default", "pikachu"},
         std::vector<Options>({no_block_cache_opts, options}));
     values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 

@@ -76,7 +76,7 @@ enum class LevelStatType {
   AVG_SEC,
   KEY_IN,
   KEY_DROP,
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   W_VLOG_GB,   // bytes written to VLog files
   W_VLOGUNCOMP_GB,  // uncompressed bytes presented for writing to VLog files
   W_VLOGREMAP_GB,  // bytes that were copied from the tail of the VLog to the head
@@ -85,7 +85,7 @@ enum class LevelStatType {
   TOTAL  // total number of types
 };
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 enum class RingStatType {
   INVALID = 0,
   NUM_FILES,
@@ -111,7 +111,7 @@ enum class VLogStatType {
   TOTAL  // total number of types
 };
 
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
 struct LevelStat {
   // This what will be L?.property_name in the flat map returned to the user
@@ -123,9 +123,9 @@ struct LevelStat {
 class InternalStats {
  public:
   static const std::map<LevelStatType, LevelStat> compaction_level_stats;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   static const std::map<RingStatType, LevelStat> compaction_ring_stats;
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
   enum InternalCFStatsType {
     L0_FILE_COUNT_LIMIT_SLOWDOWNS,
@@ -204,7 +204,7 @@ class InternalStats {
     // (num input entries - num output entires) for compaction  levels N and N+1
     uint64_t num_dropped_records;
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // number of bytes written to VLog after compression
     uint64_t vlog_bytes_written_comp;
     // number of bytes written to VLog before compression
@@ -233,7 +233,7 @@ class InternalStats {
           num_output_files(0),
           num_input_records(0),
           num_dropped_records(0),
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           vlog_bytes_written_comp(0),
           vlog_bytes_written_raw(0),
           vlog_bytes_remapped(0),
@@ -259,7 +259,7 @@ class InternalStats {
           num_output_files(0),
           num_input_records(0),
           num_dropped_records(0),
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           vlog_bytes_written_comp(0),
           vlog_bytes_written_raw(0),
           vlog_bytes_remapped(0),
@@ -291,7 +291,7 @@ class InternalStats {
           num_output_files(c.num_output_files),
           num_input_records(c.num_input_records),
           num_dropped_records(c.num_dropped_records),
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           vlog_bytes_written_comp(c.vlog_bytes_written_comp),
           vlog_bytes_written_raw(c.vlog_bytes_written_raw),
           vlog_bytes_remapped(c.vlog_bytes_remapped),
@@ -317,7 +317,7 @@ class InternalStats {
       this->num_output_files = 0;
       this->num_input_records = 0;
       this->num_dropped_records = 0;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       this->vlog_bytes_written_comp = 0;
       this->vlog_bytes_written_raw = 0;
       this->vlog_bytes_remapped = 0;
@@ -344,7 +344,7 @@ class InternalStats {
       this->num_output_files += c.num_output_files;
       this->num_input_records += c.num_input_records;
       this->num_dropped_records += c.num_dropped_records;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       this->vlog_bytes_written_comp += c.vlog_bytes_written_comp;
       this->vlog_bytes_written_raw += c.vlog_bytes_written_raw;
       this->vlog_bytes_remapped += c.vlog_bytes_remapped;
@@ -371,7 +371,7 @@ class InternalStats {
       this->num_output_files -= c.num_output_files;
       this->num_input_records -= c.num_input_records;
       this->num_dropped_records -= c.num_dropped_records;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       this->vlog_bytes_written_comp -= c.vlog_bytes_written_comp;
       this->vlog_bytes_written_raw -= c.vlog_bytes_written_raw;
       this->vlog_bytes_remapped -= c.vlog_bytes_remapped;
@@ -470,11 +470,11 @@ class InternalStats {
   void DumpCFMapStats(
       std::map<int, std::map<LevelStatType, double>>* level_stats,
       CompactionStats* compaction_stats_sum);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   void DumpCFMapStatsRing(
       std::map<int, std::map<RingStatType, double>>* level_stats,
       std::map<VLogStatType, double> *vlog_stats);
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
   void DumpCFMapStatsByPriority(
       std::map<int, std::map<LevelStatType, double>>* priorities_stats);
   void DumpCFMapStatsIOStalls(std::map<std::string, std::string>* cf_stats);
@@ -587,7 +587,7 @@ class InternalStats {
   bool HandleNumFilesAtLevel(std::string* value, Slice suffix);
   bool HandleCompressionRatioAtLevelPrefix(std::string* value, Slice suffix);
   bool HandleLevelStats(std::string* value, Slice suffix);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   bool HandleVLogRingStats(std::string* value, Slice suffix);
 #endif
   bool HandleStats(std::string* value, Slice suffix);
@@ -712,7 +712,7 @@ class InternalStats {
     int num_output_files;
     uint64_t num_input_records;
     uint64_t num_dropped_records;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // number of bytes written to VLog after compression
     uint64_t vlog_bytes_written_comp;
     // number of bytes written to VLog before compression

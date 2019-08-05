@@ -297,7 +297,7 @@ Status FlushJob::WriteLevel0Table() {
   const uint64_t start_micros = db_options_.env->NowMicros();
   const uint64_t start_cpu_micros = db_options_.env->NowCPUNanos() / 1000;
   Status s;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   VLogEditStats vlog_flush_info;  // this communicates edit info and stats back from the flush
 #endif
   {
@@ -383,7 +383,7 @@ Status FlushJob::WriteLevel0Table() {
           TableFileCreationReason::kFlush, event_logger_, job_context_->job_id,
           Env::IO_HIGH, &table_properties_, 0 /* level */, current_time,
           oldest_key_time, write_hint
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           ,cfd_ /* column family */
           ,&vlog_flush_info
 #endif
@@ -410,7 +410,7 @@ Status FlushJob::WriteLevel0Table() {
   // Note that if file_size is zero, the file has been deleted and
   // should not be added to the manifest.
   if (s.ok() && meta_.fd.GetFileSize() > 0) {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // vlog_flush_info contains info about the flush.  The list of files added goes into the edit; the rest go into the stats
 // obsolete     Coalesce(edit_->VLogAdditions(),vlog_flush_info.restart_info,true /* allow_delete */);
     Coalesce(mems_[0]->GetEdits()->VLogAdditions(),vlog_flush_info.restart_info,true /* allow_delete */);
@@ -425,7 +425,7 @@ Status FlushJob::WriteLevel0Table() {
                    meta_.fd.GetFileSize(), meta_.smallest, meta_.largest,
                    meta_.fd.smallest_seqno, meta_.fd.largest_seqno,
                    meta_.marked_for_compaction
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                   ,meta_.indirect_ref_0
                   ,meta_.avgparentfileno
 #endif
@@ -437,7 +437,7 @@ Status FlushJob::WriteLevel0Table() {
   stats.micros = db_options_.env->NowMicros() - start_micros;
   stats.cpu_micros = db_options_.env->NowCPUNanos() / 1000 - start_cpu_micros;
   stats.bytes_written = meta_.fd.GetFileSize();
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   stats.vlog_bytes_written_comp=vlog_flush_info.vlog_bytes_written_comp;  // Include info about VLog I/O
   stats.vlog_bytes_written_raw=vlog_flush_info.vlog_bytes_written_raw;
   stats.vlog_bytes_remapped=vlog_flush_info.vlog_bytes_remapped;

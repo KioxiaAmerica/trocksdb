@@ -5791,7 +5791,7 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   rocksdb::useindirect=0;
   int ret = RUN_ALL_TESTS();
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   if(ret==0){rocksdb::useindirect=1; ret = RUN_ALL_TESTS();}
 #endif
   return ret;

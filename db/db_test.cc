@@ -458,7 +458,7 @@ TEST_F(DBTest, LevelLimitReopen) {
   Options options = CurrentOptions();
   CreateAndReopenWithCF({"pikachu"}, options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -1423,7 +1423,7 @@ TEST_F(DBTest, ApproximateSizes) {
     DestroyAndReopen(options);
     CreateAndReopenWithCF({"pikachu"}, options);
     bool values_are_indirect = false;  // Set if we are using VLogging  We skip the vlogging tests but we do this anyway, for form
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -1480,7 +1480,7 @@ TEST_F(DBTest, ApproximateSizes_MixOfSmallAndLarge) {
     options.compression = kNoCompression;
     CreateAndReopenWithCF({"pikachu"}, options);
     bool values_are_indirect = false;  // Set if we are using VLogging.  We skip the vlogging tests but we do this anyway, for form
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
     static const int S1 = 10000;
@@ -1591,7 +1591,7 @@ TEST_F(DBTest, HiddenValuesAreRemoved) {
     Options options = CurrentOptions(options_override);
     CreateAndReopenWithCF({"pikachu"}, options);
     bool values_are_indirect = false;  // Set if we are using VLogging.  We skip the vlogging tests but we do this anyway, for form
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
     static const int S1 = 50000;
@@ -1610,7 +1610,7 @@ TEST_F(DBTest, HiddenValuesAreRemoved) {
     ASSERT_GT(NumTableFilesAtLevel(0, 1), 0);
 
     ASSERT_EQ(ValueInvInd(big,values_are_indirect), Get(1, KeyInvInd("foo",S1,values_are_indirect), snapshot));
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     ASSERT_TRUE(Between(Size("", "pastfoo", 1), S1*(values_are_indirect+1), (S1*(values_are_indirect+1))+10000));
 #else
     ASSERT_TRUE(Between(Size("", "pastfoo", 1), S1, S1+10000));
@@ -1625,7 +1625,7 @@ TEST_F(DBTest, HiddenValuesAreRemoved) {
     dbfull()->TEST_CompactRange(1, nullptr, &x, handles_[1]);
     ASSERT_EQ(AllEntriesFor(KeyInvInd("foo",S1,values_are_indirect), 1), "[ tiny ]");
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     ASSERT_TRUE(Between(Size("", "pastfoo", 1), S1*(values_are_indirect), (S1*(values_are_indirect))+1000));
 #else
     ASSERT_TRUE(Between(Size("", "pastfoo", 1), 0,1000));
@@ -1654,7 +1654,7 @@ TEST_F(DBTest, UnremovableSingleDelete) {
   do {
     Options options = CurrentOptions(options_override);
     options.disable_auto_compactions = true;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     options.allow_trivial_move=true;
 #endif
     CreateAndReopenWithCF({"pikachu"}, options);
@@ -1993,7 +1993,7 @@ TEST_F(DBTest, SnapshotFiles) {
   do {
     Options options = CurrentOptions();
     options.write_buffer_size = 100000000;  // Large write buffer
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // This test creates a database and then copies it to a different directory.  For simplicity, the database is
     // confined to L0.  The code doesn't understand that it needs to copy the VLog as well as the SSTs, so we have to make
     // sure there aren't any VLog files for L0.  We take L0 out of the ring if rings are enabled.
@@ -2868,7 +2868,7 @@ TEST_P(DBTestRandomized, Randomized) {
     if (option_config_ == kHashSkipList || option_config_ == kHashLinkList ||
         option_config_ == kPlainTableFirstBytePrefix ||
         option_config_ == kBlockBasedTableWithWholeKeyHashIndex ||
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
         option_config_ == kBlockBasedTableWithWholeKeyHashIndexInd ||
         option_config_ == kBlockBasedTableWithPrefixHashIndexInd ||
 #endif
@@ -2911,7 +2911,7 @@ TEST_P(DBTestRandomized, Randomized) {
       // iterator will be invalid right when seeking a non-existent key, right
       // than return a key that is close to it.
       if (option_config_ != kBlockBasedTableWithWholeKeyHashIndex &&
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           option_config_ != kBlockBasedTableWithWholeKeyHashIndexInd &&
           option_config_ != kBlockBasedTableWithPrefixHashIndexInd &&
 #endif
@@ -3051,12 +3051,12 @@ TEST_F(DBTest, FIFOCompactionTestWithCompaction) {
   options.compression = kNoCompression;
   options.create_if_missing = true;
   options = CurrentOptions(options);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   DestroyAndReopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -3100,7 +3100,7 @@ TEST_F(DBTest, FIFOCompactionStyleWithCompactionAndDelete) {
   options.compression = kNoCompression;
   options.create_if_missing = true;
   options = CurrentOptions(options);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   DestroyAndReopen(options);
@@ -3186,12 +3186,12 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     options.compaction_options_fifo.allow_compaction = false;
     options.ttl = 1 * 60 * 60 ;  // 1 hour
     options = CurrentOptions(options);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     options.allow_trivial_move=true;
 #endif
     DestroyAndReopen(options);
     bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -3228,12 +3228,12 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     options.compaction_options_fifo.allow_compaction = false;
     options.ttl = 1 * 60 * 60;  // 1 hour
     options = CurrentOptions(options);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     options.allow_trivial_move=true;
 #endif
     DestroyAndReopen(options);
     bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -3277,12 +3277,12 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     options.compaction_options_fifo.allow_compaction = false;
     options.ttl =  1 * 60 * 60;  // 1 hour
     options = CurrentOptions(options);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     options.allow_trivial_move=true;
 #endif
     DestroyAndReopen(options);
     bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -3322,12 +3322,12 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     options.ttl = 1 * 60 * 60;  // 1 hour
     options.level0_file_num_compaction_trigger = 6;
     options = CurrentOptions(options);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     options.allow_trivial_move=true;
 #endif
     DestroyAndReopen(options);
     bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -3373,12 +3373,12 @@ TEST_F(DBTest, FIFOCompactionWithTTLTest) {
     options.ttl = 1 * 60 * 60;  // 1 hour
     options.level0_file_num_compaction_trigger = 6;
     options = CurrentOptions(options);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     options.allow_trivial_move=true;
 #endif
     DestroyAndReopen(options);
     bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -4308,7 +4308,7 @@ TEST_F(DBTest, DynamicLevelCompressionPerLevel) {
 
   DestroyAndReopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -4510,7 +4510,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
   env_->SetBackgroundThreads(1, Env::HIGH);
   DestroyAndReopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -5290,7 +5290,7 @@ TEST_F(DBTest, SuggestCompactRangeTest) {
 
   Reopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -5437,7 +5437,7 @@ TEST_F(DBTest, CompactRangeWithEmptyBottomLevel) {
   const int kNumL0Files = 2;
   int kNumL1Files = kNumL0Files;
   Options options = CurrentOptions();
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   if(options.vlogring_activation_level.size())kNumL1Files = 1;
   // The two files should be compacted into one, since they are small and especially since they share a single key.  I don't know why
   // the standard code gets two files - perhaps it's a trivial move? - but indirect values always compact.
@@ -5446,7 +5446,7 @@ TEST_F(DBTest, CompactRangeWithEmptyBottomLevel) {
   options.num_levels = kNumLevels;
   DestroyAndReopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -5637,7 +5637,7 @@ TEST_F(DBTest, FlushesInParallelWithCompactRange) {
 
     DestroyAndReopen(options);
     bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -5702,7 +5702,7 @@ TEST_F(DBTest, DelayedWriteRate) {
 
   CreateAndReopenWithCF({"pikachu"}, options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -5877,7 +5877,7 @@ TEST_F(DBTest, SoftLimit) {
 
   Reopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 

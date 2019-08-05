@@ -80,7 +80,7 @@ inline bool IsTypeMemorSST(ValueType t) {
   return (bool) ( (t<=kTypeIndirectMerge) &  // only if value is in the low range.  Use & to avoid premature branch
    ((
     (1LL<< kTypeDeletion) | (1LL << kTypeValue) | (1LL << kTypeMerge) | (1LL << kTypeSingleDeletion) | (1LL << kTypeBlobIndex)
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       | (1LL << kTypeIndirectValue)
       | (1LL << kTypeIndirectMerge)
 #endif
@@ -93,7 +93,7 @@ inline bool IsTypeValue(ValueType t) {
   return (bool) ( (t<=kTypeIndirectMerge) &
    ((
       (1LL << kTypeValue) | (1LL << kTypeBlobIndex)
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       | (1LL << kTypeIndirectValue)
 #endif
     )>>t
@@ -105,7 +105,7 @@ inline bool IsTypeSingleKey(ValueType t) {
   return (bool) ( (t<=kTypeIndirectMerge) &
    ((
       (1LL<< kTypeDeletion) | (1LL << kTypeValue)| (1LL << kTypeMerge) | (1LL << kTypeBlobIndex)
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       | (1LL << kTypeIndirectValue)
       | (1LL << kTypeIndirectMerge)
 #endif
@@ -127,7 +127,7 @@ inline bool IsTypeMemorSSTSingleValue(ValueType t) {
   return (bool) ( (t<=kTypeIndirectMerge) &
    ((
       (1LL << kTypeValue)| (1LL << kTypeMerge) | (1LL << kTypeBlobIndex)
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       | (1LL << kTypeIndirectValue)
       | (1LL << kTypeIndirectMerge)
 #endif
@@ -141,7 +141,7 @@ inline bool IsTypeValueNonBlob(ValueType t) {
   return (bool) ( (t<=kTypeIndirectMerge) &
    ((
       (1LL << kTypeValue)
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       | (1LL << kTypeIndirectValue)
 #endif
     )>>t
@@ -149,12 +149,12 @@ inline bool IsTypeValueNonBlob(ValueType t) {
 }
 
 // Checks for Merge or IndirectMerge
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 inline bool IsTypeMerge(ValueType t) {
   return (bool) ( (t<=kTypeIndirectMerge) &
    ((
       (1LL << kTypeMerge)
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       | (1LL << kTypeIndirectMerge)
 #endif
     )>>t
@@ -169,7 +169,7 @@ inline bool IsTypeValueOrMerge(ValueType t) {
   return (bool) ( (t<=kTypeIndirectMerge) &
    ((
       (1LL << kTypeValue) | (1LL << kTypeMerge)
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       | (1LL << kTypeIndirectValue)
       | (1LL << kTypeIndirectMerge)
 #endif
@@ -183,7 +183,7 @@ inline bool IsTypeAtomic(ValueType t) {
   return (bool) ( (t<=kTypeIndirectMerge) &
    ((
     (1LL<< kTypeDeletion) | (1LL << kTypeValue)
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       | (1LL << kTypeIndirectValue)
 #endif
     )>>t
@@ -205,7 +205,7 @@ inline bool IsTypeExtended(ValueType t) {
   return (bool) ( (t<=kTypeIndirectMerge) &
    ((
     (1LL<< kTypeDeletion) | (1LL << kTypeValue) | (1LL << kTypeMerge) | (1LL << kTypeSingleDeletion) | (1LL << kTypeRangeDeletion) | (1LL << kTypeBlobIndex)
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       | (1LL << kTypeIndirectValue)
       | (1LL << kTypeIndirectMerge)
 #endif
@@ -222,7 +222,7 @@ inline bool IsTypeIngestible(ValueType t) {
             ));
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 // Checks for any direct type (i. e. Value or Merge)
 inline bool IsTypeDirect(ValueType t) {
     return (bool)((t <= kTypeIndirectMerge) &  // only if value is in the low range.  Use & to avoid premature branch
@@ -246,7 +246,7 @@ inline bool IsTypeNotOpaqueForSeek(ValueType t) {
   return (bool) ( (t<=kTypeIndirectMerge) &
    ((
     (1LL<< kTypeDeletion) | (1LL << kTypeValue) | (1LL << kTypeSingleDeletion) | (1LL << kTypeBlobIndex)
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       | (1LL << kTypeIndirectValue)
 #endif
     )>>t

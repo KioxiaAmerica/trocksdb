@@ -73,7 +73,7 @@ class CompactionPickerTest : public testing::Test {
     options_.num_levels = num_levels;
     vstorage_.reset(new VersionStorageInfo(&icmp_, ucmp_, options_.num_levels,
                                            style, nullptr, false
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     , nullptr  // needs to be &c_f_d for AR compactions
 #endif
     ));
@@ -188,7 +188,7 @@ TEST_F(CompactionPickerTest, Level0Trigger2) {
   ASSERT_EQ(2U, compaction->input(0, 0)->fd.GetNumber());  // last file is chosen first
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 // These tests check for ascending-key support, which could well be enabled even without value logging
 // Level 0 picking, with 2 nonoverlapping files; ignore file length
 TEST_F(CompactionPickerTest, Level0Trigger3) {
@@ -1112,7 +1112,7 @@ TEST_F(CompactionPickerTest, NotScheduleL1IfL0WithHigherPri2) {
   NewVersionStorage(6, kCompactionStyleLevel);
   mutable_cf_options_.level0_file_num_compaction_trigger = 2;
   mutable_cf_options_.max_bytes_for_level_base = 900000000U;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   mutable_cf_options_.allow_trivial_move=true;
 #endif
 

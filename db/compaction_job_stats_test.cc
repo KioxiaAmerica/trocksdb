@@ -461,7 +461,7 @@ class CompactionJobStatsChecker : public EventListener {
 
     ASSERT_EQ(current_stats.num_output_records,
         stats.num_output_records);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // we allow files to get a little bigger than the usual compaction methods as we try to avoid runts and keep sizes equal
     ASSERT_GE(current_stats.num_output_files,
         stats.num_output_files-1);
@@ -670,7 +670,7 @@ TEST_P(CompactionJobStatsTest, CompactionJobStatsTest) {
   options.bytes_per_sync = 512 * 1024;
 
   options.report_bg_io_stats = true;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.min_indirect_val_size = std::vector<uint64_t>({1LL<<40});   // because this file writes long values with varying compression, the best we can do is turn off indirects
 #endif
   for (int test = 0; test < 2; ++test) {
@@ -891,7 +891,7 @@ TEST_P(CompactionJobStatsTest, DeletionStatsTest) {
   options.compression = kNoCompression;
   options.max_bytes_for_level_multiplier = 2;
   options.max_subcompactions = max_subcompactions_;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.min_indirect_val_size = std::vector<uint64_t>({1LL<<40});   // because this file writes long values with varying compression, the best we can do is turn off indirects
 #endif
 
@@ -986,7 +986,7 @@ TEST_P(CompactionJobStatsTest, UniversalCompactionTest) {
   options.compaction_options_universal.size_ratio = 1;
   options.compaction_options_universal.max_size_amplification_percent = 1000;
   options.max_subcompactions = max_subcompactions_;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.min_indirect_val_size = std::vector<uint64_t>({1LL<<40});   // because this file writes long values with varying compression, the best we can do is turn off indirects
 #endif
 

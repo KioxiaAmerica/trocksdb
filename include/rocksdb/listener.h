@@ -79,7 +79,7 @@ enum class CompactionReason : int {
   kManualCompaction,
   // DB::SuggestCompactRange() marked files for compaction
   kFilesMarkedForCompaction,
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // Old VLog files need removal to allow deletions
   kActiveRecycling,
 #endif

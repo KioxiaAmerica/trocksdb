@@ -320,7 +320,7 @@ TEST_F(DBWALTest, RecoverWithTableHandle) {
       for (const auto& file : level) {
 /*
         if (kInfiniteMaxOpenFiles == option_config_
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
             || kInfiniteMaxOpenFilesInd == option_config_
 #endif
           ) {

@@ -317,7 +317,7 @@ void PersistentCacheDBTest::RunTest(
     options.write_buffer_size =
       static_cast<size_t>(64 * 1024 * kStressFactor);  // small write buffer
     options.statistics = rocksdb::CreateDBStatistics();
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     options.allow_trivial_move=true;
 #endif
     options = CurrentOptions(options);

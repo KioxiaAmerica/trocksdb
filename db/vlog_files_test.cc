@@ -21,7 +21,7 @@
 #include "utilities/merge_operators.h"
 #include "utilities/merge_operators/string_append/stringappend.h"
 #include "utilities/merge_operators/string_append/stringappend2.h"
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #include "db/value_log.h"
 #endif
 #include <regex>
@@ -77,7 +77,7 @@ class DBVLogTest : public DBTestBase {
 
     vstorage_.reset(new VersionStorageInfo(&icmp_, ucmp_, options_.num_levels,
                                            style, nullptr, false
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     , static_cast<ColumnFamilyHandleImpl*>(db_->DefaultColumnFamily())->cfd()  // needs to be &c_f_d for AR compactions
 #endif
     ));

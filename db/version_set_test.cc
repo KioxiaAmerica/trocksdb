@@ -114,7 +114,7 @@ class VersionStorageInfoTest : public testing::Test {
         ioptions_(options_),
         mutable_cf_options_(options_),
         vstorage_(&icmp_, ucmp_, 6, kCompactionStyleLevel, nullptr, false
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                                   , nullptr  // needs to be &c_f_d for AR compactions
 #endif
         ) {}
@@ -123,7 +123,7 @@ class VersionStorageInfoTest : public testing::Test {
     for (int i = 0; i < vstorage_.num_levels(); i++) {
       for (auto* f : vstorage_.LevelFiles(i)) {
         if (--f->refs == 0) {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           // The SST is about to be deleted.  Remove it from any VLog queues it is attached to.
           // We have to do this explicitly rather than in a destructor because FileMetaData blocks get copied & put on queues
           // with no regard for ownership.  Rather than try to enforce no-copy semantics everywhere we root out all the delete calls and put this there

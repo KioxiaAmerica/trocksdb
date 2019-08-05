@@ -356,7 +356,7 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
        sizeof(std::vector<DbPath>)},
       {offset_of(&ColumnFamilyOptions::compaction_thread_limiter),
        sizeof(std::shared_ptr<ConcurrentTaskLimiter>)},
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       {offset_of(&ColumnFamilyOptions::vlogring_activation_level),
        sizeof(std::vector<int32_t>)},
       {offset_of(&ColumnFamilyOptions::min_indirect_val_size),
@@ -483,7 +483,7 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
       "sample_for_compression=0;"
       "compaction_options_fifo={max_table_files_size=3;allow_"
       "compaction=false;};"
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       "allow_trivial_move=false;"
       "vlog_direct_IO=false;"
       "compaction_score_limit_L0=1000.0;"

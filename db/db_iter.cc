@@ -141,7 +141,7 @@ class DBIter final: public Iterator {
         range_del_agg_(&cf_options.internal_comparator, s),
         db_impl_(db_impl),
         cfd_(cfd),
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
         resolved_indirect_vals(std::vector<std::shared_ptr<std::string>>(16)),
 // obsolete         resolved_indirect_vals(std::vector<std::string>()),
 #endif
@@ -157,7 +157,7 @@ class DBIter final: public Iterator {
     if (iter_) {
       iter_->SetPinnedItersMgr(&pinned_iters_mgr_);
     }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     resolved_indirect_vals.reserve(16);  // init a capacity that will probably cover all needs
 #endif
   }
@@ -187,7 +187,7 @@ class DBIter final: public Iterator {
 
   // When we move the iter_, call here to init for the new key
   void NewKeyForIndirect() {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     indirect_state = iter_->Valid() ? (IsTypeIndirect(ExtractValueType(iter_->key()))?kISResolveNeeded:kISResolveNotNeeded) : kISNoKeySeen; 
       // we have a new key, so we must resolve it if it is indirect
 #endif
@@ -229,7 +229,7 @@ class DBIter final: public Iterator {
 
   // Call here to init when the user calls Next() or Prev() in this iterator, to get a new key/value
   void ClearIndirectList() {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     resolved_indirect_vals.clear();  // Since this starts a new merge, it's safe to forget previous values
     // DO NOT tamper with indirect_state: the next key may have been read already
 #endif
@@ -257,7 +257,7 @@ class DBIter final: public Iterator {
   // resolution now, or was resolved already earlier, or doesn't need resolution at all
   Slice ResolvedValue() const {  // const is a fraud, required by declaration of value()
     Slice val = (Slice) iter_->value();  // get the value corresponding to saved_key_
-#ifdef INDIRECT_VALUE_SUPPORT  // resolve the indirect value
+#ifndef NO_INDIRECT_VALUE  // resolve the indirect value
     assert(indirect_state!=kISNoKeySeen);
     if(indirect_state != kISResolveNotNeeded){
       // The key specifies an indirect type.  If we haven't resolved it already, do so now
@@ -455,7 +455,7 @@ class DBIter final: public Iterator {
   PinnedIteratorsManager pinned_iters_mgr_;
   DBImpl* db_impl_;
   ColumnFamilyData* cfd_;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 // State machine for translating indirects
 // When we first encounter a key, we note whether it needs resolving.  If so
 // the next call to value() will translate it.  Subsequent calls for the same key will
@@ -641,7 +641,7 @@ bool DBIter::FindNextUserEntryInternal(bool skipping, bool prefix_check) {
               PERF_COUNTER_ADD(internal_delete_skipped_count, 1);
             }
             break;
-#ifdef INDIRECT_VALUE_SUPPORT    // treat indirect value as value case
+#ifndef NO_INDIRECT_VALUE    // treat indirect value as value case
           case kTypeIndirectValue:
 #endif
           case kTypeValue:
@@ -693,7 +693,7 @@ bool DBIter::FindNextUserEntryInternal(bool skipping, bool prefix_check) {
               }
             }
             break;
-#ifdef INDIRECT_VALUE_SUPPORT    // treat indirect merge as merge case
+#ifndef NO_INDIRECT_VALUE    // treat indirect merge as merge case
           case kTypeIndirectMerge:
 #endif
           case kTypeMerge:
@@ -1065,7 +1065,7 @@ bool DBIter::FindValueForCurrentKey() {
 
     last_key_entry_type = ikey.type;
     switch (last_key_entry_type) {
-#ifdef INDIRECT_VALUE_SUPPORT    // treat indirect value as value case
+#ifndef NO_INDIRECT_VALUE    // treat indirect value as value case
       case kTypeIndirectValue:
 #endif
       case kTypeValue:
@@ -1087,7 +1087,7 @@ bool DBIter::FindValueForCurrentKey() {
         last_not_merge_type = last_key_entry_type;
         PERF_COUNTER_ADD(internal_delete_skipped_count, 1);
         break;
-#ifdef INDIRECT_VALUE_SUPPORT    // treat indirect merge as merge case
+#ifndef NO_INDIRECT_VALUE    // treat indirect merge as merge case
       case kTypeIndirectMerge:
 #endif
       case kTypeMerge:
@@ -1126,7 +1126,7 @@ bool DBIter::FindValueForCurrentKey() {
     case kTypeRangeDeletion:
       valid_ = false;
       return true;
-#ifdef INDIRECT_VALUE_SUPPORT    // treat indirect merge as merge case
+#ifndef NO_INDIRECT_VALUE    // treat indirect merge as merge case
     case kTypeIndirectMerge:
 #endif
     case kTypeMerge:
@@ -1156,7 +1156,7 @@ bool DBIter::FindValueForCurrentKey() {
             env_, &pinned_value_, true);
       }
       break;
-#ifdef INDIRECT_VALUE_SUPPORT    // treat indirect value as value case
+#ifndef NO_INDIRECT_VALUE    // treat indirect value as value case
     case kTypeIndirectValue:
 #endif
     case kTypeValue:

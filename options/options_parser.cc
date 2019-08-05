@@ -578,14 +578,14 @@ bool AreEqualOptions(
     case OptionType::kInfoLogLevel:
       return (*reinterpret_cast<const InfoLogLevel*>(offset1) ==
               *reinterpret_cast<const InfoLogLevel*>(offset2));
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case OptionType::kVectorInt32:
       return (*reinterpret_cast<const std::vector<int32_t>*>(offset1) ==
               *reinterpret_cast<const std::vector<int32_t>*>(offset2));
     case OptionType::kVectorInt64:
       return (*reinterpret_cast<const std::vector<uint64_t>*>(offset1) ==
               *reinterpret_cast<const std::vector<uint64_t>*>(offset2));
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
     case OptionType::kCompactionOptionsFIFO: {
       CompactionOptionsFIFO lhs =
           *reinterpret_cast<const CompactionOptionsFIFO*>(offset1);

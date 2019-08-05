@@ -19,7 +19,7 @@ class VersionEdit;
 struct FileMetaData;
 class InternalStats;
 class ColumnFamilyData;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 struct VLogRingRestartInfo;
 #endif
 
@@ -42,7 +42,7 @@ class VersionBuilder {
                            bool is_initial_load,
                            const SliceTransform* prefix_extractor);
   void MaybeAddFile(VersionStorageInfo* vstorage, int level, FileMetaData* f);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   std::vector<VLogRingRestartInfo> VLogAdditions();
 #endif
 

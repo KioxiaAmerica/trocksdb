@@ -22,7 +22,7 @@
 #include "util/stop_watch.h"
 #include "util/string_util.h"
 #include "util/sync_point.h"
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #include "db/value_log.h"
 #endif
 
@@ -134,7 +134,7 @@ std::string TableFileName(const std::vector<DbPath>& db_paths, uint64_t number,
   return MakeTableFileName(path, number);
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 // Return the name of the VLog file with the specified number
 // in the db named by "dbname".  The result will be prefixed with
 // "dbname".  cf_name is the name of the column family
@@ -367,7 +367,7 @@ bool ParseFileName(const std::string& fname, uint64_t* number,
       *type = kBlobFile;
     } else if (suffix == Slice(kTempFileNameSuffix)) {
       *type = kTempFile;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     } else if (rest.starts_with(kRocksDbVLogFileExt)) {
       *type = kVLogFile;
 #endif

@@ -12,7 +12,7 @@
 #include "rocksdb/status.h"
 #include "table/format.h"
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #include <memory>
 #include "db/value_log.h"
 #endif
@@ -110,7 +110,7 @@ class InternalIteratorBase : public Cleanable {
     return Status::NotSupported("");
   }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // The iterator remembers the VLog for the column family it is a part of
   void SetVlogForIteratorCF(std::shared_ptr<VLog> vlog) { iterator_vlog = vlog; }
   std::shared_ptr<VLog> GetVlogForIteratorCF() { return iterator_vlog; }
@@ -130,7 +130,7 @@ class InternalIteratorBase : public Cleanable {
   }
 
  private:
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // The iterator remembers the VLog for the column family it is a part of
   std::shared_ptr<VLog> iterator_vlog;
 #endif

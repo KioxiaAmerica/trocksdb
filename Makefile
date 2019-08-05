@@ -190,7 +190,7 @@ LIB_SOURCES += utilities/env_librados.cc
 LDFLAGS += -lrados
 endif
 
-ifdef INDIRECT_VALUE_SUPPORT
+ifndef NO_INDIRECT_VALUE
 LIB_SOURCES += db/value_log.cc
 LIB_SOURCES += db/value_log_iterator.cc
 endif
@@ -575,7 +575,7 @@ PARALLEL_TEST = \
 	write_prepared_transaction_test \
 	write_unprepared_transaction_test \
 
-ifdef INDIRECT_VALUE_SUPPORT
+ifndef NO_INDIRECT_VALUE
 TESTS += vlog_files_test \
 
 endif
@@ -587,8 +587,10 @@ endif
 #LOCK/CRASH test cases
 #[unit] \
 
-ifdef INDIRECT_VALUE_SUPPORT
+ifndef NO_INDIRECT_VALUE
 LOCKS= \
+	db_properties_test \
+	db_test \
 
 else
 LOCKS= \
@@ -1276,7 +1278,7 @@ external_sst_file_basic_test: db/external_sst_file_basic_test.o db/db_test_util.
 
 external_sst_file_test: db/external_sst_file_test.o db/db_test_util.o $(LIBOBJECTS) $(TESTHARNESS)
 	$(AM_LINK)
-ifdef INDIRECT_VALUE_SUPPORT
+ifndef NO_INDIRECT_VALUE
 	if [ `ulimit -n` -lt 500000 ]; then echo "ulimit is too low. Please run 'ulimit -S -n 500000' before running tests."; exit 1; fi
 endif
 
@@ -1942,7 +1944,7 @@ jdb_bench:
 
 commit_prereq: build_tools/rocksdb-lego-determinator \
                build_tools/precommit_checker.py
-	J=$(J) build_tools/precommit_checker.py unit asan tsan ubsan release
+	J=$(J) build_tools/precommit_checker.py unit asan ubsan release
 
 # ---------------------------------------------------------------------------
 #  	Platform-specific compilation

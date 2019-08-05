@@ -15,7 +15,7 @@
 namespace rocksdb {
 
 // Test in both normal and indirect configurations
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #define INDOPTIONSBGN do{
 #define INDOPTIONSEND(opts) }while(opts.vlogring_activation_level.push_back(0),opts.min_indirect_val_size[0]=0,opts.vlogring_activation_level.size()<2);
 #else
@@ -147,7 +147,7 @@ TEST_F(DBMergeOperatorTest, MergeErrorOnRead) {
   options.create_if_missing = true;
   options.merge_operator.reset(new TestPutOperator());
   options.env = env_;
-  DestroyAndReopen(options);  // Required for INDIRECT_VALUE_SUPPORT
+  DestroyAndReopen(options);  // Not required for NO_INDIRECT_VALUE
   ASSERT_OK(Merge("k1", "v1"));
   ASSERT_OK(Merge("k1", "corrupted"));
   std::string value;
@@ -163,7 +163,7 @@ TEST_F(DBMergeOperatorTest, MergeErrorOnWrite) {
   options.merge_operator.reset(new TestPutOperator());
   options.max_successive_merges = 3;
   options.env = env_;
-  DestroyAndReopen(options);  // Required for INDIRECT_VALUE_SUPPORT
+  DestroyAndReopen(options);  // Not required for NO_INDIRECT_VALUE
   ASSERT_OK(Merge("k1", "v1"));
   ASSERT_OK(Merge("k1", "v2"));
   // Will trigger a merge when hitting max_successive_merges and the merge
@@ -181,7 +181,7 @@ TEST_F(DBMergeOperatorTest, MergeErrorOnIteration) {
   options.merge_operator.reset(new TestPutOperator());
   options.env = env_;
 
-  DestroyAndReopen(options);  // Required for INDIRECT_VALUE_SUPPORT
+  DestroyAndReopen(options);  // Not required for NO_INDIRECT_VALUE
   ASSERT_OK(Merge("k1", "v1"));
   ASSERT_OK(Merge("k1", "corrupted"));
   ASSERT_OK(Put("k2", "v2"));
@@ -240,7 +240,7 @@ TEST_P(MergeOperatorPinningTest, OperandsMultiBlocks) {
   options.level0_slowdown_writes_trigger = (1 << 30);
   options.level0_stop_writes_trigger = (1 << 30);
   options.disable_auto_compactions = true;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   DestroyAndReopen(options);

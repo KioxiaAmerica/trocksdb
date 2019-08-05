@@ -9,7 +9,7 @@
 #include "port/likely.h"
 #include "rocksdb/listener.h"
 #include "table/internal_iterator.h"
-#ifdef INDIRECT_VALUE_SUPPORT  // create listener events for indirect types
+#ifndef NO_INDIRECT_VALUE  // create listener events for indirect types
 #include "db/value_log_iterator.h"
 #endif
 #include "util/sync_point.h"
@@ -62,7 +62,7 @@ CompactionIterator::CompactionIterator(
     const std::atomic<bool>* shutting_down,
     const SequenceNumber preserve_deletes_seqnum)
     :
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       input_(std::make_shared<VLogCountingIterator>(cmp, input)),
       originput_(input),
 #else
@@ -111,7 +111,7 @@ CompactionIterator::CompactionIterator(
     assert(snapshots_->at(i - 1) < snapshots_->at(i));
   }
 #endif
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   originput_
 #else
   input_
@@ -122,7 +122,7 @@ CompactionIterator::CompactionIterator(
 
 CompactionIterator::~CompactionIterator() {
   // input_ Iterator lifetime is longer than pinned_iters_mgr_ lifetime
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   originput_
 #else
   input_
@@ -139,7 +139,7 @@ void CompactionIterator::ResetRecordCounts() {
   iter_stats_.num_optimized_del_drop_obsolete = 0;
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   void CompactionIterator::RingBytesRefd(std::vector<int64_t>& refbytes) { refbytes=input_->RingBytesRefd(); }  // the total length of all indirect data referred to, in each ring.  Pass to the iterator that has it
 #endif
 
@@ -149,7 +149,7 @@ void CompactionIterator::SeekToFirst() {
 }
 
 void CompactionIterator::Next() {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // If this is an Active Recycling operation, the compaction iterator is simply going through the kvs in order, with no
   // comparisons.
   if(compaction_!=nullptr && compaction_->compaction_reason() == CompactionReason::kActiveRecycling){
@@ -224,7 +224,7 @@ void CompactionIterator::InvokeFilterIfNeeded(bool* need_skip,
     Slice& filter_key = IsTypeValueNonBlob(ikey_.type) ? ikey_.user_key : key_;
     {
       StopWatchNano timer(env_, report_detailed_time_);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       // By default we assume the compaction filter understands only direct values.  We must then convert any indirect reference to a direct one.
       // This could be slow, so if the user has told us by option that they understand indirects, we don't do it.  If the user doesn't
       // change the value we revert it to the original reference, to avoid unnecessary remapping
@@ -251,7 +251,7 @@ void CompactionIterator::InvokeFilterIfNeeded(bool* need_skip,
       filter = compaction_filter_->FilterV2(
           compaction_->level(), filter_key, value_type, value_into_filter,
           &compaction_filter_value_, compaction_filter_skip_until_.rep());
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       }
 #else
 #undef value_into_filter
@@ -278,7 +278,7 @@ void CompactionIterator::InvokeFilterIfNeeded(bool* need_skip,
       iter_stats_.num_record_drop_user++;
     } else if (filter == CompactionFilter::Decision::kChangeValue) {
       value_ = compaction_filter_value_;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       // The user has changed the value.  Whether it was indirect or not to begin with, it is direct now.  If it was indirect, change it (leave it if not; it might be a Blob)
       if(IsTypeIndirect(ikey_.type)){
         ikey_.type = kTypeValue;
@@ -296,7 +296,7 @@ void CompactionIterator::InvokeFilterIfNeeded(bool* need_skip,
 }
 
 void CompactionIterator::NextFromInput() {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // If this is an Active Recycling operation, the compaction iterator is simply going through the kvs in order, with no
   // comparisons..  We have to do the work here rather than in Next() because SeekToFirst() starts with a call to here to move to the first key
   if(compaction_!=nullptr && compaction_->compaction_reason() == CompactionReason::kActiveRecycling){
@@ -703,7 +703,7 @@ void CompactionIterator::NextFromInput() {
 }
 
 void CompactionIterator::PrepareOutput() {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // If this is an Active Recycling operation, the compaction iterator is simply going through the kvs in order, with no
   // comparisons.  We do nothing here
   if(compaction_!=nullptr && compaction_->compaction_reason() == CompactionReason::kActiveRecycling)return;

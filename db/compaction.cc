@@ -224,14 +224,14 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
                        bool _manual_compaction, double _score,
                        bool _deletion_compaction,
                        CompactionReason _compaction_reason
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                        ,size_t ringno    // for Active Recycling: ring number being recycled
                        ,VLogRingRefFileno lastfileno  // for Active Recycling: last filenumber in the recycled region
                        ,int start_level   // for Active Recycling: the smallest level that is referenced
 #endif
                        )
     : input_vstorage_(vstorage),
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       start_level_(start_level<0 ? _inputs[0].level : start_level),   // if defaulted, use the first level in the list
 #else
       start_level_(_inputs[0].level),
@@ -257,7 +257,7 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
       is_manual_compaction_(_manual_compaction),
       is_trivial_move_(false),
       compaction_reason_(_compaction_reason)
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       ,ringno_(ringno)   // for Active Recycling: ring number being recycled
       ,lastfileno_(lastfileno)  // for Active Recycling: last filenumber in the recycled region
 #endif
@@ -282,7 +282,7 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
   if(compaction_reason_ == CompactionReason::kActiveRecycling)printf("Starting AR compaction\n");
   else printf("Starting compaction number %d into level %d\n",compactionno,output_level_);
 #endif
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // if we are Active Recycling, we don't need LevelFilesBrief or boundary keys.  And, we make
   // no guarantee that the levels are in order.  So just  return before all that.
   if(compaction_reason_ == CompactionReason::kActiveRecycling)return;
@@ -343,7 +343,7 @@ bool Compaction::IsTrivialMove() const {
   // filter to be applied to that level, and thus cannot be a trivial move.
 
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // If we are building a VLog for this CF, we must avoid trivial moves.  Compaction is the place where values get written to the VLog,
   // and if we allow trivial moves we will end up with a full database with no VLogs.  We might have to revisit this for the case of
   // bulk-loading the database
@@ -461,7 +461,7 @@ const char* Compaction::InputLevelSummary(
   std::vector<CompactionInputFiles> *inputarea = const_cast<std::vector<CompactionInputFiles> *>(&inputs_);
   std::vector<CompactionInputFiles> totalsarea;  // used for reformatting AR files
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // For Active Recycling, the files are in key order, unrelated to level, with each file a single element of 'inputs_'.  Formatted in the normal way, this leads to long
   // descriptive strings which are hard to read and might even overflow the scratch buffer.  So for that case only, we convert the inputs_ to orthodox form
   if(compaction_reason_ == CompactionReason::kActiveRecycling) {
@@ -598,7 +598,7 @@ bool Compaction::IsOutputLevelEmpty() const {
 }
 
 bool Compaction::ShouldFormSubcompactions() const {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // If this is Active Recycling, don't split up the compaction so that all the outputs get written to a single file.  That reduces the number of references outstanding
   if(compaction_reason_ == CompactionReason::kActiveRecycling)return false;
 #endif

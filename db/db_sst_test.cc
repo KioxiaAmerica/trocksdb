@@ -136,7 +136,7 @@ TEST_F(DBSSTTest, DontDeleteMovedFile) {
       2;  // trigger compaction when we have 2 files
   DestroyAndReopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -188,7 +188,7 @@ TEST_F(DBSSTTest, DeleteObsoleteFilesPendingOutputs) {
 
   Reopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -874,7 +874,7 @@ TEST_F(DBSSTTest, OpenDBWithInfiniteMaxOpenFiles) {
     } else {
       options.max_file_opening_threads = 5;
     }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     options.allow_trivial_move=true;
 #endif
     options = CurrentOptions(options);
@@ -936,7 +936,7 @@ TEST_F(DBSSTTest, GetTotalSstFilesSize) {
   for (int i = 0; i < 5; i++) {
     for (int j = 0; j < 10; j++) {
       std::string val = "val_file_" + ToString(i);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       // for indirect values, make sure the data has the same length in all levels, by making the length the length of a reference
       if(options.vlogring_activation_level.size())val.resize(16,'*');
 #endif
@@ -1030,7 +1030,7 @@ TEST_F(DBSSTTest, GetTotalSstFilesSizeVersionsFilesShared) {
   Options options = CurrentOptions();
   options.disable_auto_compactions = true;
   options.compression = kNoCompression;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   DestroyAndReopen(options);

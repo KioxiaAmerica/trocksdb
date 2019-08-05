@@ -3506,7 +3506,7 @@ void rocksdb_options_set_min_level_to_compress(rocksdb_options_t* opt, int level
   }
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 void rocksdb_options_set_allow_trivial_move(rocksdb_options_t* opt, int allow) {
   opt->rep.allow_trivial_move = allow;
 }
@@ -3607,7 +3607,7 @@ void rocksdb_options_set_ring_compression_style(
     opt->rep.ring_compression_style[i] = (CompressionType)values[i];
   }
 }
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
 int rocksdb_livefiles_count(
   const rocksdb_livefiles_t* lf) {

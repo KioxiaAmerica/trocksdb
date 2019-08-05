@@ -528,7 +528,7 @@ class TableFactory {
   // Return is delete range supported
   virtual bool IsDeleteRangeSupported() const { return false; }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 // Some table types are incompatible with indirect values, for testing reasons rather than production.  In particular, the
 // Mock Table allows test code to access the table directly, bypassing Get().  The easiest way to accommodate this is
 // to turn off indirect values for such tables.

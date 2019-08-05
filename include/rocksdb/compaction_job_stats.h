@@ -51,7 +51,7 @@ struct CompactionJobStats {
   // the sum of the uncompressed input values in bytes.
   uint64_t total_input_raw_value_bytes;
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // number of bytes written to VLog after compression
   uint64_t vlog_bytes_written_comp;
   // number of bytes written to VLog before compression

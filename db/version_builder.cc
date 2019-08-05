@@ -93,7 +93,7 @@ class VersionBuilder::Rep {
   VersionStorageInfo* base_vstorage_;
   int num_levels_;
   LevelState* levels_;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // We accumulate all the deletions owing to compaction/copy (which deleted using FileMetaData rather than a file number)
   // here, to be applied in SaveTo
   std::vector<FileMetaData*> retiredfiles;
@@ -109,7 +109,7 @@ class VersionBuilder::Rep {
   bool has_invalid_levels_;
   FileComparator level_zero_cmp_;
   FileComparator level_nonzero_cmp_;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   friend void VersionBuilder::SaveTo(VersionStorageInfo*, ColumnFamilyData *);
 #endif
 
@@ -148,7 +148,7 @@ class VersionBuilder::Rep {
         table_cache_->ReleaseHandle(f->table_reader_handle);
         f->table_reader_handle = nullptr;
       }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       // The SST is about to be deleted.  Remove it from any VLog queues it is attached to.
       // We have to do this explicitly rather than in a destructor because FileMetaData blocks get copied & put on queues
       // with no regard for ownership.  Rather than try to enforce no-copy semantics everywhere we root out all the delete calls and put this there
@@ -314,7 +314,7 @@ printf(" %zd",number);
         }
       }
     }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // Move the files marked for deletion by compaction/copy (which were deleted with a pointer to the FileMetaData) to the deletion
     // list for this rep.  We will delete them during SaveTo, where we have access to the CF
     const std::vector<FileMetaData*>& retiring = edit->GetRetiringFiles();
@@ -556,16 +556,16 @@ bool VersionBuilder::CheckConsistencyForNumLevels() {
 
 void VersionBuilder::Apply(VersionEdit* edit) { rep_->Apply(edit); }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 std::vector<VLogRingRestartInfo> VersionBuilder::VLogAdditions() { return rep_->vlog_additions; }
 #endif
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 void VersionBuilder::SaveTo(VersionStorageInfo* vstorage, ColumnFamilyData *cfd) {
 #else
 void VersionBuilder::SaveTo(VersionStorageInfo* vstorage, ColumnFamilyData* /*cfd*/) {
 #endif
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // We are about to commit the added_files in rep_ to the new version vstorage.  This is a safe time
   // to enter their info into the Value Log.  We could come here either from initial recovery or from finishing a
   // compaction/flush.  SaveTo() is also called from DumpManifest to build a faux version for dumping, and in tests; in that case we

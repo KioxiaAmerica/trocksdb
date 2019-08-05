@@ -239,7 +239,7 @@ void GetExpectedTableProperties(
     const int kMergeOperandsPerTable, const int kRangeDeletionsPerTable,
     const int kTableCount, const int kBloomBitsPerKey, const size_t kBlockSize,
     const bool index_key_is_user_key, const bool value_delta_encoding
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     ,std::vector<int32_t> vringlevels
 #endif
   ) {
@@ -252,9 +252,9 @@ void GetExpectedTableProperties(
   const int kKeyCount = kPutCount + kDeletionCount + kMergeCount + kRangeDeletionCount;
   const int kAvgSuccessorSize = kKeySize / 5;
   int kEncodingSavePerKey = kKeySize / 4;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   if(vringlevels.size())kEncodingSavePerKey = std::min(2,kKeySize / 10);  // empirical.  Using random keys it's very unlikely to share bytes
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
   expected_tp->raw_key_size = kKeyCount * (kKeySize + 8);
   expected_tp->raw_value_size =
       (kPutCount + kMergeCount + kRangeDeletionCount) * kValueSize;
@@ -267,13 +267,13 @@ void GetExpectedTableProperties(
       kBlockSize;
   expected_tp->data_size =
       kTableCount * (kKeysPerTable * (kKeySize + 8 + kValueSize));
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   if(vringlevels.size())expected_tp->data_size =
       kTableCount * (kKeysPerTable * (1 + kKeySize + 8 + 1 + kValueSize));
   if(vringlevels.size())expected_tp->num_data_blocks =
       kTableCount *
       (1 + kKeysPerTable / (kBlockSize / (1 + kKeySize + 8 - kEncodingSavePerKey + 1 + kValueSize)));
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
   expected_tp->index_size =
       expected_tp->num_data_blocks *
       (kAvgSuccessorSize + (index_key_is_user_key ? 0 : 8) -
@@ -344,7 +344,7 @@ TEST_F(DBPropertiesTest, AggregatedTableProperties) {
     options.preserve_deletes = true;
     options.merge_operator.reset(new TestPutOperator());
     int kValueSize = 200;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     if(options.vlogring_activation_level.size())kValueSize = 16;
 #endif
 
@@ -394,7 +394,7 @@ TEST_F(DBPropertiesTest, AggregatedTableProperties) {
         kMergeOperandsPerTable, kRangeDeletionsPerTable, kTableCount,
         kBloomBitsPerKey, table_options.block_size, index_key_is_user_key,
         value_is_delta_encoded
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     ,options.vlogring_activation_level
 #endif
 );
@@ -538,7 +538,7 @@ TEST_F(DBPropertiesTest, AggregatedTablePropertiesAtLevel) {
   Options options = CurrentOptions();
   int kKeySize = 50;
   int kValueSize = 400;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   if(options.vlogring_activation_level.size())kKeySize = 80;
   if(options.vlogring_activation_level.size())kValueSize = 16;
 #endif
@@ -626,14 +626,14 @@ TEST_F(DBPropertiesTest, AggregatedTablePropertiesAtLevel) {
           kMergeOperandsPerTable, kRangeDeletionsPerTable, table,
           kBloomBitsPerKey, table_options.block_size, index_key_is_user_key,
           value_is_delta_encoded
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           ,options.vlogring_activation_level
 #endif
 );
       // Gives larger bias here as index block size, filter block size,
       // and data block size become much harder to estimate in this test.
       double nblocksbias = 0.25;  // with small values, nblocks is small and has large fractional error
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       if(options.vlogring_activation_level.size())nblocksbias = 0.35;  // with small values, nblocks is small and has large fractional error
 #endif
       VerifyTableProperties(expected_tp, tp, 0.5, 0.4, 0.4, nblocksbias);
@@ -1073,7 +1073,7 @@ TEST_F(DBPropertiesTest, EstimateCompressionRatio) {
   const int kNumEntriesPerFile = 1000;
 
   Options options = CurrentOptions();
-#ifdef INDIRECT_VALUE_SUPPORT  // can't measure SST compression when there are indirect values
+#ifndef NO_INDIRECT_VALUE  // can't measure SST compression when there are indirect values
   if(options.vlogring_activation_level.size())return;
 #endif
   options.compression_per_level = {kNoCompression, kSnappyCompression};

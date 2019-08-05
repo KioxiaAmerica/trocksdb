@@ -683,7 +683,7 @@ class DBTestBase : public testing::Test {
     kUniversalSubcompactions = 37,
     kxxHash64Checksum = 38,
     // The following tests use indirect values.  We don't test combinations that are incompatible with, or have nothing to do with, indirect values
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // MUST KEEP ALL THE INDIRECT CONFIGS TOGETHER!  Checked in SkipIndirect
     kDefaultInd = 39,
     kBlockBasedTableWithPrefixHashIndexInd = 40,

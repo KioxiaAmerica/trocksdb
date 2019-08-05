@@ -185,7 +185,7 @@ class CompactionPicker {
                              CompactionInputFiles* start_level_inputs,
                              int output_level, int* parent_index, const ImmutableCFOptions *ioptions);  // return -1=error, 0=OK, 1=OK, change output_level_ to last level
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   bool IsCompactIntoBottomLevel(VersionStorageInfo* vstorage,int output_level,InternalKey& smallkey,bool isdynamic);  // return true if this compaction can be redirected to the bottom level
 #endif
 

@@ -1034,7 +1034,7 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
           cfd->internal_stats(), TableFileCreationReason::kRecovery,
           &event_logger_, job_id, Env::IO_HIGH, nullptr /* table_properties */,
           -1 /* level */, current_time, 0, write_hint
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           ,nullptr /* cfd */, nullptr /* vlog_flush_info */
 #endif
           );
@@ -1057,7 +1057,7 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
                   meta.fd.GetFileSize(), meta.smallest, meta.largest,
                   meta.fd.smallest_seqno, meta.fd.largest_seqno,
                   meta.marked_for_compaction
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                   ,meta.indirect_ref_0
                   ,meta.avgparentfileno
 #endif
@@ -1092,7 +1092,7 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
   return s;
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // Called after versions have been initialized, to create and populate VLogs
 Status DBImpl::OpenVLogs(const DBOptions& db_options) {
    Status s;  // return status, init to good return
@@ -1319,7 +1319,7 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
       }
     }
   }
-#ifdef INDIRECT_VALUE_SUPPORT   // fill in the rings for each column family
+#ifndef NO_INDIRECT_VALUE   // fill in the rings for each column family
   if (s.ok()) {  // Don't open VLogs if we have had an error, because OpenVLogs deletes any .vlg files it doesn't expect, and after an error none are expected
     if(!impl->OpenVLogs(db_options).ok()){  //  Init the VLogs for the CFs that were opened
       s = Status::Corruption(

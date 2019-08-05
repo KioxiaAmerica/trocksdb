@@ -109,7 +109,7 @@ bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
         option_config == kVectorRep || option_config == kHashLinkList ||
         option_config == kUniversalCompaction ||
         option_config == kUniversalCompactionMultiLevel ||
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
         option_config == kUniversalCompactionMultiLevelInd ||
         option_config == kUniversalCompactionInd ||
 #endif
@@ -122,7 +122,7 @@ bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
 
     if ((skip_mask & kSkipUniversalCompaction) &&
         (option_config == kUniversalCompaction ||
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
         option_config == kUniversalCompactionMultiLevelInd ||
         option_config == kUniversalCompactionInd ||
 #endif
@@ -131,7 +131,7 @@ bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
       return true;
     }
     if ((skip_mask & kSkipMergePut) && (option_config == kMergePut
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
        || option_config == kMergePutInd
 #endif
     )) { return true; }
@@ -149,7 +149,7 @@ bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
     }
     if ((skip_mask & kSkipHashIndex) &&
         (option_config == kBlockBasedTableWithPrefixHashIndex ||
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
          option_config == kBlockBasedTableWithPrefixHashIndexInd ||
          option_config == kBlockBasedTableWithWholeKeyHashIndexInd ||
 #endif
@@ -160,7 +160,7 @@ bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
       return true;
     }
     if ((skip_mask & kSkipMmapReads) && (option_config == kWalDirAndMmapReads
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
          || option_config == kWalDirAndMmapReadsInd
 #endif
     )) {
@@ -169,7 +169,7 @@ bool DBTestBase::ShouldSkipOptions(int option_config, int skip_mask) {
     if ((skip_mask & kSkipDirectIO) && option_config == kDirectIO) {
       return true;
     }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     if ((skip_mask & kSkipIndirect) && option_config >= kDefaultInd && option_config <= kPartitionedFilterWithNewTableReaderForCompactionsInd) {
       return true;
     }
@@ -219,7 +219,7 @@ bool DBTestBase::CycleThroughOptions(std::vector<int>& optioncycle, std::vector<
   return true;  // indicate there is another option to try
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 static std::vector<int> comp_cycle{DBTestBase::kDefault, DBTestBase::kUniversalCompaction, DBTestBase::kUniversalCompactionMultiLevel, DBTestBase::kLevelSubcompactions,
                           DBTestBase::kDefaultInd, DBTestBase::kUniversalCompactionInd, DBTestBase::kUniversalCompactionMultiLevelInd, DBTestBase::kUniversalSubcompactions};
 static std::vector<int> comp_actions{0,0,0,1,0,0,0,1};  // 0=create_if_missing 1=check max_subcompactions
@@ -375,7 +375,7 @@ Options DBTestBase::GetOptions(
           NewHashLinkListRepFactory(4, 0, 3, true, 4));
       options.allow_concurrent_memtable_write = false;
       break;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kDirectIOInd:
       options.vlogring_activation_level=std::vector<int32_t>{0};
       options.min_indirect_val_size=std::vector<uint64_t>{0};
@@ -403,19 +403,19 @@ Options DBTestBase::GetOptions(
       break;
     }
 #endif  // ROCKSDB_LITE
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kMergePutInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kMergePut:
       options.merge_operator = MergeOperators::CreatePutOperator();
       break;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kFilterInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kFilter:
       table_options.filter_policy.reset(NewBloomFilterPolicy(10, true));
       break;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kFullFilterWithNewTableReaderForCompactionsInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kFullFilterWithNewTableReaderForCompactions:
@@ -423,7 +423,7 @@ Options DBTestBase::GetOptions(
       options.new_table_reader_for_compaction_inputs = true;
       options.compaction_readahead_size = 10 * 1024 * 1024;
       break;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kPartitionedFilterWithNewTableReaderForCompactionsInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kPartitionedFilterWithNewTableReaderForCompactions:
@@ -434,25 +434,25 @@ Options DBTestBase::GetOptions(
       options.new_table_reader_for_compaction_inputs = true;
       options.compaction_readahead_size = 10 * 1024 * 1024;
       break;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kUncompressedInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kUncompressed:
       options.compression = kNoCompression;
       break;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kNumLevel_3Ind: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kNumLevel_3:
       options.num_levels = 3;
       break;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kDBLogDirInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kDBLogDir:
       options.db_log_dir = alternative_db_log_dir_;
       break;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kWalDirAndMmapReadsInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kWalDirAndMmapReads:
@@ -470,28 +470,28 @@ Options DBTestBase::GetOptions(
       options.report_bg_io_stats = true;
       // TODO(3.13) -- test more options
       break;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kUniversalCompactionInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kUniversalCompaction:
       options.compaction_style = kCompactionStyleUniversal;
       options.num_levels = 1;
       break;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kUniversalCompactionMultiLevelInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kUniversalCompactionMultiLevel:
       options.compaction_style = kCompactionStyleUniversal;
       options.num_levels = 8;
       break;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kCompressedBlockCacheInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kCompressedBlockCache:
       options.allow_mmap_writes = can_allow_mmap;
       table_options.block_cache_compressed = NewLRUCache(8 * 1024 * 1024);
       break;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kInfiniteMaxOpenFilesInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kInfiniteMaxOpenFiles:
@@ -510,7 +510,7 @@ Options DBTestBase::GetOptions(
       break;
     }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kBlockBasedTableWithPrefixHashIndexInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kBlockBasedTableWithPrefixHashIndex: {
@@ -523,7 +523,7 @@ Options DBTestBase::GetOptions(
       options.prefix_extractor.reset(NewNoopTransform());
       break;
     }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kBlockBasedTableWithPartitionedIndexInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kBlockBasedTableWithPartitionedIndex: {
@@ -531,7 +531,7 @@ Options DBTestBase::GetOptions(
       options.prefix_extractor.reset(NewNoopTransform());
       break;
     }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kBlockBasedTableWithPartitionedIndexFormat4Ind: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kBlockBasedTableWithPartitionedIndexFormat4: {
@@ -546,7 +546,7 @@ Options DBTestBase::GetOptions(
       table_options.index_block_restart_interval = 8;
       break;
     }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kBlockBasedTableWithIndexRestartIntervalInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
 
@@ -554,7 +554,7 @@ Options DBTestBase::GetOptions(
       table_options.index_block_restart_interval = 8;
       break;
     }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kOptimizeFiltersForHitsInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kOptimizeFiltersForHits: {
@@ -562,7 +562,7 @@ Options DBTestBase::GetOptions(
       set_block_based_table_factory = true;
       break;
     }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kRowCacheInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     case kRowCache: {
@@ -599,7 +599,7 @@ Options DBTestBase::GetOptions(
       break;
     }
  
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kDefaultInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
 #endif
     default:
@@ -783,7 +783,7 @@ Status DBTestBase::PutInvInd(int cf, int k, size_t valuelen, const Slice& v, boo
 
 Status DBTestBase::Put(const Slice& k, const Slice& v, WriteOptions wo) {
   if (kMergePut == option_config_
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       || kMergePutInd == option_config_
 #endif
   ) {
@@ -796,7 +796,7 @@ Status DBTestBase::Put(const Slice& k, const Slice& v, WriteOptions wo) {
 Status DBTestBase::Put(int cf, const Slice& k, const Slice& v,
                        WriteOptions wo) {
   if (kMergePut == option_config_
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       || kMergePutInd == option_config_
 #endif
   ) {
@@ -972,7 +972,7 @@ std::string DBTestBase::AllEntriesFor(const Slice& user_key, int cf) {
         }
         first = false;
         switch (ikey.type) {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           case kTypeIndirectValue:
           case kTypeIndirectMerge:
             {std::string resolution_buffer;  // place to resolve indirect value

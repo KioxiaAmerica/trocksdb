@@ -181,7 +181,7 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
                            const Slice& value, bool* matched,
                            Cleanable* value_pinner) {
   assert(matched);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   std::string resolved_value;  // place to read value into.  Persists through this function; the value must be copied before return
 #endif
   assert((state_ != kMerge && !IsTypeMerge(parsed_key.type)) ||
@@ -195,7 +195,7 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
     appendToReplayLog(replay_log_, parsed_key.type, value);
 
     bool value_was_indirect = false;  // set if the value was indirect, which means we can't pin it
-#ifdef INDIRECT_VALUE_SUPPORT   // resolve the Get() value before putting it through the merge maze
+#ifndef NO_INDIRECT_VALUE   // resolve the Get() value before putting it through the merge maze
     value_was_indirect = IsTypeIndirect(parsed_key.type);
     if(value_was_indirect){   // remember if this was indirected; if so...
       if(!(merge_context_->GetVlog()->VLogGet((Slice)value,resolved_value)).ok()) {
@@ -222,7 +222,7 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
       type = kTypeRangeDeletion;
     }
     switch (type) {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       case kTypeIndirectValue:
 #endif
       case kTypeValue:
@@ -288,7 +288,7 @@ bool GetContext::SaveValue(const ParsedInternalKey& parsed_key,
         }
         return false;
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       case kTypeIndirectMerge:
 #endif
       case kTypeMerge:

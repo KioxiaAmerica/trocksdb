@@ -43,7 +43,7 @@ Status DBImplReadOnly::Get(const ReadOptions& read_options,
     }
   }
   SuperVersion* super_version = cfd->GetSuperVersion();
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // Get() processing needs access to the VLog for the colmn family.  We provide that through the merge context
   MergeContext merge_context(cfd);
 #else

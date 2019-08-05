@@ -470,7 +470,7 @@ TEST_P(DBBloomFilterTestWithParam, BloomFilter) {
     int reads = env_->random_read_counter_.Read();
     fprintf(stderr, "%d present => %d reads\n", N, reads);
     int indirectvaluereads = 0;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     if(options.vlogring_activation_level.size())indirectvaluereads = N - (N/100); // we read each value, except for the few that were rewritten after compaction, which are not indirect
 #endif
     ASSERT_GE(reads, N);  // if level compaction, the first compaction uses trivial move and has no indirects.  When multi-compactions supported,
@@ -530,7 +530,7 @@ TEST_F(DBBloomFilterTest, BloomFilterRate) {
   while (ChangeFilterOptions()) {
     Options options = CurrentOptions();
     options.statistics = rocksdb::CreateDBStatistics();
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     if(options.vlogring_activation_level.size())options.allow_trivial_move = true;
 #endif
     get_perf_context()->EnablePerLevelPerfContext();
@@ -1112,7 +1112,7 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
   Options options = CurrentOptions();
 // kv size is 1+9+1+3 = 14
   int kvblock = (14*73);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 // kv size is 1+9+1+9 = 20
   if(options.vlogring_activation_level.size())kvblock = (20*73);
 #endif
@@ -1136,7 +1136,7 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
   options.table_factory.reset(NewBlockBasedTableFactory(bbto));
   options.optimize_filters_for_hits = true;
   options.statistics = rocksdb::CreateDBStatistics();
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   get_perf_context()->EnablePerLevelPerfContext();

@@ -1190,7 +1190,7 @@ static const bool FLAGS_table_cache_numshardbits_dummy __attribute__((__unused__
     RegisterFlagValidator(&FLAGS_table_cache_numshardbits,
                           &ValidateTableCacheNumshardbits);
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 DEFINE_bool(allow_trivial_move, false, "Set to allow trivial move.  This does not update the VLogs and is used only to allow tests to run.");
 DEFINE_double(compaction_score_limit_L0, 1000.0, "Compaction limit for L0.  The calculated compaction priority is (level size/desired level size)."
              "When the host Put()s faster than the system can compact, L0 starts to fill.  Its compaction priority gors."
@@ -1236,7 +1236,7 @@ DEFINE_string(ring_compression_style, "snappy",
 static enum rocksdb::CompressionType FLAGS_ring_compression_style_e = rocksdb::kSnappyCompression;
 
 DEFINE_bool(vlog_direct_IO, false, "Set to allow direct IO for vlog.");
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
 namespace rocksdb {
 
@@ -2176,7 +2176,7 @@ class Benchmark {
   inline bool CompressSlice(const CompressionInfo& compression_info,
                             const Slice& input, std::string* compressed) {
     bool ok = true;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     switch (FLAGS_ring_compression_style_e) {
 #else
     switch (FLAGS_compression_type_e) {
@@ -2248,7 +2248,7 @@ class Benchmark {
 #endif
     }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     auto compression = CompressionTypeToString(FLAGS_ring_compression_style_e);
 #else
     auto compression = CompressionTypeToString(FLAGS_compression_type_e);
@@ -2287,7 +2287,7 @@ class Benchmark {
     fprintf(stdout,
             "WARNING: Assertions are enabled; benchmarks unnecessarily slow\n");
 #endif
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     if (FLAGS_ring_compression_style_e != rocksdb::kNoCompression) {
 #else
     if (FLAGS_compression_type_e != rocksdb::kNoCompression) {
@@ -2297,7 +2297,7 @@ class Benchmark {
       std::string input_str(len, 'y');
       std::string compressed;
       CompressionOptions opts;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       CompressionContext context(FLAGS_ring_compression_style_e);
 #else
       CompressionContext context(FLAGS_compression_type_e);
@@ -3169,7 +3169,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     bool ok = true;
     std::string compressed;
     CompressionOptions opts;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     CompressionContext context(FLAGS_ring_compression_style_e);
 #else
     CompressionContext context(FLAGS_compression_type_e);
@@ -3202,7 +3202,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     Slice input = gen.Generate(FLAGS_block_size);
     std::string compressed;
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     CompressionContext compression_ctx(FLAGS_ring_compression_style_e);
 #else
     CompressionContext compression_ctx(FLAGS_compression_type_e);
@@ -3211,7 +3211,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     CompressionInfo compression_info(
         compression_opts, compression_ctx, CompressionDict::GetEmptyDict(),
         FLAGS_compression_type_e, FLAGS_sample_for_compression);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     UncompressionContext uncompression_ctx(FLAGS_ring_compression_style_e);
 #else
     UncompressionContext uncompression_ctx(FLAGS_compression_type_e);
@@ -3225,7 +3225,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     int decompress_size;
     while (ok && bytes < 1024 * 1048576) {
       CacheAllocationPtr uncompressed;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       switch (FLAGS_ring_compression_style_e) {
 #else
       switch (FLAGS_compression_type_e) {
@@ -3574,7 +3574,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
         FLAGS_level0_file_num_compaction_trigger;
     options.level0_slowdown_writes_trigger =
       FLAGS_level0_slowdown_writes_trigger;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     options.allow_trivial_move = FLAGS_allow_trivial_move;
     options.compaction_score_limit_L0 = FLAGS_compaction_score_limit_L0;
     options.vlog_direct_IO = FLAGS_vlog_direct_IO;
@@ -3591,7 +3591,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
     options.vlogfile_max_size = std::vector<uint64_t>({FLAGS_vlogfile_max_size});
     options.compaction_picker_age_importance = std::vector<int32_t>({FLAGS_compaction_picker_age_importance});
     options.ring_compression_style = std::vector<CompressionType>({FLAGS_ring_compression_style_e});
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
     options.compression = FLAGS_compression_type_e;
     options.sample_for_compression = FLAGS_sample_for_compression;
     options.WAL_ttl_seconds = FLAGS_wal_ttl_seconds;
@@ -4256,7 +4256,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
       for (size_t i = 0; i < num_db; i++) {
         auto db = db_list[i];
         auto compactionOptions = CompactionOptions();
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
         compactionOptions.compression = FLAGS_ring_compression_style_e;
 #else
         compactionOptions.compression = FLAGS_compression_type_e;
@@ -4312,7 +4312,7 @@ void VerifyDBFromDB(std::string& truth_db_name) {
       for (size_t i = 0; i < num_db; i++) {
         auto db = db_list[i];
         auto compactionOptions = CompactionOptions();
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
         compactionOptions.compression = FLAGS_ring_compression_style_e;
 #else
         compactionOptions.compression = FLAGS_compression_type_e;
@@ -6242,10 +6242,10 @@ int db_bench_tool(int argc, char** argv) {
 #endif
   }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   FLAGS_ring_compression_style_e = 
     StringToCompressionType(FLAGS_ring_compression_style.c_str());
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
   FLAGS_compression_type_e =
     StringToCompressionType(FLAGS_compression_type.c_str());
 

@@ -248,7 +248,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionTrigger) {
   DestroyAndReopen(options);
   CreateAndReopenWithCF({"pikachu"}, options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -728,7 +728,7 @@ TEST_P(DBTestUniversalCompactionMultiLevels, UniversalCompactionTrivialMove) {
   options.level0_file_num_compaction_trigger = 3;
   options.max_background_compactions = 2;
   options.target_file_size_base = 32 * 1024;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   DestroyAndReopen(options);
@@ -997,7 +997,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionStopStyleSimilarSize) {
   options.num_levels = num_levels_;
   DestroyAndReopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -1085,7 +1085,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCompressRatio1) {
   options.compaction_options_universal.compression_size_percent = 70;
   DestroyAndReopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -1156,7 +1156,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCompressRatio2) {
   options.compaction_options_universal.compression_size_percent = 95;
   DestroyAndReopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -1202,7 +1202,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionTrivialMoveTest1) {
   options.level0_file_num_compaction_trigger = 3;
   options.max_background_compactions = 1;
   options.target_file_size_base = 32 * 1024;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   DestroyAndReopen(options);
@@ -1251,7 +1251,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionTrivialMoveTest2) {
   options.level0_file_num_compaction_trigger = 8;
   options.max_background_compactions = 2;
   options.target_file_size_base = 64 * 1024;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   DestroyAndReopen(options);
@@ -1303,7 +1303,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionFourPaths) {
   Reopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
   int bigvaluesize = 990;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
   if(values_are_indirect)bigvaluesize = 16;
 #endif
@@ -1426,7 +1426,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionCFPathUse) {
   ReopenWithColumnFamilies({"default", "one", "two"}, option_vector);
   bool values_are_indirect = false;  // Set if we are using VLogging
   int allowedvlen3 = 1;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
   if(values_are_indirect)allowedvlen3 = 16;
 #endif
@@ -1572,7 +1572,7 @@ TEST_P(DBTestUniversalCompaction, IncreaseUniversalCompactionNumLevels) {
   options = CurrentOptions(options);
   CreateAndReopenWithCF({"pikachu"}, options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -1664,7 +1664,7 @@ TEST_P(DBTestUniversalCompaction, UniversalCompactionSecondPathRatio) {
   Reopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
   int bigvaluesize = 990;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
   if(values_are_indirect)bigvaluesize = 16;
 #endif
@@ -1762,7 +1762,7 @@ TEST_P(DBTestUniversalCompaction, ConcurrentBottomPriLowPriCompactions) {
   options.compaction_options_universal.max_size_amplification_percent = 110;
   DestroyAndReopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -1818,7 +1818,7 @@ TEST_P(DBTestUniversalCompaction, RecalculateScoreAfterPicking) {
   options.write_buffer_size = 100 << 10;  // 100KB
   Reopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 

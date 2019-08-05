@@ -1341,7 +1341,7 @@ InternalIterator* DBImpl::NewInternalIterator(const ReadOptions& read_options,
     internal_iter = NewErrorInternalIterator<Slice>(s, arena);
   }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // Install the VLog object into the iterator so that resolving values can get to it
   internal_iter->SetVlogForIteratorCF(cfd->vlog());
 #endif
@@ -1419,7 +1419,7 @@ Status DBImpl::GetImpl(const ReadOptions& read_options,
   TEST_SYNC_POINT("DBImpl::GetImpl:4");
 
   // Prepare to store a list of merge operations if merge occurs.
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // Get() processing needs access to the VLog for the column family.  We provide that through the merge context
   MergeContext merge_context(cfd);
 #else
@@ -1635,7 +1635,7 @@ std::vector<Status> DBImpl::MultiGet(
     if (!done) {
       PinnableSlice pinnable_val;
       PERF_TIMER_GUARD(get_from_output_files_time);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       // to support indirect values, Get() must have access to the VLog.  We pass this in through the MergeContext so as not to disturb interfaces
       merge_context.SetCfd(cfh->cfd());
 #endif
@@ -3211,7 +3211,7 @@ Status DBImpl::GetLatestSequenceForKey(SuperVersion* sv, const Slice& key,
                                        bool* found_record_for_key,
                                        bool* is_blob_index) {
   Status s;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // Get() processing needs access to the VLog for the column family.  We provide that through the merge context
   MergeContext merge_context(sv->current->cfd());
 #else

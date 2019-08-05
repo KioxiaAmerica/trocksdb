@@ -163,7 +163,7 @@ void MutableCFOptions::Dump(Logger* log) const {
                  level0_stop_writes_trigger);
   ROCKS_LOG_INFO(log, "                     max_compaction_bytes: %" PRIu64,
                  max_compaction_bytes);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   ROCKS_LOG_INFO(log, "                       allow_trivial_move: %d",
                  allow_trivial_move);
   ROCKS_LOG_INFO(log, "                       vlog_direct_IO: %d",

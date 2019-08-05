@@ -40,7 +40,7 @@ enum CompactionStyle : char {
 // In Level-based compaction, it Determines which file from a level to be
 // picked to merge to the next level. We suggest people try
 // kMinOverlappingRatio first when you tune your database.
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 // If VLogs are used for a level, compaction into it always selects the files whose descendants have the
 // earliest VLog references, and this field is ignored
 #endif

@@ -84,7 +84,7 @@
 #include "util/file_reader_writer.h"
 #include "util/filename.h"
 #include "util/string_util.h"
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #include "db/value_log.h"
 #endif
 namespace rocksdb {
@@ -258,7 +258,7 @@ class Repairer {
   // Lock over the persistent DB state. Non-nullptr iff successfully
   // acquired.
   FileLock* db_lock_;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   struct VLogFileInfo {
     uint64_t file_and_ring_no;
     uint32_t path_id;
@@ -322,7 +322,7 @@ class Repairer {
             } else if (type == kTableFile) {
               table_fds_.emplace_back(number, static_cast<uint32_t>(path_id),
                                       0);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
             } else if (type == kVLogFile) {
               // vlog file.  Extract the CF id from the file extension
               size_t dotpos=filenames[i].find_last_of('.');  // find start of extension
@@ -461,7 +461,7 @@ class Repairer {
           nullptr /* event_logger */, 0 /* job_id */, Env::IO_HIGH,
           nullptr /* table_properties */, -1 /* level */, current_time,
 	  0 /* oldest_key_time */, write_hint
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           ,nullptr /* cfd */, nullptr /* vlog_flush_info */
 #endif
           );
@@ -578,7 +578,7 @@ class Repairer {
         if (parsed.sequence > t->max_sequence) {
           t->max_sequence = parsed.sequence;
         }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
         // If this is an indirect reference, decode it into ring and file#s, and update the early-reference field if
         // it is a new low, and the total size of references to the VLog
         if(IsTypeIndirect(parsed.type)){
@@ -646,13 +646,13 @@ class Repairer {
                      table->meta.fd.GetFileSize(), table->meta.smallest,
                      table->meta.largest, table->min_sequence,
                      table->max_sequence, table->meta.marked_for_compaction
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                      ,table->meta.indirect_ref_0
                      ,table->meta.avgparentfileno   // scaf these are not recovered, which will cause trouble if the compactions are poorly ordered
 #endif
                      );
       }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       // Create the column_family_data VLogInfo, which will be written out by LogAndApply
       // We go through all the VLog files, looking for ones that are in the CF.  When we find them, we add them to the list for the ring.  When we have them all, we sort the ring and then
       // Coalesce them into the info for the CF.  We insert each file as its own (start,end)

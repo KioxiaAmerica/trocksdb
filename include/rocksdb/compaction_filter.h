@@ -12,7 +12,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #include "db/value_log.h"
 #endif
 
@@ -39,7 +39,7 @@ class CompactionFilter {
     kValue,
     kMergeOperand,
     kBlobIndex,  // used internally by BlobDB.
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     kValueIndirect,  // value is an indirect reference and must be resolved before use
 #endif
   };
@@ -174,7 +174,7 @@ class CompactionFilter {
       }
       case ValueType::kBlobIndex:
         return Decision::kKeep;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       case ValueType::kValueIndirect: break;  // will not happen in V2 format
 #endif
     }
@@ -182,7 +182,7 @@ class CompactionFilter {
     return Decision::kKeep;
   }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // Because deployed code will not be compatible with the VLog filter interface, we give it a new version number and call it only by option
   virtual Decision FilterV3(int level, const Slice& key, ValueType value_type,
                             const Slice& existing_value, std::string* new_value,

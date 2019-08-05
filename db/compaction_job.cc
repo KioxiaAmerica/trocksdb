@@ -62,7 +62,7 @@
 #include "util/stop_watch.h"
 #include "util/string_util.h"
 #include "util/sync_point.h"
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #include "db/value_log_iterator.h"
 #endif
 
@@ -92,7 +92,7 @@ const char* GetCompactionReasonString(CompactionReason compaction_reason) {
       return "ManualCompaction";
     case CompactionReason::kFilesMarkedForCompaction:
       return "FilesMarkedForCompaction";
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case CompactionReason::kActiveRecycling:
       return "ActiveRecycling";
 #endif
@@ -165,7 +165,7 @@ struct CompactionJob::SubcompactionState {
   uint64_t overlapped_bytes = 0;
   // A flag determine whether the key has been seen in ShouldStopBefore()
   bool seen_key = false;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // file numbers written
   std::vector<VLogRingRestartInfo> vlog_additions;
 #endif
@@ -207,7 +207,7 @@ struct CompactionJob::SubcompactionState {
     grandparent_index = std::move(o.grandparent_index);
     overlapped_bytes = std::move(o.overlapped_bytes);
     seen_key = std::move(o.seen_key);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     vlog_additions = std::move(o.vlog_additions);
 #endif
     return *this;
@@ -265,7 +265,7 @@ struct CompactionJob::CompactionState {
   uint64_t num_input_records;
   uint64_t num_output_records;
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // number of bytes written to VLog after compression
   uint64_t vlog_bytes_written_comp;
   // number of bytes written to VLog before compression
@@ -776,7 +776,7 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
         stats.bytes_written / static_cast<double>(stats.micros);
   }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #define VLOG_STATSF  "VLog writes (MB): %.1f (out), %.1f (new), %.1f (copy), %d files \n" 
 #define VLOG_STATSD  ,stats.vlog_bytes_written_comp / 1048576.0, stats.vlog_bytes_written_raw / 1048576.0, stats.vlog_bytes_remapped / 1048576.0, stats.vlog_files_created
 #else
@@ -855,7 +855,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 
   ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   std::unique_ptr<CompactionRangeDelAggregator> range_del_agg;
   std::unique_ptr<InternalIterator> input;
   if(const_cast<Compaction*>(sub_compact->compaction)->compaction_reason() != CompactionReason::kActiveRecycling) {
@@ -888,8 +888,8 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 
   // I/O measurement variables
   PerfLevel prev_perf_level = PerfLevel::kEnableTime;
-#ifndef INDIRECT_VALUE_SUPPORT
-  const uint64_t kRecordStatsEvery = 1000;  // not used for INDIRECT_VALUE_SUPPORT - just one record at the end
+#ifdef NO_INDIRECT_VALUE
+  const uint64_t kRecordStatsEvery = 1000;  // used for NO_INDIRECT_VALUE - just one record at the end
 #endif
   uint64_t prev_write_nanos = 0;
   uint64_t prev_fsync_nanos = 0;
@@ -960,7 +960,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
         "anymore.");
     return;
   }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // really ought to make merge a pointer rather than a reference since it is not needed by Active Recycling
 #endif
   MergeHelper merge(
@@ -994,7 +994,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   auto c_iter = sub_compact->c_iter.get();
   c_iter->SeekToFirst();
   if (c_iter->Valid() &&
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       sub_compact->compaction->compaction_reason() != CompactionReason::kActiveRecycling && 
 #endif
       sub_compact->compaction->output_level() != 0) {
@@ -1013,7 +1013,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   dict_sample_data.reserve(kSampleBytes);
   // Use the name value_iter to access the input values.  If we are producing indirect values, the values will
   // come from the IndirectIterator; if not, they will come from the original c_iter.
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // The IndirectIterator will do all mapping/remapping and will return the new key/values one by one
   // The constructor called here immediately reads all the values from c_iter, buffers them, and writes values to the Value Log.
   // Then in the loop it returns the references to the values that were written.  Errors encountered during c_iter are preserved
@@ -1051,7 +1051,7 @@ our_ref0.push_back(~0);
     Slice& key = (Slice&) value_iter->key();
     Slice& value = (Slice&) value_iter->value();
 
-#ifndef INDIRECT_VALUE_SUPPORT
+#ifdef NO_INDIRECT_VALUE
     // If an end key (exclusive) is specified, check if the current key is
     // >= than it and exit if it is because the iterator is out of its range
     if (end != nullptr &&
@@ -1135,7 +1135,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
       }
     }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // If we are Active Recycling, we close exactly when the input file runs out of records.  The override code indicates this:
     // 0=no override, proceed normally, closing based on size; 1=override, close now; -1=override, don't close
     int overrideclose = value_iter->OverrideClose();
@@ -1151,7 +1151,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
     // during subcompactions (i.e. if output size, estimated by input size, is
     // going to be 1.2MB and max_output_file_size = 1MB, prefer to have 0.6MB
     // and 0.6MB instead of 1MB and 0.2MB)
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // We want to enforce the size limit on SSTs for files at levels > 0.  If we are compacting into L0, we have gotten behind and there is nothing
     // to be gained from splitting the file since we are going to be compacting all the L0 files into L1 at once anyway.  However, if we are doing
     // AR on level 0, which is just barely possible, we need to preserve the SST input sizes.  So we have included the level-0 logic in the calculation
@@ -1183,7 +1183,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
       if (value_iter->Valid()) {
         next_key = &value_iter->key();
       }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       // Install the earliest-file-refs that were encountered for the file being closed, and reset that value for the next file
       std::vector<uint64_t> ref0;  // vector of file-refs
       value_iter->ref0(ref0,false /* include_last */);  // pick up refs that apply to this file
@@ -1243,7 +1243,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
   }
 
   if (status.ok() && sub_compact->builder == nullptr &&
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       range_del_agg!=nullptr &&
 #endif
       sub_compact->outputs.size() == 0 && !range_del_agg->IsEmpty()) {
@@ -1255,7 +1255,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
   // Call FinishCompactionOutputFile() even if status is not ok: it needs to
   // close the output file.
   if (sub_compact->builder != nullptr) {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     assert(sub_compact->compaction->compaction_reason() != CompactionReason::kActiveRecycling);  // if AR, we must have matched the keys exactly
     // Install the earliest-file-refs that were encountered for the file being closed, and reset that value for the next file
     std::vector<uint64_t> ref0;  // vector of file-refs
@@ -1298,7 +1298,7 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
     }
   }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // Now that we have processed all the I/O, collect the VLog-related changes for the subcompaction.  We will later merge the subcomps and put the aggregate into the edit.
 // obsolete   value_iter->getedit((const_cast<Compaction*>(sub_compact->compaction))->edit()->VLogAdditions(), 
   value_iter->getedit(sub_compact->vlog_additions, 
@@ -1376,7 +1376,7 @@ Status CompactionJob::FinishCompactionOutputFile(
   auto meta = &sub_compact->current_output()->meta;
   assert(meta != nullptr);
   if (s.ok()
-#ifdef INDIRECT_VALUE_SUPPORT  // could be left in on all systems
+#ifndef NO_INDIRECT_VALUE  // could be left in on all systems
       && range_del_agg!=nullptr  // no range_del_agg iterator means Active Recycling.  Skip all the checking & tombstone anguish
 #endif
      ) {
@@ -1589,7 +1589,7 @@ Status CompactionJob::FinishCompactionOutputFile(
     // Output to event logger and fire events.
       sub_compact->current_output()->table_properties =
           std::make_shared<TableProperties>(tp);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       ROCKS_LOG_INFO(db_options_.info_log,
                      "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
                      " keys, %" PRIu64 " bytes"
@@ -1620,7 +1620,7 @@ Status CompactionJob::FinishCompactionOutputFile(
   EventHelpers::LogAndNotifyTableFileCreationFinished(
       event_logger_, cfd->ioptions()->listeners, dbname_, cfd->GetName(), fname,
       job_id_, output_fd, tp, TableFileCreationReason::kCompaction, s
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       ,meta?&meta->indirect_ref_0:nullptr  // lowest ref in each ring
 #endif
 
@@ -1679,14 +1679,14 @@ Status CompactionJob::InstallCompactionResults(
   // Add compaction inputs
   compaction->AddInputDeletions(compact_->compaction->edit());
 
-#if !defined(NDEBUG) && defined(INDIRECT_VALUE_SUPPORT) // to support test hooks
+#if !defined(NDEBUG) && !defined(NO_INDIRECT_VALUE) // to support test hooks
   uint64_t comptotal_stats[4]={0,0,0,0};
   // number of bytes written to VLog before compression
   // number of bytes moved from one VLog to another
   // number of VLog files created
 #endif
   for (const auto& sub_compact : compact_->sub_compact_states) {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // Collect the files written by subcompactions into a single set
     Coalesce(compaction->edit()->VLogAdditions(),sub_compact.vlog_additions,true /* allow_delete */);
     // other stats are collected by Add()
@@ -1802,7 +1802,7 @@ Status CompactionJob::InstallCompactionResults(
     }
 #endif
     for (uint32_t i = 0;i<sub_compact.outputs.size();++i) {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       // For Active Recycling there is no concept of 'output level', because each file is put back into the level it started at.
       // We take advantage of the fact that subcompactions are disabled for AR, and thus that the output files in the sole subcompaction
       // match one-for-one with the files in the input.  For other types, since we have already installed the correct level into the FileMetaData, just use that level here
@@ -1813,7 +1813,7 @@ Status CompactionJob::InstallCompactionResults(
       compaction->edit()->AddFile(outlevel, sub_compact.outputs[i].meta);
     }
   }
-#if defined(INDIRECT_VALUE_SUPPORT) && !defined(NDEBUG)
+#if !defined(NO_INDIRECT_VALUE) && !defined(NDEBUG)
   TEST_SYNC_POINT_CALLBACK("CompactionJob::InstallCompactionResults",
                            &comptotal_stats);
 #endif
@@ -1869,7 +1869,7 @@ Status CompactionJob::OpenCompactionOutputFile(
         event_logger_, cfd->ioptions()->listeners, dbname_, cfd->GetName(),
         fname, job_id_, FileDescriptor(), TableProperties(),
         TableFileCreationReason::kCompaction, s
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
         ,nullptr  // lowest ref in each ring
 #endif
 );
@@ -1989,7 +1989,7 @@ void CompactionJob::UpdateCompactionStats() {
       --num_output_files;
     }
     compaction_stats_.num_output_files += static_cast<int>(num_output_files);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // transfer all subcompaction VLog stats to the compaction
     compaction_stats_.vlog_bytes_written_comp += sub_compact.compaction_job_stats.vlog_bytes_written_comp;
     compaction_stats_.vlog_bytes_written_raw += sub_compact.compaction_job_stats.vlog_bytes_written_raw;
@@ -2005,7 +2005,7 @@ void CompactionJob::UpdateCompactionStats() {
           sub_compact.num_input_records - sub_compact.num_output_records;
     }
   }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 // obsolete       ROCKS_LOG_INFO(db_options_.info_log,
 // obsolete         "compaction: compaction_stats_.vlog_bytes_written_comp=%ld",
 // obsolete         compaction_stats_.vlog_bytes_written_comp);  // scafdebug
@@ -2089,7 +2089,7 @@ void CompactionJob::LogCompaction() {
       stream << ("files_L" + ToString(compaction->level(i)));
       stream.StartArray();
       for (auto f : *compaction->inputs(i)) {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
         // If there are no indirect refs for a file, don't try to print one.  Even if flush goes to VLog normally, flush for recovery does not, and has no indirect refs
         char buf[80];
         sprintf(buf,"%zd[%zd]",f->fd.GetNumber(),f->indirect_ref_0.size()?f->indirect_ref_0[0]:0);

@@ -36,7 +36,7 @@ TEST_F(DBIOFailureTest, DropWrites) {
     env_->no_slowdown_ = true;
     for (int i = 0; i < 5; i++) {
       if (option_config_ != kUniversalCompactionMultiLevel &&
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           option_config_ != kUniversalCompactionMultiLevelInd &&
 #endif
           option_config_ != kUniversalSubcompactions) {
@@ -162,7 +162,7 @@ TEST_F(DBIOFailureTest, ManifestWriteError) {
     options.create_if_missing = true;
     options.error_if_exists = false;
     options.paranoid_checks = true;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     options.allow_trivial_move=true;
 #endif
     DestroyAndReopen(options);
@@ -334,7 +334,7 @@ TEST_F(DBIOFailureTest, CompactSstRangeSyncError) {
   DestroyAndReopen(options);
   CreateAndReopenWithCF({"pikachu"}, options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
   Status s;

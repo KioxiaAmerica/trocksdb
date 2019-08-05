@@ -29,7 +29,7 @@ namespace rocksdb {
 // ValueType, not the lowest).
 
 const ValueType kValueTypeForSeek =
-#ifdef INDIRECT_VALUE_SUPPORT  // kValueTypeForSeek must be the highest type that is recognized by IsTypeExtended
+#ifndef NO_INDIRECT_VALUE  // kValueTypeForSeek must be the highest type that is recognized by IsTypeExtended
 kTypeIndirectMerge;
 #else
 kTypeBlobIndex;
@@ -45,7 +45,7 @@ uint64_t PackSequenceAndType(uint64_t seq, ValueType t) {
 EntryType GetEntryType(ValueType value_type) {
   switch (value_type) {
     case kTypeValue:
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kTypeIndirectValue:
 #endif
       return kEntryPut;
@@ -54,7 +54,7 @@ EntryType GetEntryType(ValueType value_type) {
     case kTypeSingleDeletion:
       return kEntrySingleDelete;
     case kTypeMerge:
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     case kTypeIndirectMerge:
 #endif
       return kEntryMerge;

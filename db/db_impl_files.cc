@@ -326,7 +326,7 @@ void DBImpl::PurgeObsoleteFiles(JobContext& state, bool schedule_only) {
     if (file.metadata->table_reader_handle) {
       table_cache_->Release(file.metadata->table_reader_handle);
     }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // The SST is about to be deleted.  Remove it from any VLog queues it is attached to.
     // We have to do this explicitly rather than in a destructor because FileMetaData blocks get copied & put on queues
     // with no regard for ownership.  Rather than try to enforce no-copy semantics everywhere we root out all the delete calls and put this there

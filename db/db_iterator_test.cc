@@ -671,7 +671,7 @@ TEST_P(DBIteratorTest, IterMultiWithDelete) {
       // TODO: merge operator does not support backward iteration yet
       if (kPlainTableAllBytesPrefix != option_config_ &&
           kBlockBasedTableWithWholeKeyHashIndex != option_config_ &&
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           kBlockBasedTableWithWholeKeyHashIndexInd != option_config_ &&
 #endif
           kHashLinkList != option_config_ &&
@@ -741,7 +741,7 @@ TEST_P(DBIteratorTest, IterWithSnapshot) {
       // TODO: merge operator does not support backward iteration yet
       if (kPlainTableAllBytesPrefix != option_config_ &&
           kBlockBasedTableWithWholeKeyHashIndex != option_config_ &&
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           kBlockBasedTableWithWholeKeyHashIndexInd != option_config_ &&
 #endif
           kHashLinkList != option_config_ && kHashSkipList != option_config_) {
@@ -763,7 +763,7 @@ TEST_P(DBIteratorTest, IterWithSnapshot) {
       // TODO(gzh): merge operator does not support backward iteration yet
       if (kPlainTableAllBytesPrefix != option_config_ &&
           kBlockBasedTableWithWholeKeyHashIndex != option_config_ &&
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           kBlockBasedTableWithWholeKeyHashIndexInd != option_config_ &&
 #endif
           kHashLinkList != option_config_ && kHashSkipList != option_config_) {
@@ -1313,7 +1313,7 @@ TEST_P(DBIteratorTest, PinnedDataIteratorMultipleFiles) {
   options.table_factory.reset(NewBlockBasedTableFactory(table_options));
   options.disable_auto_compactions = true;
   options.write_buffer_size = 1024 * 1024 * 10;  // 10 Mb
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   DestroyAndReopen(options);
@@ -1518,7 +1518,7 @@ TEST_P(DBIteratorTest, IterSeekForPrevCrossingFiles) {
   BlockBasedTableOptions table_options;
   table_options.filter_policy.reset(NewBloomFilterPolicy(10, true));
   options.table_factory.reset(NewBlockBasedTableFactory(table_options));
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   DestroyAndReopen(options);
@@ -1942,7 +1942,7 @@ TEST_P(DBIteratorTest, ReadAhead) {
   table_options.block_size = 1024;
   table_options.no_block_cache = true;
   options.table_factory.reset(new BlockBasedTableFactory(table_options));
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   Reopen(options);

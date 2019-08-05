@@ -948,7 +948,7 @@ extern ROCKSDB_LIBRARY_API void rocksdb_options_set_plain_table_factory(
 extern ROCKSDB_LIBRARY_API void rocksdb_options_set_min_level_to_compress(
     rocksdb_options_t* opt, int level);
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 extern ROCKSDB_LIBRARY_API void
 rocksdb_options_set_vlogring_activation_level(
     rocksdb_options_t*, int32_t* values, size_t num_levels);
@@ -988,7 +988,7 @@ rocksdb_options_set_compaction_picker_age_importance(
 extern ROCKSDB_LIBRARY_API void
 rocksdb_options_set_ring_compression_style(
     rocksdb_options_t*, int32_t* values, size_t num_levels);
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
 extern ROCKSDB_LIBRARY_API void rocksdb_options_set_memtable_huge_page_size(
     rocksdb_options_t*, size_t);

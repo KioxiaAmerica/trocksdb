@@ -8,7 +8,7 @@
 #include <vector>
 #include "db/dbformat.h"
 #include "rocksdb/slice.h"
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #include "db/value_log.h"
 #include "db/column_family.h"
 #endif
@@ -25,7 +25,7 @@ const std::vector<Slice> empty_operand_list;
 class MergeContext {
  public:
   MergeContext(){}
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // Support for passing the VLog address via the MergeContext
   MergeContext(ColumnFamilyData *cfd) : vlog(cfd->vlog()) {}
   std::shared_ptr<VLog> GetVlog() { return vlog; }
@@ -142,7 +142,7 @@ class MergeContext {
   std::unique_ptr<std::vector<std::unique_ptr<std::string>>> copied_operands_;
   bool operands_reversed_ = true;
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   std::shared_ptr<VLog> vlog;  // the value log for this column family
 #endif
 };

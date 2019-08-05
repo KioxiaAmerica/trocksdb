@@ -92,7 +92,7 @@ TEST_F(DBRangeDelTest, CompactionOutputFilesExactlyFilled) {
   options.table_factory.reset(NewBlockBasedTableFactory(table_options));
   Reopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -123,7 +123,7 @@ TEST_F(DBRangeDelTest, CompactionOutputFilesExactlyFilled) {
   ASSERT_EQ(0, NumTableFilesAtLevel(0));
   // If each file is overlong by 1 kv, they fit into 2 files.
   int expfiles = 2;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // We try to honor the file-size limit of 9K, and there are 24K of kvs.  That takes 3 files
   if(values_are_indirect)expfiles = 3;
 #endif
@@ -352,14 +352,14 @@ TEST_F(DBRangeDelTest, ValidLevelSubcompactionBoundaries) {
   options.num_levels = 3;
   options.target_file_size_base = kFileBytes;
   options.target_file_size_multiplier = 1;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move = true;
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
   Reopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
   Random rnd(301);
   for (int i = 0; i < 2; ++i) {
@@ -418,14 +418,14 @@ TEST_F(DBRangeDelTest, ValidUniversalSubcompactionBoundaries) {
   options.num_levels = kNumLevels;
   options.target_file_size_base = kNumPerFile << 10;
   options.target_file_size_multiplier = 1;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move = true;
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
   Reopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
   Random rnd(301);
   for (int i = 0; i < kNumLevels - 1; ++i) {
@@ -974,7 +974,7 @@ TEST_F(DBRangeDelTest, CompactionTreatsSplitInputLevelDeletionAtomically) {
       new SpecialSkipListFactory(2 /* num_entries_flush */));
   options.target_file_size_base = kValueBytes;
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
   if(values_are_indirect){
     options.target_file_size_base = (uint64_t)(kValueBytes*1.7);  // allow 2 keys per file for both indirect and direct values

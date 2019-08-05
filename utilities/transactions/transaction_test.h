@@ -54,7 +54,7 @@ class TransactionTestBase : public ::testing::Test {
   TransactionTestBase(bool use_stackable_db, bool two_write_queue,
                       TxnDBWritePolicy write_policy)
       : db(nullptr), env(nullptr), use_stackable_db_(use_stackable_db) {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     if(useindirect)options.vlogring_activation_level = std::vector<int32_t>{0};
 #else
     (void)useindirect;

@@ -1229,7 +1229,7 @@ Status DBImpl::ReFitLevel(ColumnFamilyData* cfd, int level, int target_level) {
                    f->fd.GetFileSize(), f->smallest, f->largest,
                    f->fd.smallest_seqno, f->fd.largest_seqno,
                    f->marked_for_compaction
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                    ,f->indirect_ref_0
                    ,f->avgparentfileno
 #endif
@@ -2542,7 +2542,7 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
                            f->fd.GetPathId(), f->fd.GetFileSize(), f->smallest,
                            f->largest, f->fd.smallest_seqno, f->fd.largest_seqno,
                            f->marked_for_compaction
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                            ,f->indirect_ref_0
                            ,f->avgparentfileno
 #endif

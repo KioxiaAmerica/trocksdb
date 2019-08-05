@@ -83,7 +83,7 @@ TEST_F(OptionsTest, GetOptionsFromMapTest) {
       {"hard_pending_compaction_bytes_limit", "211"},
       {"arena_block_size", "22"},
       {"disable_auto_compactions", "true"},
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       {"allow_trivial_move", "false"},
       {"vlog_direct_IO", "false"},
 #endif

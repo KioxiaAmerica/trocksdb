@@ -80,10 +80,10 @@ enum class OptionType {
   kAccessHint,
   kInfoLogLevel,
   kLRUCacheOptions,
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   kVectorInt32,
   kVectorInt64,
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
   kUnknown
 };
 

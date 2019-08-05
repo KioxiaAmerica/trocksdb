@@ -1071,7 +1071,7 @@ TEST_F(DBTest2, DISABLED_PresetCompressionDict) {
   if (ZSTD_Supported()) {
     compression_types.push_back(kZSTD);
   }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   if(options.vlogring_activation_level.size())return;  // this test does not apply to indirect values
 #endif
 
@@ -1270,7 +1270,7 @@ TEST_F(DBTest2, CompressionOptions) {
 
   const int kKeySize = 5;
   int kValSize = 20;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   if(options.vlogring_activation_level.size())kValSize = 20+(16-4);  // references compress so well that we have to expect only 4 out of 16 bytes after compression
 #endif
   Random rnd(301);
@@ -1301,7 +1301,7 @@ TEST_F(DBTest2, CompressionOptions) {
 
     DestroyAndReopen(options);
     bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
     // Write 10 random files
@@ -1713,13 +1713,13 @@ TEST_F(DBTest2, MaxCompactionBytesTest) {
   options.target_file_size_base = 100 << 10;
   // Infinite for full compaction.
   options.max_compaction_bytes = options.target_file_size_base * 100;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move = true;
 #endif
 
   Reopen(options);
   bool values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -1739,14 +1739,14 @@ TEST_F(DBTest2, MaxCompactionBytesTest) {
   // grandparent is before the key going into the output file.  Thus, the last grandparent is not counted in the size, and we get by
   // with smaller max_compaction to create 3 pieces
   options.max_compaction_bytes = options.target_file_size_base * 3;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // The max_compaction must be big enough to hold 3 grandparents plus 1/3 of the file from Ln, to allow the file to be split into
   // just 3 pieces
   if(options.vlogring_activation_level.size())options.max_compaction_bytes = (uint64_t)((double)options.target_file_size_base * 3.4);
 #endif
   Reopen(options);
   values_are_indirect = false;  // Set if we are using VLogging
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   values_are_indirect = options.vlogring_activation_level.size()!=0;
 #endif
 
@@ -2275,7 +2275,7 @@ TEST_F(DBTest2, AutomaticCompactionOverlapManualCompaction) {
   Options options = CurrentOptions();
   options.num_levels = 3;
   options.IncreaseParallelism(20);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   DestroyAndReopen(options);
@@ -2353,7 +2353,7 @@ TEST_F(DBTest2, ManualCompactionOverlapManualCompaction) {
   options.num_levels = 2;
   options.IncreaseParallelism(20);
   options.disable_auto_compactions = true;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   DestroyAndReopen(options);
@@ -2717,7 +2717,7 @@ TEST_F(DBTest2, ReadCallbackTest) {
   Options options;
   options.disable_auto_compactions = true;
   options.num_levels = 7;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   Reopen(options);

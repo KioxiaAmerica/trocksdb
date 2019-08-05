@@ -51,7 +51,7 @@ const std::map<LevelStatType, LevelStat> InternalStats::compaction_level_stats =
         {LevelStatType::AVG_SEC, LevelStat{"AvgSec", "Avg(sec)"}},
         {LevelStatType::KEY_IN, LevelStat{"KeyIn", "KeyIn"}},
         {LevelStatType::KEY_DROP, LevelStat{"KeyDrop", "KeyDrop"}},
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
         {LevelStatType::W_VLOG_GB, LevelStat{"WVLogCmpGB", "WVCmp(GB)"}},
         {LevelStatType::W_VLOGUNCOMP_GB, LevelStat{"WVLogRawGB", "WVRaw(GB)"}},
         {LevelStatType::W_VLOGREMAP_GB, LevelStat{"WVLogRemapGB", "WVRemap(GB)"}},
@@ -59,7 +59,7 @@ const std::map<LevelStatType, LevelStat> InternalStats::compaction_level_stats =
 #endif
 };
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 const std::map<RingStatType, LevelStat> InternalStats::compaction_ring_stats =
     {
         {RingStatType::NUM_FILES, LevelStat{"NumFiles", " Files"}},
@@ -84,7 +84,7 @@ void PrintLevelStatsHeader(char* buf, size_t len, const std::string& cf_name,
   int line_size = snprintf(
       buf + written_size, len - written_size,
       "%s    %s   %s     %s %s  %s %s %s %s %s %s %s %s %s %s %s %s %s %s"
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       "%s %s %s %s"
 #endif
       "\n",
@@ -99,7 +99,7 @@ void PrintLevelStatsHeader(char* buf, size_t len, const std::string& cf_name,
       hdr(LevelStatType::COMP_CPU_SEC), hdr(LevelStatType::COMP_COUNT),
       hdr(LevelStatType::AVG_SEC), hdr(LevelStatType::KEY_IN),
       hdr(LevelStatType::KEY_DROP)
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       ,hdr(LevelStatType::W_VLOG_GB), hdr(LevelStatType::W_VLOGUNCOMP_GB), hdr(LevelStatType::W_VLOGREMAP_GB), hdr(LevelStatType::W_VLOGFILES)
 #endif
       );
@@ -109,7 +109,7 @@ void PrintLevelStatsHeader(char* buf, size_t len, const std::string& cf_name,
            std::string(line_size, '-').c_str());
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 void PrintRingStatsHeader(char* buf, size_t len, const std::string& cf_name) {
   int written_size =
       snprintf(buf, len, "\n** Compaction Ring Stats [%s] **\n", cf_name.c_str());
@@ -138,7 +138,7 @@ void PrepareLevelStats(std::map<LevelStatType, double>* level_stats,
                        const InternalStats::CompactionStats& stats) {
   uint64_t bytes_read =
       stats.bytes_read_non_output_levels + stats.bytes_read_output_level;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // remapped bytes are both read and written
   bytes_read += stats.vlog_bytes_remapped;
 #endif
@@ -169,7 +169,7 @@ void PrepareLevelStats(std::map<LevelStatType, double>* level_stats,
       static_cast<double>(stats.num_input_records);
   (*level_stats)[LevelStatType::KEY_DROP] =
       static_cast<double>(stats.num_dropped_records);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   (*level_stats)[LevelStatType::W_VLOG_GB] =
       stats.vlog_bytes_written_comp / kGB;
   (*level_stats)[LevelStatType::W_VLOGUNCOMP_GB] =
@@ -181,7 +181,7 @@ void PrepareLevelStats(std::map<LevelStatType, double>* level_stats,
 #endif
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 void PrepareRingStats(std::map<RingStatType, double>* ring_stats,
                        double num_files, int64_t file_size, double fragmentation) {
   (*ring_stats)[RingStatType::NUM_FILES] = num_files;
@@ -224,7 +224,7 @@ void PrintLevelStats(char* buf, size_t len, const std::string& name,
       "%8.3f "    /*  Avg(sec) */
       "%7s "      /*  KeyIn */
       "%6s"       /*  KeyDrop */
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       "%9.1f"     /* WVCmp(GB) */
       "%9.1f"     /* WVRaw(GB) */
       "%11.1f"     /* WVRemap(GB) */
@@ -256,7 +256,7 @@ void PrintLevelStats(char* buf, size_t len, const std::string& name,
       NumberToHumanString(
           static_cast<std::int64_t>(stat_value.at(LevelStatType::KEY_DROP)))
                .c_str()
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       ,stat_value.at(LevelStatType::W_VLOG_GB)
       ,stat_value.at(LevelStatType::W_VLOGUNCOMP_GB)
       ,stat_value.at(LevelStatType::W_VLOGREMAP_GB)
@@ -265,7 +265,7 @@ void PrintLevelStats(char* buf, size_t len, const std::string& name,
            );
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 void PrintRingStats(char* buf, size_t len, const std::string& name,
                      const std::map<RingStatType, double>& stat_value) {
   snprintf(
@@ -322,7 +322,7 @@ static const std::string cfstats_no_file_histogram =
 static const std::string cf_file_histogram = "cf-file-histogram";
 static const std::string dbstats = "dbstats";
 static const std::string levelstats = "levelstats";
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 static const std::string vlogringstats = "vlogringstats";
 #endif
 static const std::string num_immutable_mem_table = "num-immutable-mem-table";
@@ -390,7 +390,7 @@ const std::string DB::Properties::kCFFileHistogram =
     rocksdb_prefix + cf_file_histogram;
 const std::string DB::Properties::kDBStats = rocksdb_prefix + dbstats;
 const std::string DB::Properties::kLevelStats = rocksdb_prefix + levelstats;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 const std::string DB::Properties::kVLogRingStats = rocksdb_prefix + vlogringstats;
 #endif
 const std::string DB::Properties::kNumImmutableMemTable =
@@ -477,7 +477,7 @@ const std::unordered_map<std::string, DBPropertyInfo>
           nullptr, nullptr}},
         {DB::Properties::kLevelStats,
          {false, &InternalStats::HandleLevelStats, nullptr, nullptr, nullptr}},
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
         {DB::Properties::kVLogRingStats,
          {false, &InternalStats::HandleVLogRingStats, nullptr, nullptr}},
 #endif
@@ -698,7 +698,7 @@ bool InternalStats::HandleLevelStats(std::string* value, Slice /*suffix*/) {
   return true;
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 bool InternalStats::HandleVLogRingStats(std::string* value, Slice /*suffix*/) {
   char buf[1000];
   snprintf(buf, sizeof(buf),
@@ -1294,7 +1294,7 @@ void InternalStats::DumpCFMapStats(
       double w_amp =
           (input_bytes == 0)
               ? 0.0
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
          // The input_bytes to compaction are SST info coming in from the compacted files.  The bytes written include bytes written to SSTs and all bytes
          // written to VLogs.  Some of the bytes written to VLogs are remappings, which drive up (& usually dominate) write amp for the last level; less so for earlier levels
          // that have little remapping.  The assignment of remapping to levels is somewhat arbitrary; arguably we could remove the remapping from the level stats
@@ -1304,7 +1304,7 @@ void InternalStats::DumpCFMapStats(
 #else
               : static_cast<double>(comp_stats_[level].bytes_written) /
                     input_bytes;
-#endif // INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
       std::map<LevelStatType, double> level_stats;
       PrepareLevelStats(&level_stats, files, files_being_compacted[level],
                         static_cast<double>(vstorage->NumLevelBytes(level)),
@@ -1313,14 +1313,14 @@ void InternalStats::DumpCFMapStats(
     }
   }
   // Cumulative summary
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // see above
   double w_amp = (compaction_stats_sum->bytes_written + compaction_stats_sum->vlog_bytes_written_comp) /
                  (static_cast<double>(curr_ingest + 1));
 #else
   double w_amp = compaction_stats_sum->bytes_written /
                  static_cast<double>(curr_ingest + 1);
-#endif // INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
   // Stats summary across levels
   std::map<LevelStatType, double> sum_stats;
@@ -1329,7 +1329,7 @@ void InternalStats::DumpCFMapStats(
   (*levels_stats)[-1] = sum_stats;  //  -1 is for the Sum level
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 void InternalStats::DumpCFMapStatsRing(
     std::map<int, std::map<RingStatType, double>>* rings_stats,  // stats for each ring
     std::map<VLogStatType, double>* vlog_stats) {
@@ -1363,7 +1363,7 @@ void InternalStats::DumpCFMapStatsRing(
     PrepareVLogStats(vlog_stats, nreads, avglen, readavg, readalpha, readbeta, compavg, compalpha, compbeta);
   }
 }
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
 void InternalStats::DumpCFMapStatsByPriority(
     std::map<int, std::map<LevelStatType, double>>* priorities_stats) {
@@ -1461,11 +1461,11 @@ void InternalStats::DumpCFStatsNoFileHistogram(std::string* value) {
   CompactionStats interval_stats(compaction_stats_sum);
   interval_stats.Subtract(cf_stats_snapshot_.comp_stats);
   double w_amp =
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       (interval_stats.bytes_written+interval_stats.vlog_bytes_written_comp) / (static_cast<double>(interval_ingest));
 #else
       interval_stats.bytes_written / static_cast<double>(interval_ingest);
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
   PrintLevelStats(buf, sizeof(buf), "Int", 0, 0, 0, 0, w_amp, interval_stats);
   value->append(buf);
 
@@ -1587,7 +1587,7 @@ void InternalStats::DumpCFStatsNoFileHistogram(std::string* value) {
            cf_stats_count_[MEMTABLE_LIMIT_SLOWDOWNS],
            total_stall_count - cf_stats_snapshot_.stall_count);
   value->append(buf);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // Ring stats header
   PrintRingStatsHeader(buf, sizeof(buf), cfd_->GetName());
   value->append(buf);
@@ -1624,7 +1624,7 @@ void InternalStats::DumpCFStatsNoFileHistogram(std::string* value) {
     }
     value->append("\n");
   }
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
   cf_stats_snapshot_.seconds_up = seconds_up;
   cf_stats_snapshot_.ingest_bytes_flush = flush_ingest;
   cf_stats_snapshot_.ingest_bytes_addfile = add_file_ingest;

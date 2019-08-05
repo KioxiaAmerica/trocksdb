@@ -506,7 +506,7 @@ class WritePreparedTransactionTestBase : public TransactionTestBase {
       ASSERT_EQ(expected_versions[i].sequence, versions[i].sequence);
       ASSERT_EQ(expected_versions[i].type, versions[i].type);
       if (versions[i].type != kTypeDeletion &&
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           versions[i].type != kTypeIndirectValue &&  // the value has been translated, don't check it
           versions[i].type != kTypeIndirectMerge &&  // the value has been translated, don't check it
 #endif
@@ -2048,7 +2048,7 @@ TEST_P(WritePreparedTransactionTest, SequenceNumberZeroTest) {
   VerifyKeys({{"foo", "bar"}});
   VerifyKeys({{"foo", "bar"}}, snapshot);
   int exptype = kTypeValue;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   if(options.vlogring_activation_level.size())exptype = kTypeIndirectValue;
 #endif
   VerifyInternalKeys({{"foo", "bar", 0, exptype}});
@@ -2121,7 +2121,7 @@ TEST_P(WritePreparedTransactionTest, CompactionShouldKeepUncommittedKeys) {
   });
   int valuetype = kTypeValue;
   int mergetype = kTypeMerge;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   if(options.vlogring_activation_level.size())valuetype = kTypeIndirectValue;
   if(options.vlogring_activation_level.size())mergetype = kTypeIndirectMerge;
 #endif
@@ -2208,7 +2208,7 @@ TEST_P(WritePreparedTransactionTest, CompactionShouldKeepSnapshotVisibleKeys) {
   VerifyKeys({{"key1", "value1_2"}, {"key2", "value2_2"}});
   VerifyKeys({{"key1", "value1_1"}, {"key2", "NOT_FOUND"}}, snapshot2);
   int valuetype = kTypeValue;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   if(options.vlogring_activation_level.size())valuetype = kTypeIndirectValue;
 #endif
   VerifyInternalKeys({
@@ -2592,7 +2592,7 @@ TEST_P(WritePreparedTransactionTest,
       {"key2", "value2"},
   });
   int valuetype = kTypeValue;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   if(options.vlogring_activation_level.size())valuetype = kTypeIndirectValue;
 #endif
   VerifyInternalKeys({

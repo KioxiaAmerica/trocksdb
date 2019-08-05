@@ -52,12 +52,12 @@
 #include "util/string_util.h"
 #include "util/sync_point.h"
 #include "util/user_comparator_wrapper.h"
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #include "db/value_log.h"
 #endif
 
 namespace rocksdb {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 void DetectVLogDeletions(ColumnFamilyData *, std::vector<VLogRingRestartInfo> *);
 #endif
 
@@ -949,7 +949,7 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
         level, level_size, std::move(files));
     cf_meta->size += level_size;
   }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // If there are rings, collect the stats for them
   std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
   cf_meta->vlog_filecount.clear();  cf_meta->vlog_totalsize.clear(); cf_meta->vlog_totalfrag.clear();
@@ -1150,7 +1150,7 @@ VersionStorageInfo::VersionStorageInfo(
     const Comparator* user_comparator, int levels,
     CompactionStyle compaction_style, VersionStorageInfo* ref_vstorage,
     bool _force_consistency_checks
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     ,ColumnFamilyData *cfd
 #endif
     )
@@ -1181,7 +1181,7 @@ VersionStorageInfo::VersionStorageInfo(
       estimated_compaction_needed_bytes_(0),
       finalized_(false),
       force_consistency_checks_(_force_consistency_checks)
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       ,cfd_(cfd)
 #endif
   {
@@ -1221,7 +1221,7 @@ Version::Version(ColumnFamilyData* column_family_data, VersionSet* vset,
               ? nullptr
               : cfd_->current()->storage_info(),
           cfd_ == nullptr ? false : cfd_->ioptions()->force_consistency_checks
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           ,column_family_data
 #endif
       ),
@@ -1718,7 +1718,7 @@ void VersionStorageInfo::ComputeCompactionScore(
           // compactions to the base level.  Since the files produced by L0->L0 compactions are
           // sized to target_file_size_base, this limit comes into play when the target_file_size_base is larger
           // than the memtable size (write_buffer_size) which makes the number of files an inadequate proxy for their size.
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           // With indirect values, the opposite problem arises: the target file size is much smaller than the memtable; in fact the
           // max_bytes_for_level_base is likely smaller than a single memtable.  In this case, comparing the size of a memtable against
           // max_bytes_for_level_base will lead to artificially large compaction score.  So we suppress the test if L0 contains indirect values
@@ -1729,7 +1729,7 @@ void VersionStorageInfo::ComputeCompactionScore(
                       mutable_cf_options.max_bytes_for_level_base;
            score = std::max(score, projectedl0score);
            }  // end DO NOT MOVE
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           // When the host Write stream outruns the compactions, score starts to grow,
           // and can grow very large.  When it gets too big, it makes all the other compaction scores
           // meaningless, and the levels do not assume reasonable proportions.  When the L0 score is X, L1 grows
@@ -1996,7 +1996,7 @@ printf("files by level:"); for (int level = 0; level < num_levels(); level++)pri
     if (num > temp.size()) {
       num = temp.size();
     }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // see if the current CF has VLogs, and get the scope of the result ring if so
     int ring; VLogRingRefFileno file0; VLogRingRefFileno nfiles; int32_t age_importance;
     GetVLogReshapingParms(level, ring, file0, nfiles, age_importance);
@@ -2009,7 +2009,7 @@ printf("files by level:"); for (int level = 0; level < num_levels(); level++)pri
     CompactionPri compaction_pri_to_use = compaction_pri;
 #endif
     switch (compaction_pri_to_use) {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
      case kReservedInternal:  // means 'VLog in use'
         // if there are rings for this level, include the file numbers that will be freed in the computation of which file to compact
         // We want to give preference to compactions that will free up files near the tail of the VLog, because the fragmentation added
@@ -2514,14 +2514,14 @@ void VersionStorageInfo::ExtendFileRangeWithinInterval(
   *end_index = right;
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 int64_t VersionStorageInfo::NumRingBytes(int ring) const {
   assert(ring >= 0);
   std::vector<VLogRingRestartInfo>& vli = cfd_->vloginfo();
   assert(ring < static_cast<int>(vli.size()));
   return vli[ring].size;
 }
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
 uint64_t VersionStorageInfo::NumLevelBytes(int level) const {
   assert(level >= 0);
@@ -2929,7 +2929,7 @@ VersionSet::~VersionSet() {
       table_cache->Release(file.metadata->table_reader_handle);
       TableCache::Evict(table_cache, file.metadata->fd.GetNumber());
     }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // The SST is about to be deleted.  Remove it from any VLog queues it is attached to.
     // We have to do this explicitly rather than in a destructor because FileMetaData blocks get copied & put on queues
     // with no regard for ownership.  Rather than try to enforce no-copy semantics everywhere we root out all the delete calls and put this there
@@ -2998,7 +2998,7 @@ Status VersionSet::ProcessManifestWrites(
   autovector<Version*> versions;
   autovector<const MutableCFOptions*> mutable_cf_options_ptrs;
   std::vector<std::unique_ptr<BaseReferencedVersionBuilder>> builder_guards;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   std::vector<VLogRingRestartInfo> accum_vlog_edits;
 #endif
 
@@ -3094,13 +3094,13 @@ Status VersionSet::ProcessManifestWrites(
       assert(!builder_guards.empty() &&
              builder_guards.size() == versions.size());
       auto* builder = builder_guards[i]->version_builder();
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       builder->SaveTo(versions[i]->storage_info(),last_writer->cfd);
 #else
       builder->SaveTo(versions[i]->storage_info());
 #endif
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       // Add the edits from this builder into the collected edits for this CF.
       Coalesce(accum_vlog_edits,builder->VLogAdditions(),true);
 #endif
@@ -3218,7 +3218,7 @@ Status VersionSet::ProcessManifestWrites(
     }
     }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // Update the VLog information: the list of files and size/frag thereof.  We wait till here because
     // this information is kept for the database as a whole, not part of any Version.  We have (possibly) just
     // completed writing out the entire old Version, before the current edit, and as part of that write we
@@ -3623,7 +3623,7 @@ Status VersionSet::ApplyOneVersionEditToBuilder(
     auto builder = builders.find(edit.column_family_);
     assert(builder != builders.end());
     builder->second->version_builder()->Apply(&edit);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 
     if(edit.vlog_additions.size())   // If this edit contains vlog info
       Coalesce(cfd->vloginfo(), edit.vlog_additions, false);  // fold them into the CF, eliding any deletion record
@@ -3928,7 +3928,7 @@ Status VersionSet::Recover(
       Version* v = new Version(cfd, this, env_options_,
                                *cfd->GetLatestMutableCFOptions(),
                                current_version_number_++);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       // Must include cfd in the next line to install the new files into the SSTs
 #endif
       builder->SaveTo(v->storage_info(),cfd);
@@ -4373,7 +4373,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
       }
       edit.SetComparatorName(
           cfd->internal_comparator().user_comparator()->Name());
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       // install the current version VLog status as the starting point for this snapshot
       edit.SetVLogStats(cfd->vloginfo());
 #if DEBLEVEL&0x800
@@ -4405,7 +4405,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
                        f->fd.GetFileSize(), f->smallest, f->largest,
                        f->fd.smallest_seqno, f->fd.largest_seqno,
                        f->marked_for_compaction
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                        ,f->indirect_ref_0
                        ,f->avgparentfileno
 #endif
@@ -4634,7 +4634,7 @@ InternalIterator* VersionSet::MakeInputIterator(
   InternalIterator* result =
       NewMergingIterator(&c->column_family_data()->internal_comparator(), list,
                          static_cast<int>(num));
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // Install the VLog object into the iterator so that resolving values can get to it
   result->SetVlogForIteratorCF(cfd->vlog());
 #endif
@@ -4656,7 +4656,7 @@ bool VersionSet::VerifyCompactionFileConsistency(Compaction* c) {
         c->column_family_data()->GetName().c_str());
 
     if (vstorage->compaction_style_ == kCompactionStyleLevel &&
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       // this audit does not apply to Active Recycling, which can spray files all around to any level
       c->compaction_reason() != CompactionReason::kActiveRecycling &&
 #endif

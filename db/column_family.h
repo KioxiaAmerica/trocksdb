@@ -25,7 +25,7 @@
 #include "rocksdb/env.h"
 #include "rocksdb/options.h"
 #include "util/thread_local.h"
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #include "db/value_log.h"
 #endif
 
@@ -137,9 +137,9 @@ struct SuperVersion {
   autovector<MemTable*> to_delete;
 };
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 extern Status CheckRingCompressionSupported(const ColumnFamilyOptions& cf_options);
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
 extern Status CheckCompressionSupported(const ColumnFamilyOptions& cf_options);
 
@@ -392,7 +392,7 @@ class ColumnFamilyData {
 
   ThreadLocalPtr* TEST_GetLocalSV() { return local_sv_.get(); }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   std::shared_ptr<VLog> vlog() { return vlog_;}    // the VLog to be used for this column family.  May contain no rings
   std::vector<VLogRingRestartInfo>& vloginfo() { return vlog_info; }
   void CheckForActiveRecycle(std::vector<CompactionInputFiles>& compaction_inputs,  // result: the files to Active Recycle, if any, each on its own 'level'.  If no AR needed, empty
@@ -491,7 +491,7 @@ class ColumnFamilyData {
   // Directories corresponding to cf_paths.
   std::vector<std::unique_ptr<Directory>> data_dirs_;
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // The VLog persists for the entire life of the database, starting with the creation of the ColumnFamilyData for a CF.
   // The ColumnFamilyData for the default column is created and then assigned to default_cfd_cache_.  Apparently the
   // original CFD object may then be destroyed.  This is catastrophic if the VLog was created in the scope of the original object,

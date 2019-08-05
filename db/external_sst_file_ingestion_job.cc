@@ -202,7 +202,7 @@ Status ExternalSstFileIngestionJob::Run() {
     if (!status.ok()) {
       return status;
     }
-#ifdef INDIRECT_VALUE_SUPPORT   // assign earliest_ref to ingested file
+#ifndef NO_INDIRECT_VALUE   // assign earliest_ref to ingested file
 // Leave ref0 field empty, indicating no references
 #endif
     edit_.AddFile(f.picked_level, f.fd.GetNumber(), f.fd.GetPathId(),

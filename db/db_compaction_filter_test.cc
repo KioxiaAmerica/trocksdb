@@ -34,7 +34,7 @@ class DBTestCompactionFilterWithCompactParam
     Destroy(last_options_);
     auto options = CurrentOptions();
     if (option_config_ == kDefault || option_config_ == kUniversalCompaction ||
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
         option_config_ == kDefaultInd ||
         option_config_ == kUniversalCompactionInd ||
         option_config_ == kUniversalCompactionMultiLevelInd ||
@@ -51,7 +51,7 @@ class DBTestCompactionFilterWithCompactParam
 };
 
 #ifndef ROCKSDB_VALGRIND_RUN
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 INSTANTIATE_TEST_CASE_P(
     DBTestCompactionFilterWithCompactOption,
     DBTestCompactionFilterWithCompactParam,
@@ -519,7 +519,7 @@ TEST_P(DBTestCompactionFilterWithCompactParam,
   // push all files to  lower levels
   ASSERT_OK(Flush(1));
   if (option_config_ != kUniversalCompactionMultiLevel &&
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       option_config_ != kUniversalCompactionMultiLevelInd &&
 #endif
       option_config_ != kUniversalSubcompactions) {
@@ -541,7 +541,7 @@ TEST_P(DBTestCompactionFilterWithCompactParam,
   // invoke the compaction filter for all 100000 keys.
   ASSERT_OK(Flush(1));
   if (option_config_ != kUniversalCompactionMultiLevel &&
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       option_config_ != kUniversalCompactionMultiLevelInd &&
 #endif
       option_config_ != kUniversalSubcompactions) {

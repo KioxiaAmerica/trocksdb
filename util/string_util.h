@@ -126,18 +126,18 @@ size_t ParseSizeT(const std::string& value);
 
 std::vector<int> ParseVectorInt(const std::string& value);
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 int32_t ParseInt32(const std::string& value);
 std::vector<int32_t> ParseVectorInt32(const std::string& value);
 std::vector<uint64_t> ParseVectorInt64(const std::string& value);
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
 bool SerializeIntVector(const std::vector<int>& vec, std::string* value);
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 bool SerializeVectorInt32(const std::vector<int32_t>& vec, std::string* value);
 bool SerializeVectorInt64(const std::vector<uint64_t>& vec, std::string* value);
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
 extern const std::string kNullptrString;
 

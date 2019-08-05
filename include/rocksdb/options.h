@@ -301,7 +301,7 @@ struct ColumnFamilyOptions : public AdvancedColumnFamilyOptions {
   // Default: nullptr
   std::shared_ptr<ConcurrentTaskLimiter> compaction_thread_limiter = nullptr;
 
-#ifdef INDIRECT_VALUE_SUPPORT  // define column-family options
+#ifndef NO_INDIRECT_VALUE  // define column-family options
 
 // include VLog options for the CF here
   // All are Dynamically changeable through SetOptions() API

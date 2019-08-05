@@ -40,7 +40,7 @@ enum FileType {
   kIdentityFile,
   kOptionsFile,
   kBlobFile
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   ,kVLogFile
 #endif
 };
@@ -79,7 +79,7 @@ extern uint64_t TableFileNameToNumber(const std::string& name);
 // "dbname".
 extern std::string TableFileName(const std::vector<DbPath>& db_paths,
                                  uint64_t number, uint32_t path_id);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 // Return the name of the VLog file with the specified number
 // in the db named by "dbname".  The result will be prefixed with
 // "dbname".  cf_name is the name of the column family

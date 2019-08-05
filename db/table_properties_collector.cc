@@ -16,7 +16,7 @@ namespace {
 #if 0 // scaf obsolete conflict
 EntryType GetEntryType(ValueType value_type) {
   switch (value_type) {
-#ifdef INDIRECT_VALUE_SUPPORT   // treat indirect value as value for stats purposes
+#ifndef NO_INDIRECT_VALUE   // treat indirect value as value for stats purposes
     case kTypeIndirectValue:
 #endif
     case kTypeValue:
@@ -25,7 +25,7 @@ EntryType GetEntryType(ValueType value_type) {
       return kEntryDelete;
     case kTypeSingleDeletion:
       return kEntrySingleDelete;
-#ifdef INDIRECT_VALUE_SUPPORT   // treat indirect merge as merge for stats purposes
+#ifndef NO_INDIRECT_VALUE   // treat indirect merge as merge for stats purposes
     case kTypeIndirectMerge:
 #endif
     case kTypeMerge:

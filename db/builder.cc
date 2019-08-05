@@ -35,7 +35,7 @@
 #include "util/filename.h"
 #include "util/stop_watch.h"
 #include "util/sync_point.h"
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #include "db/value_log_iterator.h"
 #endif
 
@@ -84,7 +84,7 @@ Status BuildTable(
     const Env::IOPriority io_priority, TableProperties* table_properties,
     int level, const uint64_t creation_time, const uint64_t oldest_key_time,
     Env::WriteLifeTimeHint write_hint
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     ,ColumnFamilyData* cfd
     ,VLogEditStats *vlog_flush_info
 #endif
@@ -130,7 +130,7 @@ Status BuildTable(
         EventHelpers::LogAndNotifyTableFileCreationFinished(
             event_logger, ioptions.listeners, dbname, column_family_name, fname,
             job_id, meta->fd, tp, reason, s
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
             ,nullptr /* ref0 */
 #endif
             );
@@ -163,7 +163,7 @@ Status BuildTable(
         true /* internal key corruption is not ok */, range_del_agg.get());
     c_iter.SeekToFirst();
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // The IndirectIterator will do all mapping/remapping and will return the new key/values one by one
   // The constructor called here immediately reads all the values from c_iter, buffers them, and writes values to the Value Log.
   // Then in the loop it returns the references to the values that were written.  Errors encountered during c_iter are preserved
@@ -254,7 +254,7 @@ Status BuildTable(
         s = it->status();
       }
     }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     if(cfd){  // if we are VLogging this flush...
       std::vector<uint64_t> ref0;  // vector of file-refs
       value_iter->ref0(ref0, true /* include_last */);  // true to pick up the very last key, which will not have been included in the file because we didn't know the file was ending
@@ -280,7 +280,7 @@ Status BuildTable(
   EventHelpers::LogAndNotifyTableFileCreationFinished(
       event_logger, ioptions.listeners, dbname, column_family_name, fname,
       job_id, meta->fd, tp, reason, s
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       ,&meta->indirect_ref_0  // lowest ref in each ring
 #endif
 );

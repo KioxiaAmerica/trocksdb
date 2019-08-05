@@ -389,7 +389,7 @@ std::vector<int> ParseVectorInt(const std::string& value) {
   return result;
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 std::vector<int32_t> ParseVectorInt32(const std::string& value) {
   std::vector<int32_t> result;
   size_t start = 0;
@@ -420,7 +420,7 @@ std::vector<uint64_t> ParseVectorInt64(const std::string& value) {
   }
   return result;
 }
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
 bool SerializeIntVector(const std::vector<int>& vec, std::string* value) {
   *value = "";
@@ -433,7 +433,7 @@ bool SerializeIntVector(const std::vector<int>& vec, std::string* value) {
   return true;
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 bool SerializeVectorInt32(const std::vector<int32_t>& vec, std::string* value) {
   *value = "";
   for (size_t i = 0; i < vec.size(); ++i) {
@@ -454,6 +454,6 @@ bool SerializeVectorInt64(const std::vector<uint64_t>& vec, std::string* value) 
   }
   return true;
 }
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
 }  // namespace rocksdb

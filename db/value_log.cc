@@ -266,7 +266,7 @@ void VLogRingRestartInfo::Coalesce(const VLogRingRestartInfo& sec,  // the stats
   }
   // we have written out all the intervals.  Replace the input intervals and we're done
   valid_files.swap(outarea);
-#if defined(INDIRECT_VALUE_SUPPORT) && !defined(NDEBUG)
+#if !defined(NO_INDIRECT_VALUE) && !defined(NDEBUG)
   if(!outputdeletion){
     TEST_SYNC_POINT_CALLBACK("VLogRingRestartInfo::Coalesce",
                              this);

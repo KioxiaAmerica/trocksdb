@@ -61,7 +61,7 @@ class FlushedFileCollector : public EventListener {
 };
 
 // Test in both normal and indirect configurations
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #define INDOPTIONSBGN do{
 #define INDOPTIONSEND(opts) }while(opts.vlogring_activation_level.push_back(0),opts.min_indirect_val_size[0]=0,opts.vlogring_activation_level.size()<2);
 #else

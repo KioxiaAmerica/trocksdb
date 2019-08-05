@@ -545,7 +545,7 @@ std::string IsFastCrc32Supported() {
 
 // clang-format off
 const uint64_t clmul_constants[] = {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 // Each pair has 2 polynomials, corresponding to a delay of 2n+3 and n+3 8-byte words.
 // The polynomial for a delay of x 64-bit words is 2^(32+64*x) mod CRC, bit-reflected within the low 33 bits of the 64-bit word
 0x0f20c0dfe, 0x0f20c0dfe, 0x1384aa63a, 0x0ba4fc28e, 0x01c291d04, 0x1384aa63a, 0x0740eef02, 0x1d82c63da, 
@@ -713,7 +713,7 @@ __attribute__((__no_sanitize_undefined__))
 uint32_t crc32c_3way(uint32_t crc, const char* buf, size_t len) {
   uint64_t crc0, crc1, crc2;
 
-#ifdef INDIRECT_VALUE_SUPPORT  // this is of general value, to save cache space and dispatch instructions faster
+#ifndef NO_INDIRECT_VALUE  // this is of general value, to save cache space and dispatch instructions faster
   // This cache-friendly version by Henry H. Rich, January 2019
   crc0 = crc ^ 0xffffffffu;
   const unsigned char* ubuf = (const unsigned char*)buf;  // $%##!^ type checking

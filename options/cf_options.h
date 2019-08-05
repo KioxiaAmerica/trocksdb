@@ -155,7 +155,7 @@ struct MutableCFOptions {
             options.max_bytes_for_level_multiplier_additional),
         compaction_options_fifo(options.compaction_options_fifo),
         compaction_options_universal(options.compaction_options_universal),
-#ifdef INDIRECT_VALUE_SUPPORT   // declare mutable options
+#ifndef NO_INDIRECT_VALUE   // declare mutable options
 // Tuning parameters are mutable
         allow_trivial_move(options.allow_trivial_move),
         vlog_direct_IO(options.vlog_direct_IO),
@@ -207,7 +207,7 @@ struct MutableCFOptions {
         max_bytes_for_level_multiplier(0),
         ttl(0),
         compaction_options_fifo(),
-#ifdef INDIRECT_VALUE_SUPPORT   // initialize mutable options
+#ifndef NO_INDIRECT_VALUE   // initialize mutable options
 // Tuning parameters are mutable
         allow_trivial_move(false),
         vlog_direct_IO(false),
@@ -279,7 +279,7 @@ struct MutableCFOptions {
   std::vector<int> max_bytes_for_level_multiplier_additional;
   CompactionOptionsFIFO compaction_options_fifo;
   CompactionOptionsUniversal compaction_options_universal;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   bool allow_trivial_move;  // allow trivial move, bypassing compaction.  Used to allow some tests to run
   bool vlog_direct_IO;  // use direct I/O for vlog operations
   double compaction_score_limit_L0;  // maximum compaction score assigned to L0

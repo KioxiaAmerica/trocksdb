@@ -120,7 +120,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
   // Get a copy of the internal key, before it's invalidated by iter->Next()
   // Also maintain the list of merge operands seen.
   assert(HasOperator());
-#ifdef INDIRECT_VALUE_SUPPORT  // define workareas for resolving merge operands
+#ifndef NO_INDIRECT_VALUE  // define workareas for resolving merge operands
   std::shared_ptr<VLog> vlog = iter->GetVlogForIteratorCF();  // the VLog for this CF
   // We resolve the values for the merge in different strings so that they can be pinned for the merge mill
   // The storage area is created at the compaction-iterator level, because a merge routine is allowed
@@ -152,7 +152,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
   orig_ikey.type=kMaxValue; //Required to suppress maybe-uninitialized warning
 #endif
   ParseInternalKey(origkeyslice, &orig_ikey);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // If the type was changed when the value was resolved, replicate that change here.  This is a pitiable kludge.  It would be better
   // for the user's merge to be required to set the type properly, but the tests don't do that, never mind actual users.  We require that
   // the merge fiter return a direct type (which may be converted to indirect by the compaction job)
@@ -175,7 +175,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
     }
 
     Slice ikeyslice = iter->key();  // set the slice form of the next key
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     std::string ikeystring;  // place to save the modified key, if we modify it
 #endif
     ParsedInternalKey ikey;
@@ -209,7 +209,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
 
     assert(IsTypeMemorSST(ikey.type));
     Slice val = (Slice) iter->value();
-#ifdef INDIRECT_VALUE_SUPPORT   // resolve merge operands
+#ifndef NO_INDIRECT_VALUE   // resolve merge operands
     if(IsTypeIndirect(ikey.type)){
       // The key specifies an indirect type.  Resolve it
       // create a new string to hold the resolved value.  We keep all the values for a single result
@@ -307,7 +307,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
       if (filter != CompactionFilter::Decision::kRemoveAndSkipUntil &&
           range_del_agg != nullptr &&
           range_del_agg->ShouldDelete(
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
               ikeyslice, RangeDelPositioningMode::kForwardTraversal)) {
 #else
               iter->key(), RangeDelPositioningMode::kForwardTraversal)) {
@@ -419,7 +419,7 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
         keys_.erase(keys_.begin(), keys_.end() - 1);
       }
     }
-#ifdef INDIRECT_VALUE_SUPPORT   // ToDo: return unexecuted merge in its original form
+#ifndef NO_INDIRECT_VALUE   // ToDo: return unexecuted merge in its original form
 // If there is only one merge, return it in its original form (indirect/direct)
 #endif
   }

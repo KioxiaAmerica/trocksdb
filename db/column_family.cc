@@ -37,7 +37,7 @@
 #include "util/autovector.h"
 #include "util/compression.h"
 #include "util/sst_file_manager_impl.h"
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #include "db/value_log.h"
 #endif
 
@@ -118,7 +118,7 @@ void GetIntTblPropCollectorFactory(
         new UserKeyTablePropertiesCollectorFactory(collector_factories[i]));
   }
 }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 Status CheckRingCompressionSupported(const ColumnFamilyOptions& cf_options) {
   if (!cf_options.ring_compression_style.empty()) {
     for (size_t ring = 0; ring < cf_options.ring_compression_style.size();
@@ -133,7 +133,7 @@ Status CheckRingCompressionSupported(const ColumnFamilyOptions& cf_options) {
   }
   return Status::OK();
 }
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
 Status CheckCompressionSupported(const ColumnFamilyOptions& cf_options) {
   if (!cf_options.compression_per_level.empty()) {
@@ -166,11 +166,11 @@ Status CheckCompressionSupported(const ColumnFamilyOptions& cf_options) {
           "should be nonzero if we're using zstd's dictionary generator.");
     }
   }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   return CheckRingCompressionSupported(cf_options);
 #else
   return Status::OK();
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 }
 
 Status CheckConcurrentWritesSupported(const ColumnFamilyOptions& cf_options) {
@@ -356,7 +356,7 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
     result.max_compaction_bytes = result.target_file_size_base * 25;
   }
 
-#ifdef INDIRECT_VALUE_SUPPORT  // sanitize options
+#ifndef NO_INDIRECT_VALUE  // sanitize options
 // perform consistency checks on the new options
   bool vlogring_pass = true;
 // Verify the elements in vlogring_activation_level are strictly increasing
@@ -541,7 +541,7 @@ ColumnFamilyOptions SanitizeOptions(const ImmutableDBOptions& db_options,
     if (i >= result.ring_compression_style.size())
       result.ring_compression_style.emplace_back(kZlibCompression);
   }
-#endif //INDIRECT_VALUE_SUPPORT
+#endif //NO_INDIRECT_VALUE
 
   return result;
 }
@@ -701,7 +701,7 @@ ColumnFamilyData::ColumnFamilyData(
       ROCKS_LOG_INFO(ioptions_.info_log, "\t(skipping printing options)\n");
     }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // If the selected table doesn't support indirect values, leave the vlog_ pointer at its initial (nullptr) value
     // If it supports indirect values, create a vlog
     if(cf_options.table_factory->supports_indirect_values)vlog_ = std::make_shared<VLog>(this,db_options,env_options);
@@ -768,7 +768,7 @@ ColumnFamilyData::~ColumnFamilyData() {
     delete m;
   }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   if(vlog_)vlog_->cfd_clear();
 #endif
 }
@@ -1146,7 +1146,7 @@ bool ColumnFamilyData::NeedsCompaction() const {
   return compaction_picker_->NeedsCompaction(current_->storage_info());
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 void ColumnFamilyData::CheckForActiveRecycle(std::vector<CompactionInputFiles>& compaction_inputs,  // result: the files to Active Recycle, if any, each on its own 'level'.  If no AR needed, empty.
      size_t& ringno,    // result: the ring number to be recycled, if any
      VLogRingRefFileno& lastfileno,    // the last file# in the recycled region

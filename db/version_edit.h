@@ -17,7 +17,7 @@
 #include "db/dbformat.h"
 #include "util/arena.h"
 #include "util/autovector.h"
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #include "db/value_log.h"
 #endif
 
@@ -118,7 +118,7 @@ struct FileMetaData {
 
   bool marked_for_compaction;  // True if client asked us nicely to compact this
                                // file.
-#ifdef INDIRECT_VALUE_SUPPORT   // add earliest_ref to FileMetaData
+#ifndef NO_INDIRECT_VALUE   // add earliest_ref to FileMetaData
   std::vector<uint64_t> indirect_ref_0;  // for each ring: filenumber of the oldest value referred to in this SST, or HIGH-VALUE if no reference
      // value of 0 means 'omitted', i. e. this file was created without a value for this field
   // The SSTs are chained off the VLogRings on doubly-linked lists, one chain-pair per ring.  The SST is chained for as long
@@ -142,7 +142,7 @@ struct FileMetaData {
         being_compacted(false),
         init_stats_from_file(false),
         marked_for_compaction(false)
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
         ,indirect_ref_0(std::vector<uint64_t>())  // 0 means 'omitted'
         ,ringfwdchain(std::vector<FileMetaData*>())
         ,ringbwdchain(std::vector<FileMetaData*>())
@@ -183,7 +183,7 @@ struct FileMetaData {
     fd.smallest_seqno = std::min(fd.smallest_seqno, seqno);
     fd.largest_seqno = std::max(fd.largest_seqno, seqno);
   }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // After the last kv has been written to the file, install the earliest refs that were found in
   // the file, one for each ring (0 means no ref)
   void InstallRef0(int outputlevel, const std::vector<uint64_t> &earliestref, ColumnFamilyData *cfd);
@@ -278,7 +278,7 @@ class VersionEdit {
                const InternalKey& largest, const SequenceNumber& smallest_seqno,
                const SequenceNumber& largest_seqno,
                bool marked_for_compaction
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                ,const std::vector<uint64_t>& indirect_ref_0 = std::vector<uint64_t>(),
                const uint64_t avgparentfileno = 0
 #endif
@@ -292,7 +292,7 @@ class VersionEdit {
     f.fd.smallest_seqno = smallest_seqno;
     f.fd.largest_seqno = largest_seqno;
     f.marked_for_compaction = marked_for_compaction;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       // older code doesn't know about indirect_ref; use 'omitted' (0) then
     f.indirect_ref_0=indirect_ref_0;  // set the earliest refs, if any
     f.level = level;  // save level # in the metadata so VLogRing can get to it
@@ -319,7 +319,7 @@ printf("VersionEdit::DeleteFile: %zd\n",file);
 #if DEBLEVEL&32
 printf("VersionEdit::DeleteFile: %p\n",f);
 #endif
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     // At this point we are committed to deleting the input file f, but that's a ways in the future.  We are holding the mutex
     // for compaction/copy, but we are still before the lock point on &w (in LogAndApply) at which writers get queued.  We mustn't
     // UnCurrent f right now, until we know that we have processed, for manifest purposes, the SST actions that justify this deletion.
@@ -343,7 +343,7 @@ printf("VersionEdit::DeleteFile: %p\n",f);
     column_family_ = column_family_id;
   }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   void SetVLogStats(std::vector<VLogRingRestartInfo>& vstats) { vlog_additions = vstats; } 
 #endif
 
@@ -376,7 +376,7 @@ printf("VersionEdit::DeleteFile: %p\n",f);
   const std::vector<std::pair<int, FileMetaData>>& GetNewFiles() {
     return new_files_;
   }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   const std::vector<FileMetaData*>& GetRetiringFiles() { return retiring_files_; }
   std::vector<VLogRingRestartInfo>& VLogAdditions() { return vlog_additions; }
 #endif
@@ -414,7 +414,7 @@ printf("VersionEdit::DeleteFile: %p\n",f);
 
   DeletedFileSet deleted_files_;
   std::vector<std::pair<int, FileMetaData>> new_files_;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   std::vector<FileMetaData*> retiring_files_;  // Files (from compaction/copy) that we will need to mark UnCurrent in SaveTo.  Files deleted during recovery don't go here.
   std::vector<VLogRingRestartInfo> vlog_additions;   // files and bytes added/removed, one set per ring.
 #endif

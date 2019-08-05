@@ -56,7 +56,7 @@ enum CustomTag : uint32_t {
   // removed when manifest becomes forward-comptabile.
   kMinLogNumberToKeepHack = 3,
   kPathId = 65,
-#ifdef INDIRECT_VALUE_SUPPORT   // add earliest_ref field in Edit record
+#ifndef NO_INDIRECT_VALUE   // add earliest_ref field in Edit record
   kIndirectRef0 = 70,  // indicates the oldest ref to VLog in this file
   kValueLogStats = 71,  // files, frag, and bytes deleted/added
   kAvgFileRef = 72,  // indicator of age in VLog of overlapping files in next level
@@ -95,7 +95,7 @@ void VersionEdit::Clear() {
   column_family_name_.clear();
   is_in_atomic_group_ = false;
   remaining_entries_ = 0;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   vlog_additions.clear();  // no additions to rings
 #endif
 }
@@ -137,7 +137,7 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
     }
     bool has_customized_fields = false;
     if (f.marked_for_compaction || has_min_log_number_to_keep_
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
         || f.indirect_ref_0.size()
         || f.avgparentfileno
 #endif
@@ -218,7 +218,7 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
         min_log_num_written = true;
       }
 
-#ifdef INDIRECT_VALUE_SUPPORT     // fill in earliest_ref field in Edit record
+#ifndef NO_INDIRECT_VALUE     // fill in earliest_ref field in Edit record
       if (f.indirect_ref_0.size()) {
         PutVarint32(dst, CustomTag::kIndirectRef0);  // write out the record type
         uint32_t totallength = VarintLength(f.indirect_ref_0.size());  // init length to length of # refs
@@ -247,7 +247,7 @@ bool VersionEdit::EncodeTo(std::string* dst) const {
     PutVarint32Varint32(dst, kColumnFamily, column_family_);
   }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // write the CF information for indirect values: the active file numbers for each ring, and the amount of fragmentation in those file
   if(vlog_additions.size()) {   // if vlog changes are marked...
 #if DEBLEVEL&0x1800
@@ -371,7 +371,7 @@ const char* VersionEdit::DecodeNewFile4From(Slice* input) {
           }
           has_min_log_number_to_keep_ = true;
           break;
-#ifdef INDIRECT_VALUE_SUPPORT   // decode earliest_ref field from Edit record
+#ifndef NO_INDIRECT_VALUE   // decode earliest_ref field from Edit record
         case kIndirectRef0:
           uint32_t nrings;   // number of rings in this field
           if(!GetVarint32(&field,&nrings))return("indirect ref no # values");
@@ -600,7 +600,7 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
         }
         break;
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       case kValueLogStats:
         {
         vlog_additions.clear();   // init to no rings
@@ -745,7 +745,7 @@ std::string VersionEdit::DebugJSON(int edit_num, bool hex_key) const {
   if (has_last_sequence_) {
     jw << "LastSeq" << last_sequence_;
   }
-#ifdef INDIRECT_VALUE_SUPPORT   // display JSON text for earliest_ref
+#ifndef NO_INDIRECT_VALUE   // display JSON text for earliest_ref
   if(vlog_additions.size()){
     jw << "VLogAdditions";
     jw.StartArray();
@@ -824,7 +824,7 @@ std::string VersionEdit::DebugJSON(int edit_num, bool hex_key) const {
   return jw.Get();
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // After the last kv has been written to the file, install the earliest refs that were found in
   // the file, one for each ring (0 means no ref).  Also install other stuff needed in a new file: vlog pointer and level.  Files created during compaction go through AddFile, but not detailed creation therein
   void FileMetaData::InstallRef0(int outputlevel, const std::vector<uint64_t> &earliestref, ColumnFamilyData *cfd) {

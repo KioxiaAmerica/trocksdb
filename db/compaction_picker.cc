@@ -975,7 +975,7 @@ void CompactionPicker::RegisterCompaction(Compaction* c) {
   if (c == nullptr) {
     return;
   }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   if(c->compaction_reason() != CompactionReason::kActiveRecycling)  // if Active Recycling, we do not touch any keys
   // this IF-statement affects the compilation outside this conditional block!!!
 #endif
@@ -1044,7 +1044,7 @@ void CompactionPicker::PickFilesMarkedForCompaction(
   start_level_inputs->files.clear();
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 // We have collected a group of L0 files that can be processed in parallel into the output level with no overlap there.  This is almost surely sequential-key load.
 // Next we push the output level to the bottom if possible.  This is for 2 reasons: to avoid compacting each file one by one through all the levels (remember, they don't overlap); and
 // to end the load with a one-level database.  The one-level database is desirable because otherwise the levels above the last will be full of nonoverlapping files which will
@@ -1074,12 +1074,12 @@ bool CompactionPicker::IsCompactIntoBottomLevel(VersionStorageInfo* vstorage,int
 // When we compact an L0 file it is vital that any earlier overlapping L0 file be included too, otherwise L0 might be processed out of order
 int64_t CompactionPicker::GetOverlappingL0Files(
     VersionStorageInfo* vstorage, CompactionInputFiles* start_level_inputs,
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     int output_level, int* parent_index, const ImmutableCFOptions *ioptions) {
 #else
     int output_level, int* parent_index, const ImmutableCFOptions* /* ioptions */) {
 #endif
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   if(!level0_compactions_in_progress()->empty()){
     // If another L0 compaction is going on, it must be that we determined that we can throw in all the remaining L0 files without overlapping any keys being compacted already.
     // Do that, replacing the currently-selected file so that we keep all the files in order
@@ -1115,7 +1115,7 @@ int64_t CompactionPicker::GetOverlappingL0Files(
     return -1;  // error return
   }
 
-#ifdef INDIRECT_VALUE_SUPPORT  // this would be a good idea for all systems
+#ifndef NO_INDIRECT_VALUE  // this would be a good idea for all systems
   // If, after all this, there is only 1 file to be compacted, we are most likely doing sequential writes that produce nonoverlapping L0 files.
   // If all the keys in the selected file are higher than all the keys in output_level (as we expect they will be), we will throw in all the L0 files that have keys
   // above the selected file.
@@ -1232,7 +1232,7 @@ class LevelCompactionBuilder {
   CompactionInputFiles output_level_inputs_;
   std::vector<FileMetaData*> grandparents_;
   CompactionReason compaction_reason_ = CompactionReason::kUnknown;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   size_t ringno_;  // will hold the ring number if Active Recycling called for
   VLogRingRefFileno lastfileno_;  // will hold the file number of the last file in the recycled area
 #endif
@@ -1420,7 +1420,7 @@ bool LevelCompactionBuilder::SetupOtherInputsIfNeeded() {
 }
 
 Compaction* LevelCompactionBuilder::PickCompaction() {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // See if we need to perform an Active Recycling pass becase the fragmentation is getting too high
   compaction_inputs_.clear();  // start with an empty set of files
   ColumnFamilyData *cfd =  vstorage_->GetCfd();   // get pointer to CF.  Can be null only during tests that don't open a CF
@@ -1458,7 +1458,7 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
       return nullptr;
     }
     assert(start_level_ >= 0 && output_level_ >= 0);
-#if defined(INDIRECT_VALUE_SUPPORT) && !defined(NDEBUG)
+#if !defined(NO_INDIRECT_VALUE) && !defined(NDEBUG)
     for(auto startfile : start_level_inputs_.files){  // find the smallest ref0 in the input files (our expected ref0)
       ParsedFnameRing avgparent(startfile->avgparentfileno);
       if(avgparent.fileno()!=0)pickerinfo[1]=std::min(pickerinfo[1],avgparent.fileno());  // scaf wired to ring 0
@@ -1477,7 +1477,7 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
     if (!SetupOtherInputsIfNeeded()) {
       return nullptr;
     }
-#if defined(INDIRECT_VALUE_SUPPORT) && !defined(NDEBUG)
+#if !defined(NO_INDIRECT_VALUE) && !defined(NDEBUG)
     // find the smallest ref0 among the descendants of the start level
     for(auto cfiles : compaction_inputs_) {
       if(cfiles.level>start_level_) {
@@ -1490,11 +1490,11 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
 // obsolete                            &pickerinfo);
 #endif
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   }
   // Files have been picked for compaction
 #endif
-#if defined(INDIRECT_VALUE_SUPPORT) && !defined(NDEBUG)
+#if !defined(NO_INDIRECT_VALUE) && !defined(NDEBUG)
     // 0 start level
     pickerinfo[0]=start_level_;
     // 5 output level
@@ -1534,7 +1534,7 @@ Compaction* LevelCompactionBuilder::GetCompaction() {
       GetCompressionOptions(ioptions_, vstorage_, output_level_),
       /* max_subcompactions */ 0, std::move(grandparents_), is_manual_,
       start_level_score_, false /* deletion_compaction */, compaction_reason_
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       ,ringno_ , lastfileno_  , start_level_  // parms for Active Recycling, used if compaction_reason_ indicates
 #endif
       );
@@ -1610,7 +1610,7 @@ bool LevelCompactionBuilder::PickFileToCompact() {
   const std::vector<FileMetaData*>& level_files =
       vstorage_->LevelFiles(start_level_);   // files at the current level
 
-#ifdef INDIRECT_VALUE_SUPPORT  // actually this is OK whether you have indirect values or not.  It allows multiple L0 compactions.  If you keep this, make sure UpdateFilesByCompactionPri() uses kReverseOrder for L0
+#ifndef NO_INDIRECT_VALUE  // actually this is OK whether you have indirect values or not.  It allows multiple L0 compactions.  If you keep this, make sure UpdateFilesByCompactionPri() uses kReverseOrder for L0
 
   // If a compaction from L0 is running, usually there is no reason to bother trying to start another, since the keys usually overlap.
   // The exception is sequential load, when each new L0 file has keys beyond the range of all previous L0 files.

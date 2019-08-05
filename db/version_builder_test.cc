@@ -32,7 +32,7 @@ class VersionBuilderTest : public testing::Test {
         mutable_cf_options_(options_),
         vstorage_(&icmp_, ucmp_, options_.num_levels, kCompactionStyleLevel,
                   nullptr, false
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                   , nullptr  // needs to be &c_f_d for AR compactions
 #endif
     ),
@@ -45,7 +45,7 @@ class VersionBuilderTest : public testing::Test {
     for (int i = 0; i < vstorage_.num_levels(); i++) {
       for (auto* f : vstorage_.LevelFiles(i)) {
         if (--f->refs == 0) {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
           // The SST is about to be deleted.  Remove it from any VLog queues it is attached to.
           // We have to do this explicitly rather than in a destructor because FileMetaData blocks get copied & put on queues
           // with no regard for ownership.  Rather than try to enforce no-copy semantics everywhere we root out all the delete calls and put this there
@@ -103,7 +103,7 @@ void UnrefFilesInVersion(VersionStorageInfo* new_vstorage) {
   for (int i = 0; i < new_vstorage->num_levels(); i++) {
     for (auto* f : new_vstorage->LevelFiles(i)) {
       if (--f->refs == 0) {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
         // The SST is about to be deleted.  Remove it from any VLog queues it is attached to.
         // We have to do this explicitly rather than in a destructor because FileMetaData blocks get copied & put on queues
         // with no regard for ownership.  Rather than try to enforce no-copy semantics everywhere we root out all the delete calls and put this there
@@ -144,7 +144,7 @@ TEST_F(VersionBuilderTest, ApplyAndSaveTo) {
 
   VersionStorageInfo new_vstorage(&icmp_, ucmp_, options_.num_levels,
                                   kCompactionStyleLevel, nullptr, false
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                                   , nullptr  // needs to be &c_f_d for AR compactions
 #endif
   );
@@ -183,7 +183,7 @@ TEST_F(VersionBuilderTest, ApplyAndSaveToDynamic) {
 
   VersionStorageInfo new_vstorage(&icmp_, ucmp_, options_.num_levels,
                                   kCompactionStyleLevel, nullptr, false
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                                   , nullptr  // needs to be &c_f_d for AR compactions
 #endif
   );
@@ -227,7 +227,7 @@ TEST_F(VersionBuilderTest, ApplyAndSaveToDynamic2) {
 
   VersionStorageInfo new_vstorage(&icmp_, ucmp_, options_.num_levels,
                                   kCompactionStyleLevel, nullptr, false
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                                   , nullptr  // needs to be &c_f_d for AR compactions
 #endif
   );
@@ -262,7 +262,7 @@ TEST_F(VersionBuilderTest, ApplyMultipleAndSaveTo) {
 
   VersionStorageInfo new_vstorage(&icmp_, ucmp_, options_.num_levels,
                                   kCompactionStyleLevel, nullptr, false
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                                   , nullptr  // needs to be &c_f_d for AR compactions
 #endif
   );
@@ -281,7 +281,7 @@ TEST_F(VersionBuilderTest, ApplyDeleteAndSaveTo) {
   VersionBuilder version_builder(env_options, nullptr, &vstorage_);
   VersionStorageInfo new_vstorage(&icmp_, ucmp_, options_.num_levels,
                                   kCompactionStyleLevel, nullptr, false
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                                   , nullptr  // needs to be &c_f_d for AR compactions
 #endif
   );

@@ -124,8 +124,8 @@ class PreCommitChecker(Env):
                 #cmd = cmd.replace("make ", "make -j%s " % os.environ["J"])
             if "CFLAGS" in os.environ:
                 cflags=os.environ["CFLAGS"]
-                if "INDIRECT_VALUE_SUPPORT" in cflags:
-                    cmd = cmd.replace("make ", "INDIRECT_VALUE_SUPPORT=1 CFLAGS=-DINDIRECT_VALUE_SUPPORT make ")
+                if "NO_INDIRECT_VALUE" in cflags:
+                    cmd = cmd.replace("make ", "NO_INDIRECT_VALUE=1 CFLAGS=-DNO_INDIRECT_VALUE make ")
                     if "DISABLE_WARNING_AS_ERROR" in os.environ:
                         cmd = cmd.replace("make ", "DISABLE_WARNING_AS_ERROR=%s make " % os.environ["DISABLE_WARNING_AS_ERROR"])
 

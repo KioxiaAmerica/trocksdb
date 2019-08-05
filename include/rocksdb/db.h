@@ -528,7 +528,7 @@ class DB {
     //      of files per level and total size of each level (MB).
     static const std::string kLevelStats;
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     //  "rocksdb.vlogringstats" - returns multi-line string containing the number
     //      of files per ring and total size and fragmentation per ring (MB).
     static const std::string kVLogRingStats;

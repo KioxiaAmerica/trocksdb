@@ -34,7 +34,7 @@ struct ColumnFamilyMetaData {
   std::string name;
   // The metadata of all levels in this column family.
   std::vector<LevelMetaData> levels;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // all these stats are as of the next restart, i. e. they don't include files that have been removed
   // from the main version but are still hanging around to satify an iterator
   // the number of files in each VLog ring
@@ -93,11 +93,11 @@ struct SstFileMetaData {
         being_compacted(_being_compacted),
         num_entries(0),
         num_deletions(0)
-#ifdef INDIRECT_VALUE_SUPPORT   // add earliest_ref to SstFileMetaData
+#ifndef NO_INDIRECT_VALUE   // add earliest_ref to SstFileMetaData
         ,indirect_ref_0(std::vector<uint64_t>()) // default to 'omitted' 
 #endif
         {}
-#ifdef INDIRECT_VALUE_SUPPORT   // define constructor that includes earliest_ref (optional since not all table types use it)
+#ifndef NO_INDIRECT_VALUE   // define constructor that includes earliest_ref (optional since not all table types use it)
   SstFileMetaData(const std::string& _file_name, const std::string& _path,
                   uint64_t _size, SequenceNumber _smallest_seqno,
                   SequenceNumber _largest_seqno,
@@ -135,7 +135,7 @@ struct SstFileMetaData {
 
   uint64_t num_entries;
   uint64_t num_deletions;
-#ifdef INDIRECT_VALUE_SUPPORT   // declare the fields added to SstFileMetaData
+#ifndef NO_INDIRECT_VALUE   // declare the fields added to SstFileMetaData
   std::vector<uint64_t> indirect_ref_0;  // for each ring, file# of the oldest value referred to in this SST.  Set to HIGH-VALUE (~0>>1) if there are no indirect references
      // set to 0 to mean 'indirect value omitted'
 

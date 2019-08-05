@@ -53,7 +53,7 @@ struct CompactionInputFiles {
   std::vector<FileMetaData*> files;
   std::vector<AtomicCompactionUnitBoundary> atomic_compaction_unit_boundaries;
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   CompactionInputFiles(FileMetaData& meta) { level = meta.level; files = std::vector<FileMetaData*>(1,&meta); }  // create a one-file 'level' for a single FileMetaData, for Active Recycling
   CompactionInputFiles() { level = 0; files = std::vector<FileMetaData*>(); }   // needed for resize(), even though we never use it because we resize down
 #endif
@@ -87,7 +87,7 @@ class Compaction {
              bool manual_compaction = false, double score = -1,
              bool deletion_compaction = false,
              CompactionReason compaction_reason = CompactionReason::kUnknown
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
              ,size_t ringno = 0  // For Active Recycling (as indicated in compaction_reason): ring number being recycled
              ,VLogRingRefFileno lastfileno = 0  // For Active Recycling: last file in the recycled region
              ,int start_level = -1  // number of lowest level being compacted
@@ -308,7 +308,7 @@ class Compaction {
 
   uint64_t MaxInputFileCreationTime() const;
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   size_t ringno() const { return ringno_; }
   VLogRingRefFileno lastfileno() const { return lastfileno_; }
 #endif
@@ -399,7 +399,7 @@ class Compaction {
   // Reason for compaction.  Active Recycling is signified by an appropriate reason here
   CompactionReason compaction_reason_;
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   VLogRing *vlogring_;   // for Active Recycling, points to the VLogRing that is being recycled.  This is nonnull ONLY for Active Recycling and is used as the flag
     // for that state.
   size_t ringno_;   // the ring number that is being Active Recycled

@@ -169,7 +169,7 @@ class FakeCompaction : public CompactionIterator::CompactionProxy {
   Slice GetLargestUserKey() const override {
     return "\xff\xff\xff\xff\xff\xff\xff\xff\xff";
   }
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   virtual CompactionReason compaction_reason() { return CompactionReason::kLevelMaxLevelSize; }
 #endif
   bool allow_ingest_behind() const override { return false; }
@@ -254,7 +254,7 @@ class CompactionIteratorTest : public testing::TestWithParam<bool> {
 
     iter_.reset(new LoggingForwardVectorIterator(ks, vs));
     iter_->SeekToFirst();
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     iter_->SetVlogForIteratorCF(std::make_shared<VLog>());  // install a VLog so that the iterator will behave like a compaction iterator with VLog
 #endif
     c_iter_.reset(new CompactionIterator(
@@ -476,7 +476,7 @@ TEST_P(CompactionIteratorTest, CompactionFilterSkipUntil) {
   // the underlying iterator.
   using A = LoggingForwardVectorIterator::Action;
   using T = A::Type;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // When there are indirect values, we have to visit each one for space accounting on the VLogRing, so we will issue only
   // Next calls to the underlying iterator.
   std::vector<A> expected_actions = {

@@ -34,13 +34,13 @@ size_t CompactedDBImpl::FindFile(const Slice& key) {
     }
 
 Status CompactedDBImpl::Get(const ReadOptions& options,
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
                             ColumnFamilyHandle* column_family_handle,
 #else
                             ColumnFamilyHandle* /*column_family_handle*/,
 #endif
                             const Slice& key, PinnableSlice* value) {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // Even though CompactedDB doesn't support merges, we need a MergeContext to hold the address of the VLog
   // We could dispense with this at the cost of a segfault if the user turns on indirect in the CompactedDB
   MergeContext merge_context;
@@ -63,7 +63,7 @@ Status CompactedDBImpl::Get(const ReadOptions& options,
 }
 
 std::vector<Status> CompactedDBImpl::MultiGet(const ReadOptions& options,
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     const std::vector<ColumnFamilyHandle*>& column_family_handle,
 #else
     const std::vector<ColumnFamilyHandle*>& /*column_family_handle*/,
@@ -82,7 +82,7 @@ std::vector<Status> CompactedDBImpl::MultiGet(const ReadOptions& options,
   }
   std::vector<Status> statuses(keys.size(), Status::NotFound());
   values->resize(keys.size());
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   // Even though CompactedDB doesn't support merges, we need a MergeContext to hold the address of the VLog
   // We could dispense with this at the cost of a segfault if the user turns on indirect in the CompactedDB
   MergeContext merge_context;
@@ -99,7 +99,7 @@ std::vector<Status> CompactedDBImpl::MultiGet(const ReadOptions& options,
                              GetContext::kNotFound, keys[idx], &pinnable_val,
                              nullptr, amergecontext, nullptr, nullptr);
       LookupKey lkey(keys[idx], kMaxSequenceNumber);
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
       // Fill in the VLog field in the merge_context from the column family
       merge_context.SetCfd(reinterpret_cast<ColumnFamilyHandleImpl*>(column_family_handle[idx])->cfd());
 #endif
@@ -125,7 +125,7 @@ Status CompactedDBImpl::Init(const Options& options) {
               DefaultColumnFamily())->cfd();
     cfd_->InstallSuperVersion(&sv_context, &mutex_);
   }
-#ifdef INDIRECT_VALUE_SUPPORT   // fill in the rings for each column family
+#ifndef NO_INDIRECT_VALUE   // fill in the rings for each column family
   if(!OpenVLogs(options).ok()){  //  Init the VLogs for the CFs that were opened
     s = Status::Corruption(
         "The VLog files could not be opened");

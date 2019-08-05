@@ -21,7 +21,7 @@
 #include "rocksdb/types.h"
 #include "table/scoped_arena_iterator.h"
 #include "util/event_logger.h"
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #include "value_log.h"
 #include "value_log_iterator.h"
 #endif
@@ -85,7 +85,7 @@ extern Status BuildTable(
     TableProperties* table_properties = nullptr, int level = -1,
     const uint64_t creation_time = 0, const uint64_t oldest_key_time = 0,
     Env::WriteLifeTimeHint write_hint = Env::WLTH_NOT_SET
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     ,ColumnFamilyData* cfd=nullptr  // if we should wsrite values to the VLog, this is the VLog; otherwise nullptr
     ,VLogEditStats *vlog_flush_info=nullptr    // vlog info that needs to go to edit and stats
 #endif

@@ -36,7 +36,7 @@ namespace rocksdb {
 static const int kValueSize = 1000;
 
 // Test in both normal and indirect configurations
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 #define INDOPTIONS do{
 #define INDOPTIONSEND(opts) }while(opts.vlogring_activation_level.push_back(0),opts.min_indirect_val_size[0]=0,opts.vlogring_activation_level.size()<2);
 #else
@@ -55,7 +55,7 @@ class CorruptionTest : public testing::Test {
   DB* db_;
 
   CorruptionTest() {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     if(useindirect)options_.vlogring_activation_level = std::vector<int32_t>{0},options_.min_indirect_val_size[0]=0;
 #endif
     // If LRU cache shard bit is smaller than 2 (or -1 which will automatically
@@ -259,7 +259,7 @@ class CorruptionTest : public testing::Test {
     char buf[100];
     snprintf(buf, sizeof(buf), "%014d ", i);
     storage->assign(buf, strlen(buf));
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
     if(i==0)storage->resize(kValueSize-1,' ');   // make key kValueSize long
     else{
       Random r(i);
@@ -274,7 +274,7 @@ class CorruptionTest : public testing::Test {
 
   // Return the value to associate with the specified key
   Slice Value(int k, std::string* storage) {
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   const size_t vlen=16;  // make value 16 bytes so as not to change if turned into an indirect reference
 #else
   const size_t vlen=kValueSize;
@@ -356,7 +356,7 @@ TEST_F(CorruptionTest, TableFile) {
   ASSERT_NOK(dbi->VerifyChecksum());
 }
 
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
 // This testcase fails on the next-last line   Check(5000, 5000);  It fails inside Check, when the iterator is destroyed.
 // Somehow THAT corruption is not detected anywhere and crashes the destructor.  I have not been able to find corruption settings that
 // make the testcase succeed.  -200000 180000 seems to destroy that last 200-odd keys, but do not affect the header, so 9800 good keys
@@ -367,7 +367,7 @@ TEST_F(CorruptionTest, TableFileIndexData) {
   Options options;
   // very big, we'll trigger flushes manually
   options.write_buffer_size = 100 * 1024 * 1024;
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   options.allow_trivial_move=true;
 #endif
   Reopen(&options);
@@ -587,7 +587,7 @@ int main(int argc, char** argv) {
 
   rocksdb::useindirect=0;
   int ret = RUN_ALL_TESTS();
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
   if(ret==0){rocksdb::useindirect=1; ret = RUN_ALL_TESTS();}
 #endif
   return ret;

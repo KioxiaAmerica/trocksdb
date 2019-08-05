@@ -1129,7 +1129,7 @@ if(option_config_==10)
         s = DeprecatedAddFile({file_name});
         auto it = true_data.lower_bound(Key(range_start));
         if (option_config_ != kUniversalCompaction &&
-#ifdef INDIRECT_VALUE_SUPPORT
+#ifndef NO_INDIRECT_VALUE
             option_config_ != kUniversalCompactionInd &&
             option_config_ != kUniversalCompactionMultiLevelInd &&
 #endif
