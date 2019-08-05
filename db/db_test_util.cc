@@ -378,7 +378,7 @@ Options DBTestBase::GetOptions(
 #ifdef INDIRECT_VALUE_SUPPORT
     case kDirectIOInd:
       options.vlogring_activation_level=std::vector<int32_t>{0};
-      options.min_indirect_val_size[0]=0;
+      options.min_indirect_val_size=std::vector<uint64_t>{0};
       options.vlog_direct_IO = true;
       // fall through to...
 #endif
