@@ -940,9 +940,6 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
           file->largest.user_key().ToString(),
           file->stats.num_reads_sampled.load(std::memory_order_relaxed),
           file->being_compacted
-#ifdef INDIRECT_VALUE_SUPPORT_OBSOLETE   // add the earliest_ref to the column metadata transferred from LevelFiles
-          ,file->indirect_ref_0
-#endif
           });
       files.back().num_entries = file->num_entries;
       files.back().num_deletions = file->num_deletions;
@@ -4752,9 +4749,6 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
         filemetadata.being_compacted = file->being_compacted;
         filemetadata.num_entries = file->num_entries;
         filemetadata.num_deletions = file->num_deletions;
-#ifdef INDIRECT_VALUE_SUPPORT_OBSOLETE
-        filemetadata.indirect_ref_0 = file->indirect_ref_0;
-#endif
         metadata->push_back(filemetadata);
       }
     }
