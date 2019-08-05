@@ -1154,7 +1154,7 @@ TEST_F(DBTest2, DISABLED_PresetCompressionDict) {
   }
 }
 
-TEST_F(DBTest2, PresetCompressionDictLocality) {
+TEST_F(DBTest2, DISABLED_PresetCompressionDictLocality) {
   if (!ZSTD_Supported()) {
     return;
   }

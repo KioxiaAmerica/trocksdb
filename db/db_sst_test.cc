@@ -426,7 +426,7 @@ TEST_F(DBSSTTest, RateLimitedDelete) {
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
 }
 
-TEST_F(DBSSTTest, RateLimitedWALDelete) {
+TEST_F(DBSSTTest, DISABLED_RateLimitedWALDelete) {
   Destroy(last_options_);
 
   std::vector<uint64_t> penalties;
