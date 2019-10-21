@@ -558,7 +558,6 @@ set(SOURCES
         options/options_helper.cc
         options/options_parser.cc
         options/options_sanity_check.cc
-	port/port_posix.cc
         port/stack_trace.cc
         table/adaptive_table_factory.cc
         table/block.cc
