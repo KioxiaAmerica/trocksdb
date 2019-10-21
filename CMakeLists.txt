@@ -53,7 +53,7 @@ option(WITH_WINDOWS_UTF8_FILENAMES "use UTF8 as characterset for opening files, 
 if (WITH_WINDOWS_UTF8_FILENAMES)
   add_definitions(-DROCKSDB_WINDOWS_UTF8_FILENAMES)
 endif()
-if(MSVC)
+if(MSVC AND NOT VCPKG_TOOLCHAIN)
   # Defaults currently different for GFLAGS.
   #  We will address find_package work a little later
   option(WITH_GFLAGS "build with GFlags" OFF)
@@ -92,7 +92,7 @@ else()
   endif()
 
   if(WITH_ZLIB)
-    find_package(zlib REQUIRED)
+	  find_package(ZLIB REQUIRED)
     add_definitions(-DZLIB)
     if(ZLIB_INCLUDE_DIRS)
       # CMake 3
@@ -317,24 +317,6 @@ if(DISABLE_STALL_NOTIF)
   add_definitions(-DROCKSDB_DISABLE_STALL_NOTIFICATION)
 endif()
 
-# Used to run CI build and tests so we can run faster
-set(OPTIMIZE_DEBUG_DEFAULT 0)        # Debug build is unoptimized by default use -DOPTDBG=1 to optimize
-
-option(WITH_TBB "build with Threading Building Blocks (TBB)" OFF)
-if(WITH_TBB)
-  find_package(TBB REQUIRED)
-  add_definitions(-DTBB)
-  include_directories(${TBB_INCLUDE_DIR})
-  list(APPEND THIRDPARTY_LIBS ${TBB_LIBRARIES})
-endif()
-
-# Stall notifications eat some performance from inserts
-option(DISABLE_STALL_NOTIF "Build with stall notifications" OFF)
-if(DISABLE_STALL_NOTIF)
-  add_definitions(-DROCKSDB_DISABLE_STALL_NOTIFICATION)
-endif()
-
-
 if(DEFINED USE_RTTI)
   if(USE_RTTI)
     message(STATUS "Enabling RTTI")
@@ -364,7 +346,7 @@ endif()
 # Used to run CI build and tests so we can run faster
 option(OPTDBG "Build optimized debug build with MSVC" OFF)
 option(WITH_RUNTIME_DEBUG "build with debug version of runtime library" ON)
-    if(MSVC)
+if(MSVC)
   if(OPTDBG)
     message(STATUS "Debug optimization is enabled")
     set(CMAKE_CXX_FLAGS_DEBUG "/Oxt")
@@ -480,7 +462,7 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(SYSTEM ${PROJECT_SOURCE_DIR}/third-party/gtest-1.7.0/fused-src)
 find_package(Threads REQUIRED)
 
-add_subdirectory(third-party/gtest-1.7.0/fused-src/gtest)
+#add_subdirectory(third-party/gtest-1.7.0/fused-src/gtest)
 
 # Main library source code
 
@@ -705,10 +687,10 @@ set(SOURCES
         $<TARGET_OBJECTS:build_version>)
 
 if(HAVE_SSE42 AND NOT MSVC)
-set_source_files_properties(
-  util/crc32c.cc
+  set_source_files_properties(
+    util/crc32c.cc
     PROPERTIES COMPILE_FLAGS "-msse4.2 -mpclmul")
-  endif()
+endif()
 
 if(HAVE_POWER8)
   list(APPEND SOURCES
@@ -758,7 +740,12 @@ if(WIN32)
   set(LIBS ${ROCKSDB_STATIC_LIB} ${THIRDPARTY_LIBS} ${SYSTEM_LIBS})
 else()
   set(SYSTEM_LIBS ${CMAKE_THREAD_LIBS_INIT})
-  set(LIBS ${ROCKSDB_SHARED_LIB} ${THIRDPARTY_LIBS} ${SYSTEM_LIBS})
+
+  if(ROCKSDB_DISABLE_INSTALL_SHARED_LIB)
+    set(LIBS ${ROCKSDB_STATIC_LIB} ${THIRDPARTY_LIBS} ${SYSTEM_LIBS})
+  else()
+    set(LIBS ${ROCKSDB_SHARED_LIB} ${THIRDPARTY_LIBS} ${SYSTEM_LIBS})
+  endif()
 
   add_library(${ROCKSDB_SHARED_LIB} SHARED ${SOURCES})
   target_link_libraries(${ROCKSDB_SHARED_LIB}
@@ -827,23 +814,30 @@ if(NOT WIN32 OR ROCKSDB_INSTALL_ON_WINDOWS)
 
   install(DIRECTORY include/rocksdb COMPONENT devel DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 
-  install(
-    TARGETS ${ROCKSDB_STATIC_LIB}
-    EXPORT RocksDBTargets
-    COMPONENT devel
-    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-    INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-  )
-
-  install(
-    TARGETS ${ROCKSDB_SHARED_LIB}
-    EXPORT RocksDBTargets
-    COMPONENT runtime
-    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-    INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-  )
+  if(NOT ROCKSDB_DISABLE_INSTALL_STATIC_LIB)
+    install(
+      TARGETS ${ROCKSDB_STATIC_LIB}
+      EXPORT RocksDBTargets
+      COMPONENT devel
+      ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+      INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+    )
+  else()
+    set_target_properties(${ROCKSDB_STATIC_LIB} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+  endif()
+  if(NOT ROCKSDB_DISABLE_INSTALL_SHARED_LIB)
+    install(
+      TARGETS ${ROCKSDB_SHARED_LIB}
+      EXPORT RocksDBTargets
+      COMPONENT runtime
+      ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+      RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+      LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+      INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+    )
+  else()
+    set_target_properties(${ROCKSDB_SHARED_LIB} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+  endif()
 
   install(
     EXPORT RocksDBTargets
