@@ -92,7 +92,7 @@ else()
   endif()
 
   if(WITH_ZLIB)
-	  find_package(ZLIB REQUIRED)
+    find_package(ZLIB REQUIRED)
     add_definitions(-DZLIB)
     if(ZLIB_INCLUDE_DIRS)
       # CMake 3
@@ -322,7 +322,7 @@ if(DEFINED USE_RTTI)
     message(STATUS "Enabling RTTI")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DROCKSDB_USE_RTTI")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -DROCKSDB_USE_RTTI")
-else()
+  else()
     if(MSVC)
       message(STATUS "Disabling RTTI in Release builds. Always on in Debug.")
       set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DROCKSDB_USE_RTTI")
@@ -331,7 +331,7 @@ else()
       message(STATUS "Disabling RTTI in Release builds")
       set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-rtti")
       set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fno-rtti")
-endif()
+    endif()
   endif()
 else()
   message(STATUS "Enabling RTTI in Debug builds only (default)")
@@ -593,11 +593,15 @@ set(SOURCES
         table/sst_file_writer.cc
         table/table_properties.cc
         table/two_level_iterator.cc
+        tools/db_bench_tool.cc
         tools/dump/db_dump_tool.cc
+        tools/ldb_cmd.cc
+        tools/ldb_tool.cc
+        tools/sst_dump_tool.cc
+        tools/trace_analyzer_tool.cc
         util/arena.cc
         util/auto_roll_logger.cc
         util/bloom.cc
-	util/build_version.cc
         util/coding.cc
         util/compaction_job_stats_impl.cc
         util/comparator.cc
@@ -624,6 +628,7 @@ set(SOURCES
         util/string_util.cc
         util/sync_point.cc
         util/sync_point_impl.cc
+        util/testutil.cc
         util/thread_local.cc
         util/threadpool_imp.cc
         util/trace_replay.cc
@@ -634,6 +639,7 @@ set(SOURCES
         utilities/blob_db/blob_db.cc
         utilities/blob_db/blob_db_impl.cc
         utilities/blob_db/blob_db_impl_filesnapshot.cc
+        utilities/blob_db/blob_dump_tool.cc
         utilities/blob_db/blob_file.cc
         utilities/blob_db/blob_log_format.cc
         utilities/blob_db/blob_log_reader.cc
@@ -643,7 +649,6 @@ set(SOURCES
         utilities/cassandra/merge_operator.cc
         utilities/checkpoint/checkpoint_impl.cc
         utilities/compaction_filters/remove_emptyvalue_compactionfilter.cc
-	utilities/convenience/info_log_finder.cc
         utilities/debug.cc
         utilities/env_mirror.cc
         utilities/env_timed.cc
