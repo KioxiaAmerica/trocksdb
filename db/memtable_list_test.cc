@@ -13,9 +13,9 @@
 #include "rocksdb/db.h"
 #include "rocksdb/status.h"
 #include "rocksdb/write_buffer_manager.h"
+#include "test_util/testharness.h"
+#include "test_util/testutil.h"
 #include "util/string_util.h"
-#include "util/testharness.h"
-#include "util/testutil.h"
 
 namespace rocksdb {
 
@@ -100,7 +100,7 @@ class MemTableListTest : public testing::Test {
 
     VersionSet versions(dbname, &immutable_db_options, env_options,
                         table_cache.get(), &write_buffer_manager,
-                        &write_controller);
+                        &write_controller, /*block_cache_tracer=*/nullptr);
     std::vector<ColumnFamilyDescriptor> cf_descs;
     cf_descs.emplace_back(kDefaultColumnFamilyName, ColumnFamilyOptions());
     cf_descs.emplace_back("one", ColumnFamilyOptions());
@@ -144,7 +144,7 @@ class MemTableListTest : public testing::Test {
 
     VersionSet versions(dbname, &immutable_db_options, env_options,
                         table_cache.get(), &write_buffer_manager,
-                        &write_controller);
+                        &write_controller, /*block_cache_tracer=*/nullptr);
     std::vector<ColumnFamilyDescriptor> cf_descs;
     cf_descs.emplace_back(kDefaultColumnFamilyName, ColumnFamilyOptions());
     cf_descs.emplace_back("one", ColumnFamilyOptions());

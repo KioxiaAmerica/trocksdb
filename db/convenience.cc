@@ -8,7 +8,7 @@
 
 #include "rocksdb/convenience.h"
 
-#include "db/db_impl.h"
+#include "db/db_impl/db_impl.h"
 #include "util/cast_util.h"
 
 namespace rocksdb {
@@ -59,7 +59,7 @@ Status VerifySstFileChecksum(const Options& options,
   if (!s.ok()) {
     return s;
   }
-  s = table_reader->VerifyChecksum();
+  s = table_reader->VerifyChecksum(TableReaderCaller::kUserVerifyChecksum);
   return s;
 }
 

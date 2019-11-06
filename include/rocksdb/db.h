@@ -59,6 +59,7 @@ class CompactionJobInfo;
 #endif
 
 extern const std::string kDefaultColumnFamilyName;
+extern const std::string kPersistentStatsColumnFamilyName;
 struct ColumnFamilyDescriptor {
   std::string name;
   ColumnFamilyOptions options;
@@ -232,9 +233,13 @@ class DB {
   // status in case there are any errors. This will not fsync the WAL files.
   // If syncing is required, the caller must first call SyncWAL(), or Write()
   // using an empty write batch with WriteOptions.sync=true.
-  // Regardless of the return status, the DB must be freed. If the return
-  // status is NotSupported(), then the DB implementation does cleanup in the
-  // destructor
+  // Regardless of the return status, the DB must be freed.
+  // If the return status is Aborted(), closing fails because there is
+  // unreleased snapshot in the system. In this case, users can release
+  // the unreleased snapshots and try again and expect it to succeed. For
+  // other status, recalling Close() will be no-op.
+  // If the return status is NotSupported(), then the DB implementation does
+  // cleanup in the destructor
   virtual Status Close() { return Status::NotSupported(); }
 
   // ListColumnFamilies will open the DB specified by argument name
@@ -421,6 +426,46 @@ class DB {
         keys, values);
   }
 
+  // Overloaded MultiGet API that improves performance by batching operations
+  // in the read path for greater efficiency. Currently, only the block based
+  // table format with full filters are supported. Other table formats such
+  // as plain table, block based table with block based filters and
+  // partitioned indexes will still work, but will not get any performance
+  // benefits.
+  // Parameters -
+  // options - ReadOptions
+  // column_family - ColumnFamilyHandle* that the keys belong to. All the keys
+  //                 passed to the API are restricted to a single column family
+  // num_keys - Number of keys to lookup
+  // keys - Pointer to C style array of key Slices with num_keys elements
+  // values - Pointer to C style array of PinnableSlices with num_keys elements
+  // statuses - Pointer to C style array of Status with num_keys elements
+  // sorted_input - If true, it means the input keys are already sorted by key
+  //                order, so the MultiGet() API doesn't have to sort them
+  //                again. If false, the keys will be copied and sorted
+  //                internally by the API - the input array will not be
+  //                modified
+  virtual void MultiGet(const ReadOptions& options,
+                        ColumnFamilyHandle* column_family,
+                        const size_t num_keys, const Slice* keys,
+                        PinnableSlice* values, Status* statuses,
+                        const bool /*sorted_input*/ = false) {
+    std::vector<ColumnFamilyHandle*> cf;
+    std::vector<Slice> user_keys;
+    std::vector<Status> status;
+    std::vector<std::string> vals;
+
+    for (size_t i = 0; i < num_keys; ++i) {
+      cf.emplace_back(column_family);
+      user_keys.emplace_back(keys[i]);
+    }
+    status = MultiGet(options, cf, user_keys, &vals);
+    std::copy(status.begin(), status.end(), statuses);
+    for (auto& value : vals) {
+      values->PinSelf(value);
+      values++;
+    }
+  }
   // If the key definitely does not exist in the database, then this method
   // returns false, else true. If the caller wants to obtain value when the key
   // is found in memory, a bool for 'value_found' must be passed. 'value_found'
@@ -769,7 +814,7 @@ class DB {
   // stats should be included, or file stats approximation or both
   enum SizeApproximationFlags : uint8_t {
     NONE = 0,
-    INCLUDE_MEMTABLES = 1,
+    INCLUDE_MEMTABLES = 1 << 0,
     INCLUDE_FILES = 1 << 1
   };
 
@@ -779,14 +824,24 @@ class DB {
   // Note that the returned sizes measure file system space usage, so
   // if the user data compresses by a factor of ten, the returned
   // sizes will be one-tenth the size of the corresponding user data size.
-  //
-  // If include_flags defines whether the returned size should include
-  // the recently written data in the mem-tables (if
-  // the mem-table type supports it), data serialized to disk, or both.
-  // include_flags should be of type DB::SizeApproximationFlags
+  virtual Status GetApproximateSizes(const SizeApproximationOptions& options,
+                                     ColumnFamilyHandle* column_family,
+                                     const Range* range, int n,
+                                     uint64_t* sizes) = 0;
+
+  // Simpler versions of the GetApproximateSizes() method above.
+  // The include_flags argumenbt must of type DB::SizeApproximationFlags
+  // and can not be NONE.
   virtual void GetApproximateSizes(ColumnFamilyHandle* column_family,
                                    const Range* range, int n, uint64_t* sizes,
-                                   uint8_t include_flags = INCLUDE_FILES) = 0;
+                                   uint8_t include_flags = INCLUDE_FILES) {
+    SizeApproximationOptions options;
+    options.include_memtabtles =
+        (include_flags & SizeApproximationFlags::INCLUDE_MEMTABLES) != 0;
+    options.include_files =
+        (include_flags & SizeApproximationFlags::INCLUDE_FILES) != 0;
+    GetApproximateSizes(options, column_family, range, n, sizes);
+  }
   virtual void GetApproximateSizes(const Range* range, int n, uint64_t* sizes,
                                    uint8_t include_flags = INCLUDE_FILES) {
     GetApproximateSizes(DefaultColumnFamily(), range, n, sizes, include_flags);
@@ -1135,6 +1190,27 @@ class DB {
   virtual Status IngestExternalFiles(
       const std::vector<IngestExternalFileArg>& args) = 0;
 
+  // CreateColumnFamilyWithImport() will create a new column family with
+  // column_family_name and import external SST files specified in metadata into
+  // this column family.
+  // (1) External SST files can be created using SstFileWriter.
+  // (2) External SST files can be exported from a particular column family in
+  //     an existing DB.
+  // Option in import_options specifies whether the external files are copied or
+  // moved (default is copy). When option specifies copy, managing files at
+  // external_file_path is caller's responsibility. When option specifies a
+  // move, the call ensures that the specified files at external_file_path are
+  // deleted on successful return and files are not modified on any error
+  // return.
+  // On error return, column family handle returned will be nullptr.
+  // ColumnFamily will be present on successful return and will not be present
+  // on error return. ColumnFamily may be present on any crash during this call.
+  virtual Status CreateColumnFamilyWithImport(
+      const ColumnFamilyOptions& options, const std::string& column_family_name,
+      const ImportColumnFamilyOptions& import_options,
+      const ExportImportFilesMetaData& metadata,
+      ColumnFamilyHandle** handle) = 0;
+
   virtual Status VerifyChecksum() = 0;
 
   // AddFile() is deprecated, please use IngestExternalFile()
@@ -1279,13 +1355,25 @@ class DB {
   virtual Status EndTrace() {
     return Status::NotSupported("EndTrace() is not implemented.");
   }
+
+  // Trace block cache accesses. Use EndBlockCacheTrace() to stop tracing.
+  virtual Status StartBlockCacheTrace(
+      const TraceOptions& /*options*/,
+      std::unique_ptr<TraceWriter>&& /*trace_writer*/) {
+    return Status::NotSupported("StartBlockCacheTrace() is not implemented.");
+  }
+
+  virtual Status EndBlockCacheTrace() {
+    return Status::NotSupported("EndBlockCacheTrace() is not implemented.");
+  }
 #endif  // ROCKSDB_LITE
 
   // Needed for StackableDB
   virtual DB* GetRootDB() { return this; }
 
-  // Given a time window, return an iterator for accessing stats history
-  // User is responsible for deleting StatsHistoryIterator after use
+  // Given a window [start_time, end_time), setup a StatsHistoryIterator
+  // to access stats history. Note the start_time and end_time are epoch
+  // time measured in seconds, and end_time is an exclusive bound.
   virtual Status GetStatsHistory(
       uint64_t /*start_time*/, uint64_t /*end_time*/,
       std::unique_ptr<StatsHistoryIterator>* /*stats_iterator*/) {

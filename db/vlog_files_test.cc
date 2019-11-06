@@ -12,7 +12,7 @@
 #include "port/port.h"
 #include "rocksdb/experimental.h"
 #include "rocksdb/utilities/convenience.h"
-#include "util/sync_point.h"
+#include "test_util/sync_point.h"
 #include <chrono>
 #include <thread>
 #include <cmath>

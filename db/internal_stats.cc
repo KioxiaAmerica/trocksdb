@@ -2,17 +2,15 @@
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
 //
+// Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+//
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/internal_stats.h"
 
-#ifndef __STDC_FORMAT_MACROS
-#define __STDC_FORMAT_MACROS
-#endif
-
-#include <inttypes.h>
+#include <cinttypes>
 #include <algorithm>
 #include <limits>
 #include <string>
@@ -20,8 +18,8 @@
 #include <vector>
 
 #include "db/column_family.h"
-#include "db/db_impl.h"
-#include "table/block_based_table_factory.h"
+#include "db/db_impl/db_impl.h"
+#include "table/block_based/block_based_table_factory.h"
 #include "util/string_util.h"
 
 namespace rocksdb {

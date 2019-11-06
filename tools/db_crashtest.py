@@ -1,4 +1,5 @@
-#! /usr/bin/env python
+#!/usr/bin/env python2
+# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 import os
 import sys
 import time
@@ -24,6 +25,7 @@ expected_values_file = tempfile.NamedTemporaryFile()
 default_params = {
     "acquire_snapshot_one_in": 10000,
     "block_size": 16384,
+    "cache_index_and_filter_blocks": lambda: random.randint(0, 1),
     "cache_size": 1048576,
     "checkpoint_one_in": 1000000,
     "compression_type": "snappy",
@@ -35,7 +37,8 @@ default_params = {
     "delpercent": 4,
     "delrangepercent": 1,
     "destroy_db_initially": 0,
-    "enable_pipelined_write": lambda: random.randint(0, 1),
+    # Temporarily disable it until its concurrency issue are fixed
+    "enable_pipelined_write": 0,
     "expected_values_path": expected_values_file.name,
     "flush_one_in": 1000000,
     "max_background_compactions": 20,
@@ -63,6 +66,7 @@ default_params = {
     "writepercent": 35,
     "format_version": lambda: random.randint(2, 4),
     "index_block_restart_interval": lambda: random.choice(range(1, 16)),
+    "use_multiget" : lambda: random.randint(0, 1),
 }
 
 _TEST_DIR_ENV_VAR = 'TEST_TMPDIR'
@@ -135,6 +139,9 @@ atomic_flush_params = {
     # use small value for write_buffer_size so that RocksDB triggers flush
     # more frequently
     "write_buffer_size": 1024 * 1024,
+    # disable pipelined write when test_atomic_flush is true
+    "enable_pipelined_write": 0,
+    "snap_refresh_nanos": 0,
 }
 
 
@@ -338,8 +345,9 @@ def whitebox_crash_main(args, unknown_args):
         if additional_opts['kill_random_test'] is None and (retncode == 0):
             # we expect zero retncode if no kill option
             expected = True
-        elif additional_opts['kill_random_test'] is not None and retncode < 0:
-            # we expect negative retncode if kill option was given
+        elif additional_opts['kill_random_test'] is not None and retncode <= 0:
+            # When kill option is given, the test MIGHT kill itself.
+            # If it does, negative retncode is expected. Otherwise 0.
             expected = True
 
         if not expected:

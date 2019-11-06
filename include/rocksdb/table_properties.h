@@ -1,6 +1,7 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+// Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 #pragma once
 
 #include <stdint.h>
@@ -56,6 +57,7 @@ struct TablePropertiesNames {
   static const std::string kCompressionOptions;
   static const std::string kCreationTime;
   static const std::string kOldestKeyTime;
+  static const std::string kFileCreationTime;
 };
 
 extern const std::string kPropertiesBlock;
@@ -177,11 +179,14 @@ struct TableProperties {
   // by column_family_name.
   uint64_t column_family_id =
       rocksdb::TablePropertiesCollectorFactory::Context::kUnknownColumnFamily;
-  // The time when the SST file was created.
-  // Since SST files are immutable, this is equivalent to last modified time.
+  // Timestamp of the latest key. 0 means unknown.
+  // TODO(sagar0): Should be changed to latest_key_time ... but don't know the
+  // full implications of backward compatibility. Hence retaining for now.
   uint64_t creation_time = 0;
   // Timestamp of the earliest key. 0 means unknown.
   uint64_t oldest_key_time = 0;
+  // Actual SST file creation time. 0 means unknown.
+  uint64_t file_creation_time = 0;
 
   // Name of the column family with which this SST file is associated.
   // If column family is unknown, `column_family_name` will be an empty string.

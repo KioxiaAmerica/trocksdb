@@ -8,12 +8,9 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #pragma once
-#ifndef __STDC_FORMAT_MACROS
-#define __STDC_FORMAT_MACROS
-#endif
 
 #include <fcntl.h>
-#include <inttypes.h>
+#include <cinttypes>
 
 #include <algorithm>
 #include <map>
@@ -24,9 +21,10 @@
 #include <utility>
 #include <vector>
 
-#include "db/db_impl.h"
+#include "db/db_impl/db_impl.h"
 #include "db/dbformat.h"
 #include "env/mock_env.h"
+#include "file/filename.h"
 #include "memtable/hash_linklist_rep.h"
 #include "rocksdb/cache.h"
 #include "rocksdb/compaction_filter.h"
@@ -40,19 +38,18 @@
 #include "rocksdb/statistics.h"
 #include "rocksdb/table.h"
 #include "rocksdb/utilities/checkpoint.h"
-#include "table/block_based_table_factory.h"
+#include "table/block_based/block_based_table_factory.h"
 #include "table/mock_table.h"
-#include "table/plain_table_factory.h"
+#include "table/plain/plain_table_factory.h"
 #include "table/scoped_arena_iterator.h"
+#include "test_util/mock_time_env.h"
 #include "util/compression.h"
-#include "util/filename.h"
-#include "util/mock_time_env.h"
 #include "util/mutexlock.h"
 
+#include "test_util/sync_point.h"
+#include "test_util/testharness.h"
+#include "test_util/testutil.h"
 #include "util/string_util.h"
-#include "util/sync_point.h"
-#include "util/testharness.h"
-#include "util/testutil.h"
 #include "utilities/merge_operators.h"
 
 namespace rocksdb {
@@ -136,6 +133,11 @@ class SpecialMemTableRep : public MemTableRep {
   // Insert key into the list.
   // REQUIRES: nothing that compares equal to key is currently in the list.
   virtual void Insert(KeyHandle handle) override {
+    num_entries_++;
+    memtable_->Insert(handle);
+  }
+
+  void InsertConcurrently(KeyHandle handle) override {
     num_entries_++;
     memtable_->Insert(handle);
   }
@@ -438,6 +440,12 @@ class SpecialEnv : public EnvWrapper {
         return s;
       }
 
+      virtual Status Prefetch(uint64_t offset, size_t n) override {
+        Status s = target_->Prefetch(offset, n);
+        *bytes_read_ += n;
+        return s;
+      }
+
      private:
       std::unique_ptr<RandomAccessFile> target_;
       anon::AtomicCounter* counter_;
@@ -682,51 +690,51 @@ class DBTestBase : public testing::Test {
     kPartitionedFilterWithNewTableReaderForCompactions = 36,
     kUniversalSubcompactions = 37,
     kxxHash64Checksum = 38,
+    kUnorderedWrite = 39,
     // The following tests use indirect values.  We don't test combinations that are incompatible with, or have nothing to do with, indirect values
 #ifndef NO_INDIRECT_VALUE
     // MUST KEEP ALL THE INDIRECT CONFIGS TOGETHER!  Checked in SkipIndirect
-    kDefaultInd = 39,
-    kBlockBasedTableWithPrefixHashIndexInd = 40,
-    kBlockBasedTableWithWholeKeyHashIndexInd = 41,
+    kDefaultInd = 40,
+    kBlockBasedTableWithPrefixHashIndexInd = 41,
+    kBlockBasedTableWithWholeKeyHashIndexInd = 42,
 //    kPlainTableFirstBytePrefix = 3,
 //    kPlainTableCappedPrefix = 4,
 //    kPlainTableCappedPrefixNonMmap = 5,
 //    kPlainTableAllBytesPrefix = 6,
 //    kVectorRep = 7,
 //    kHashLinkList = 8,
-    kMergePutInd = 42,
-    kFilterInd = 43,
-    kFullFilterWithNewTableReaderForCompactionsInd = 44,
-    kUncompressedInd = 45,
-    kNumLevel_3Ind = 46,
-    kDBLogDirInd = 47,
-    kWalDirAndMmapReadsInd = 48,
+    kMergePutInd = 43,
+    kFilterInd = 44,
+    kFullFilterWithNewTableReaderForCompactionsInd = 45,
+    kUncompressedInd = 46,
+    kNumLevel_3Ind = 47,
+    kDBLogDirInd = 48,
+    kWalDirAndMmapReadsInd = 49,
 //    kManifestFileSize = 16,
 //    kPerfOptions = 17,
 //    kHashSkipList = 18,
-    kUniversalCompactionInd = 49,
-    kUniversalCompactionMultiLevelInd = 50,
-    kCompressedBlockCacheInd = 51,
-    kInfiniteMaxOpenFilesInd = 52,
+    kUniversalCompactionInd = 50,
+    kUniversalCompactionMultiLevelInd = 51,
+    kCompressedBlockCacheInd = 52,
+    kInfiniteMaxOpenFilesInd = 53,
 //    kxxHashChecksum = 23,
 //    kFIFOCompaction = 24,
-    kOptimizeFiltersForHitsInd = 53,
-    kRowCacheInd = 54,
+    kOptimizeFiltersForHitsInd = 54,
+    kRowCacheInd = 55,
 //    kRecycleLogFiles = 27,
 //    kConcurrentSkipList = 28,
 //    kPipelinedWrite = 29,
 //    kConcurrentWALWrites = 30,
-    kDirectIOInd = 55,
+    kDirectIOInd = 56,
 //    kLevelSubcompactions = 32,
-    kBlockBasedTableWithIndexRestartIntervalInd = 56,
-    kBlockBasedTableWithPartitionedIndexInd = 57,
-    kBlockBasedTableWithPartitionedIndexFormat4Ind = 58,
-    kPartitionedFilterWithNewTableReaderForCompactionsInd = 59,   // If you add another, must change references to this in SkipIndirect
+    kBlockBasedTableWithIndexRestartIntervalInd = 57,
+    kBlockBasedTableWithPartitionedIndexInd = 58,
+    kBlockBasedTableWithPartitionedIndexFormat4Ind = 59,
+    kPartitionedFilterWithNewTableReaderForCompactionsInd = 60,   // If you add another, must change references to this in SkipIndirect
 //    kUniversalSubcompactions = 37,
 //    kxxHash64Checksum = 38,
-
+//    kUnorderedWrite = 39,
 #endif
-
     // This must be the last line
     kEnd,
   };
@@ -738,6 +746,7 @@ class DBTestBase : public testing::Test {
   MockEnv* mem_env_;
   Env* encrypted_env_;
   SpecialEnv* env_;
+  std::shared_ptr<Env> env_guard_;
   DB* db_;
   std::vector<ColumnFamilyHandle*> handles_;
 
@@ -942,6 +951,9 @@ class DBTestBase : public testing::Test {
 
   std::vector<std::string> MultiGet(std::vector<int> cfs,
                                     const std::vector<std::string>& k,
+                                    const Snapshot* snapshot = nullptr);
+
+  std::vector<std::string> MultiGet(const std::vector<std::string>& k,
                                     const Snapshot* snapshot = nullptr);
 
   uint64_t GetNumSnapshots();

@@ -39,10 +39,8 @@ class ReadCallback {
 
   inline SequenceNumber max_visible_seq() { return max_visible_seq_; }
 
+  // Refresh to a more recent visible seq
   virtual void Refresh(SequenceNumber seq) { max_visible_seq_ = seq; }
-
-  // Refer to DBIter::CanReseekToSkip
-  virtual bool CanReseekToSkip() { return true; }
 
  protected:
   // The max visible seq, it is usually the snapshot but could be larger if

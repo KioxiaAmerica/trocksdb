@@ -4,9 +4,10 @@
 //  (found in the LICENSE.Apache file in the root directory).
 //
 #pragma once
+#include <algorithm>
+#include <memory>
 #include <string>
 #include <vector>
-#include "db/dbformat.h"
 #include "rocksdb/slice.h"
 #ifndef NO_INDIRECT_VALUE
 #include "db/value_log.h"
