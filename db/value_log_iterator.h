@@ -13,8 +13,8 @@
 #include "options/cf_options.h"
 #include "table/internal_iterator.h"
 #include "db/column_family.h"
-#include "db/compaction.h"
-#include "db/compaction_iterator.h"
+#include "db/compaction/compaction.h"
+#include "db/compaction/compaction_iterator.h"
 #include "db/value_log.h"
 
 

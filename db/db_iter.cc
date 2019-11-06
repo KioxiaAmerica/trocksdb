@@ -331,12 +331,12 @@ class DBIter final: public Iterator {
     return Status::InvalidArgument("Unidentified property.");
   }
 
-  inline void Next() final override;
-  inline void Prev() final override;
-  inline void Seek(const Slice& target) final override;
-  inline void SeekForPrev(const Slice& target) final override;
-  inline void SeekToFirst() final override;
-  inline void SeekToLast() final override;
+  void Next() override;
+  void Prev() override;
+  void Seek(const Slice& target) override;
+  void SeekForPrev(const Slice& target) override;
+  void SeekToFirst() override;
+  void SeekToLast() override;
   Env* env() { return env_; }
   void set_sequence(uint64_t s) {
     sequence_ = s;
@@ -859,7 +859,6 @@ bool DBIter::MergeValuesNewToOld() {
       // iter_ is positioned after put
       CallIteratorNext();
       if (!iter_.status().ok()) {
-      //if (!iter_.status().ok()) {
         valid_ = false;
         return false;
       }
@@ -1281,9 +1280,6 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
   if (IsTypeValue(ikey.type)) {
     assert(iter_.iter()->IsValuePinned());
     pinned_value_ = ResolvedValue();
-  if (ikey.type == kTypeValue || ikey.type == kTypeBlobIndex) {
-    assert(iter_.iter()->IsValuePinned());
-    pinned_value_ = iter_.value();
     valid_ = true;
     return true;
   }

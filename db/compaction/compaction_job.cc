@@ -855,11 +855,11 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   if(const_cast<Compaction*>(sub_compact->compaction)->compaction_reason() != CompactionReason::kActiveRecycling) {
     // normal case, using the merging iterator
     range_del_agg.reset(new CompactionRangeDelAggregator(&cfd->internal_comparator(), existing_snapshots_));
-    input.reset(versions_->MakeInputIterator(sub_compact->compaction, range_del_agg.get(),env_optiosn_for_read_));
+    input.reset(versions_->MakeInputIterator(sub_compact->compaction, range_del_agg.get(),env_options_for_read_));
   } else {
     // Active Recycling, using the RecyclingIterator
     // leave range_del_agg null, since we don't need it
-    input.reset(new RecyclingIterator(const_cast<Compaction*>(sub_compact->compaction),env_optiosn_for_read_));
+    input.reset(new RecyclingIterator(const_cast<Compaction*>(sub_compact->compaction),env_options_for_read_));
   }
 
 #else
@@ -873,7 +873,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
       new CompactionRangeDelAggregator(&cfd->internal_comparator(), existing_snapshots_));
   // Although the v2 aggregator is what the level iterator(s) know about,
   std::unique_ptr<InternalIterator> input(versions_->MakeInputIterator(
-      sub_compact->compaction, range_del_agg.get(), env_optiosn_for_read_));
+      sub_compact->compaction, range_del_agg.get(), env_options_for_read_));
 #endif
 
   AutoThreadOperationStageUpdater stage_updater(
@@ -1245,7 +1245,6 @@ if(ref.Fileno()<our_ref0[ref.Ringno()])our_ref0[ref.Ringno()] = ref.Fileno();
       range_del_agg!=nullptr &&
 #endif
       sub_compact->outputs.size() == 0 && !range_del_agg->IsEmpty()) {
-      //sub_compact->outputs.size() == 0 && !range_del_agg.IsEmpty()) {
     // handle subcompaction containing only range deletions
     status = OpenCompactionOutputFile(sub_compact);
   }
@@ -1870,7 +1869,7 @@ Status CompactionJob::OpenCompactionOutputFile(
 #ifndef NO_INDIRECT_VALUE
         ,nullptr  // lowest ref in each ring
 #endif
-);
+        );
     return s;
   }
 

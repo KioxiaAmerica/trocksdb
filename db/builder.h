@@ -21,7 +21,6 @@
 #include "rocksdb/table_properties.h"
 #include "rocksdb/types.h"
 #include "table/scoped_arena_iterator.h"
-#include "util/event_logger.h"
 #ifndef NO_INDIRECT_VALUE
 #include "value_log.h"
 #include "value_log_iterator.h"

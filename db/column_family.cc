@@ -34,7 +34,6 @@
 #include "table/merging_iterator.h"
 #include "util/autovector.h"
 #include "util/compression.h"
-#include "util/sst_file_manager_impl.h"
 #ifndef NO_INDIRECT_VALUE
 #include "db/value_log.h"
 #endif
