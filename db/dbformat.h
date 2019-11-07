@@ -163,9 +163,7 @@ inline bool IsTypeMerge(ValueType t) {
   return (bool) ( (t<=kTypeIndirectMerge) &
    ((
       (1LL << kTypeMerge)
-#ifndef NO_INDIRECT_VALUE
       | (1LL << kTypeIndirectMerge)
-#endif
     )>>t
    ) ); 
 }

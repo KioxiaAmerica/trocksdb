@@ -608,8 +608,6 @@ endif
 
 ifndef NO_INDIRECT_VALUE
 LOCKS= \
-	db_properties_test \
-	db_test \
 
 else
 LOCKS= \
