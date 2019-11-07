@@ -1684,7 +1684,7 @@ void ArenaWrappedDBIter::SetIterUnderDBIter(InternalIterator* iter) {
   static_cast<DBIter*>(db_iter_)->SetIter(iter);
 }
 
-inline bool ArenaWrappedDBIter::Valid() const { return db_iter_.Valid(); }
+inline bool ArenaWrappedDBIter::Valid() const { return db_iter_->Valid(); }
 inline void ArenaWrappedDBIter::SeekToFirst() { db_iter_->SeekToFirst(); }
 inline void ArenaWrappedDBIter::SeekToLast() { db_iter_->SeekToLast(); }
 inline void ArenaWrappedDBIter::Seek(const Slice& target) {

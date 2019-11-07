@@ -307,6 +307,7 @@ class DBImpl : public DB {
 
   virtual Status Close() override;
 
+  // Given a time window, return an iterator for accessing stats history
   Status GetStatsHistory(
       uint64_t start_time, uint64_t end_time,
       std::unique_ptr<StatsHistoryIterator>* stats_iterator) override;
@@ -778,11 +779,6 @@ class DBImpl : public DB {
 #ifndef NO_INDIRECT_VALUE
   Status OpenVLogs(const DBOptions& db_options);  // Called after versions have been initialized, to create and populate VLogs
 #endif
-
-  // Given a time window, return an iterator for accessing stats history
-  Status GetStatsHistory(
-      uint64_t start_time, uint64_t end_time,
-      std::unique_ptr<StatsHistoryIterator>* stats_iterator) override;
 
   // find stats map from stats_history_ with smallest timestamp in
   // the range of [start_time, end_time)

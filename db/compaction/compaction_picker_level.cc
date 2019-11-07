@@ -303,7 +303,7 @@ void LevelCompactionBuilder::SetupInitialFiles() {
 bool LevelCompactionBuilder::SetupOtherL0FilesIfNeeded() {
   if (start_level_ == 0 && output_level_ != 0) {
     return compaction_picker_->GetOverlappingL0Files(
-        vstorage_, &start_level_inputs_, output_level_, &parent_index_);
+        vstorage_, &start_level_inputs_, output_level_, &parent_index_, &ioptions_);
   }
   return true;
 }
@@ -599,8 +599,6 @@ bool LevelCompactionBuilder::PickFileToCompact() {
   // being compacted
   const std::vector<int>& file_size =
       vstorage_->FilesByCompactionPri(start_level_);
-  const std::vector<FileMetaData*>& level_files =
-      vstorage_->LevelFiles(start_level_);
 
   unsigned int cmp_idx;
   for (cmp_idx = vstorage_->NextCompactionIndex(start_level_);

@@ -2176,14 +2176,13 @@ Status DBImpl::BackgroundFlush(bool* made_progress, JobContext* job_context,
         column_families_not_to_flush.push_back(cfd);
         continue;
       }
-      continue;
-    }
       superversion_contexts.emplace_back(SuperVersionContext(true));
       bg_flush_args.emplace_back(cfd, iter.second,
                                  &(superversion_contexts.back()));
-  }
-  if (!bg_flush_args.empty()) {
-    break;
+    }
+    if (!bg_flush_args.empty()) {
+      break;
+    }
   }
 
   if (!bg_flush_args.empty()) {

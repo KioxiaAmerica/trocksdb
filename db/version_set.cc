@@ -3093,69 +3093,6 @@ void VersionStorageInfo::GetOverlappingInputsRangeBinarySearch(
   }
 }
 
-// Store in *start_index and *end_index the range of all files in
-// "level" that overlap [begin,end]
-// The mid_index specifies the index of at least one file that
-// overlaps the specified range. From that file, iterate backward
-// and forward to find all overlapping files.
-// Use FileLevel in searching, make it faster
-void VersionStorageInfo::ExtendFileRangeOverlappingInterval(
-    int level, const InternalKey* begin, const InternalKey* end,
-    unsigned int mid_index, int* start_index, int* end_index) const {
-  auto user_cmp = user_comparator_;
-  const FdWithKeyRange* files = level_files_brief_[level].files;
-#ifndef NDEBUG
-  {
-    // assert that the file at mid_index overlaps with the range
-    assert(mid_index < level_files_brief_[level].num_files);
-    const FdWithKeyRange* f = &files[mid_index];
-    auto& smallest = f->file_metadata->smallest;
-    auto& largest = f->file_metadata->largest;
-    if (sstableKeyCompare(user_cmp, begin, smallest) <= 0) {
-      assert(sstableKeyCompare(user_cmp, smallest, end) <= 0);
-    } else {
-      // fprintf(stderr, "ExtendFileRangeOverlappingInterval\n%s - %s\n%s - %s\n%d %d\n",
-      //         begin ? begin->DebugString().c_str() : "(null)",
-      //         end ? end->DebugString().c_str() : "(null)",
-      //         smallest->DebugString().c_str(),
-      //         largest->DebugString().c_str(),
-      //         sstableKeyCompare(user_cmp, smallest, begin),
-      //         sstableKeyCompare(user_cmp, largest, begin));
-      assert(sstableKeyCompare(user_cmp, begin, largest) <= 0);
-    }
-  }
-#endif
-  *start_index = mid_index + 1;
-  *end_index = mid_index;
-  int count __attribute__((__unused__));
-  count = 0;
-
-  // check backwards from 'mid' to lower indices
-  for (int i = mid_index; i >= 0 ; i--) {
-    const FdWithKeyRange* f = &files[i];
-    auto& largest = f->file_metadata->largest;
-    if (sstableKeyCompare(user_cmp, begin, largest) <= 0) {
-      *start_index = i;
-      assert((count++, true));
-    } else {
-      break;
-    }
-  }
-  // check forward from 'mid+1' to higher indices
-  for (unsigned int i = mid_index+1;
-       i < level_files_brief_[level].num_files; i++) {
-    const FdWithKeyRange* f = &files[i];
-    auto& smallest = f->file_metadata->smallest;
-    if (sstableKeyCompare(user_cmp, smallest, end) <= 0) {
-      assert((count++, true));
-      *end_index = i;
-    } else {
-      break;
-    }
-  }
-  assert(count == *end_index - *start_index + 1);
-}
-
 #ifndef NO_INDIRECT_VALUE
 int64_t VersionStorageInfo::NumRingBytes(int ring) const {
   assert(ring >= 0);
@@ -4711,7 +4648,7 @@ Status VersionSet::ListColumnFamilies(std::vector<std::string>* column_families,
     if (!s.ok()) {
       return s;
     }
-    file_reader.reset(new SequentialFileReader(std::move(file), dscname));
+    file_reader.reset(new SequentialFileReader(std::move(file), manifest_path));
   }
 
   std::map<uint32_t, std::string> column_family_names;
