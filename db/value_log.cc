@@ -211,6 +211,12 @@ extern VLogRingRefFileOffset BreakRecordsIntoFiles(
   return maxfilesizecreated;
 }
 
+// MergeContext support, which has no home file
+// Support for passing the VLog address via the MergeContext
+MergeContext::MergeContext(ColumnFamilyData *cfd) : vlog(cfd->vlog()) {}
+std::shared_ptr<VLog> MergeContext::GetVlog() { return vlog; }
+void MergeContext::SetCfd(ColumnFamilyData *cfd) { vlog=cfd->vlog(); }
+
 // Convert a filename, which is known to be a valid vlg filename, to the ring and filenumber in this VLog
 static ParsedFnameRing VlogFnametoRingFname(std::string pathfname) {
     // Isolate the filename from the path as required by the subroutine

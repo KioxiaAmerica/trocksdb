@@ -26,9 +26,6 @@
 #include "rocksdb/options.h"
 #include "trace_replay/block_cache_tracer.h"
 #include "util/thread_local.h"
-#ifndef NO_INDIRECT_VALUE
-#include "db/value_log.h"
-#endif
 
 namespace rocksdb {
 
@@ -47,6 +44,10 @@ class LogBuffer;
 class InstrumentedMutex;
 class InstrumentedMutexLock;
 struct SuperVersionContext;
+#ifndef NO_INDIRECT_VALUE
+class VLog;
+struct VLogRingRestartInfo;
+#endif
 
 extern const double kIncSlowdownRatio;
 // This file contains a list of data structures for managing column family

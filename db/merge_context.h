@@ -9,12 +9,12 @@
 #include <string>
 #include <vector>
 #include "rocksdb/slice.h"
-#ifndef NO_INDIRECT_VALUE
-#include "db/value_log.h"
-#include "db/column_family.h"
-#endif
 
 namespace rocksdb {
+#ifndef NO_INDIRECT_VALUE
+class ColumnFamilyData;
+class VLog;
+#endif
 
 const std::vector<Slice> empty_operand_list;
 
@@ -28,9 +28,9 @@ class MergeContext {
   MergeContext(){}
 #ifndef NO_INDIRECT_VALUE
   // Support for passing the VLog address via the MergeContext
-  MergeContext(ColumnFamilyData *cfd) : vlog(cfd->vlog()) {}
-  std::shared_ptr<VLog> GetVlog() { return vlog; }
-  void SetCfd(ColumnFamilyData *cfd) { vlog=cfd->vlog(); }
+  MergeContext(ColumnFamilyData *cfd);
+  std::shared_ptr<VLog> GetVlog();
+  void SetCfd(ColumnFamilyData *cfd);
 #endif
 
   // Clear all the operands

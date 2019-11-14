@@ -459,9 +459,6 @@ class Repairer {
           nullptr /* event_logger */, 0 /* job_id */, Env::IO_HIGH,
           nullptr /* table_properties */, -1 /* level */, current_time,
 	  0 /* oldest_key_time */, write_hint
-#ifndef NO_INDIRECT_VALUE
-          ,nullptr /* cfd */, nullptr /* vlog_flush_info */
-#endif
           );
       ROCKS_LOG_INFO(db_options_.info_log,
                      "Log #%" PRIu64 ": %d ops saved to Table #%" PRIu64 " %s",
