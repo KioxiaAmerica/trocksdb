@@ -3452,7 +3452,7 @@ Status DBImpl::RenameTempFileToOptionsFile(const std::string& file_name) {
   }
 
   if (0 == disable_delete_obsolete_files_) {
-  DeleteObsoleteOptionsFiles();
+    DeleteObsoleteOptionsFiles();
   }
   return s;
 #else
@@ -3535,7 +3535,6 @@ Status DBImpl::GetLatestSequenceForKey(SuperVersion* sv, const Slice& key,
 #else
   MergeContext merge_context;
 #endif
-
   SequenceNumber max_covering_tombstone_seq = 0;
 
   ReadOptions read_options;
@@ -3691,30 +3690,6 @@ Status DBImpl::IngestExternalFiles(
   // TODO (yanqin) maybe handle the case in which column_families have
   // duplicates
   std::list<uint64_t>::iterator pending_output_elem;
-  /*
-  {
-    InstrumentedMutexLock l(&mutex_);
-    if (error_handler_.IsDBStopped()) {
-      // Don't ingest files when there is a bg_error
-      return error_handler_.GetBGError();
-    }
-
-    // Make sure that bg cleanup wont delete the files that we are ingesting
-    pending_output_elem = CaptureCurrentFileNumberInPendingOutputs();
-
-    // If crash happen after a hard link established, Recover function may
-    // reuse the file number that has already assigned to the internal file,
-    // and this will overwrite the external file. To protect the external
-    // file, we have to make sure the file number will never being reused.
-    next_file_number = versions_->FetchAddFileNumber(external_files.size());
-    auto cf_options = cfd->GetLatestMutableCFOptions();
-    status = versions_->LogAndApply(cfd, *cf_options, &dummy_edit, &mutex_,
-                                    directories_.GetDbDir());
-    if (status.ok()) {
-      InstallSuperVersionAndScheduleWork(cfd, &dummy_sv_ctx, *cf_options);
-    }
-  }
-  */
   size_t total = 0;
   for (const auto& arg : args) {
     total += arg.external_files.size();
@@ -4251,4 +4226,5 @@ Status DBImpl::ReserveFileNumbersBeforeIngestion(
   return s;
 }
 #endif  // ROCKSDB_LITE
+
 }  // namespace rocksdb

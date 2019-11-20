@@ -53,7 +53,7 @@ void EventHelpers::NotifyOnBackgroundError(
     listener->OnBackgroundError(reason, bg_error);
     if (*auto_recovery) {
       listener->OnErrorRecoveryBegin(reason, *bg_error, auto_recovery);
-  }
+    }
   }
   db_mutex->Lock();
 #else
