@@ -59,7 +59,7 @@ option(WITH_WINDOWS_UTF8_FILENAMES "use UTF8 as characterset for opening files, 
 if (WITH_WINDOWS_UTF8_FILENAMES)
   add_definitions(-DROCKSDB_WINDOWS_UTF8_FILENAMES)
 endif()
-if(MSVC AND NOT VCPKG_TOOLCHAIN)
+if(MSVC)
   # Defaults currently different for GFLAGS.
   #  We will address find_package work a little later
   option(WITH_GFLAGS "build with GFlags" OFF)
@@ -581,7 +581,6 @@ set(SOURCES
         monitoring/statistics.cc
         monitoring/thread_status_impl.cc
         monitoring/thread_status_updater.cc
-        monitoring/thread_status_updater_debug.cc
         monitoring/thread_status_util.cc
         monitoring/thread_status_util_debug.cc
         options/cf_options.cc
@@ -667,9 +666,9 @@ set(SOURCES
         utilities/blob_db/blob_db_impl_filesnapshot.cc
         utilities/blob_db/blob_dump_tool.cc
         utilities/blob_db/blob_file.cc
-        utilities/blob_db/blob_log_format.cc
         utilities/blob_db/blob_log_reader.cc
         utilities/blob_db/blob_log_writer.cc
+        utilities/blob_db/blob_log_format.cc
         utilities/cassandra/cassandra_compaction_filter.cc
         utilities/cassandra/format.cc
         utilities/cassandra/merge_operator.cc
@@ -680,6 +679,7 @@ set(SOURCES
         utilities/env_timed.cc
         utilities/leveldb_options/leveldb_options.cc
         utilities/memory/memory_util.cc
+        utilities/merge_operators/bytesxor.cc
         utilities/merge_operators/max.cc
         utilities/merge_operators/put.cc
         utilities/merge_operators/string_append/stringappend.cc
@@ -697,8 +697,8 @@ set(SOURCES
         utilities/simulator_cache/sim_cache.cc
         utilities/table_properties_collectors/compact_on_deletion_collector.cc
         utilities/trace/file_trace_reader_writer.cc
-        utilities/transactions/optimistic_transaction.cc
         utilities/transactions/optimistic_transaction_db_impl.cc
+        utilities/transactions/optimistic_transaction.cc
         utilities/transactions/pessimistic_transaction.cc
         utilities/transactions/pessimistic_transaction_db.cc
         utilities/transactions/snapshot_checker.cc
@@ -774,12 +774,7 @@ if(WIN32)
   set(LIBS ${ROCKSDB_STATIC_LIB} ${THIRDPARTY_LIBS} ${SYSTEM_LIBS})
 else()
   set(SYSTEM_LIBS ${CMAKE_THREAD_LIBS_INIT})
-
-  if(ROCKSDB_DISABLE_INSTALL_SHARED_LIB)
-    set(LIBS ${ROCKSDB_STATIC_LIB} ${THIRDPARTY_LIBS} ${SYSTEM_LIBS})
-  else()
-    set(LIBS ${ROCKSDB_SHARED_LIB} ${THIRDPARTY_LIBS} ${SYSTEM_LIBS})
-  endif()
+  set(LIBS ${ROCKSDB_SHARED_LIB} ${THIRDPARTY_LIBS} ${SYSTEM_LIBS})
 
   add_library(${ROCKSDB_SHARED_LIB} SHARED ${SOURCES})
   target_link_libraries(${ROCKSDB_SHARED_LIB}
@@ -848,30 +843,23 @@ if(NOT WIN32 OR ROCKSDB_INSTALL_ON_WINDOWS)
 
   install(DIRECTORY include/rocksdb COMPONENT devel DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 
-  if(NOT ROCKSDB_DISABLE_INSTALL_STATIC_LIB)
-    install(
-      TARGETS ${ROCKSDB_STATIC_LIB}
-      EXPORT RocksDBTargets
-      COMPONENT devel
-      ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-      INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-    )
-  else()
-    set_target_properties(${ROCKSDB_STATIC_LIB} PROPERTIES EXCLUDE_FROM_ALL TRUE)
-  endif()
-  if(NOT ROCKSDB_DISABLE_INSTALL_SHARED_LIB)
-    install(
-      TARGETS ${ROCKSDB_SHARED_LIB}
-      EXPORT RocksDBTargets
-      COMPONENT runtime
-      ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-      RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-      LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-      INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-    )
-  else()
-    set_target_properties(${ROCKSDB_SHARED_LIB} PROPERTIES EXCLUDE_FROM_ALL TRUE)
-  endif()
+  install(
+    TARGETS ${ROCKSDB_STATIC_LIB}
+    EXPORT RocksDBTargets
+    COMPONENT devel
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+  )
+
+  install(
+    TARGETS ${ROCKSDB_SHARED_LIB}
+    EXPORT RocksDBTargets
+    COMPONENT runtime
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+  )
 
   install(
     EXPORT RocksDBTargets
