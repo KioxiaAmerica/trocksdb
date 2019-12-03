@@ -1129,7 +1129,7 @@ int64_t CompactionPicker::GetOverlappingL0Files(
       start_level_inputs->files.push_back(level_files[i]);  // add file to the list
       if((smallkeyfile==nullptr)|| icmp_->Compare(level_files[i]->smallest,smallkeyfile->smallest)<0)smallkeyfile=level_files[i];  // remember the smallest key
     }
-    return IsCompactIntoBottomLevel(vstorage,output_level,smallkeyfile->smallest,ioptions&&ioptions->level_compaction_dynamic_level_bytes)?1:0;  // return, requesting change of output_level if called for
+    return IsCompactIntoBottomLevel(vstorage,output_level,smallkeyfile->smallest,ioptions&&ioptions->level_compaction_dynamic_level_bytes)?1:0;  // OK return, requesting change of output_level if called for
   }
 #else
   // Two level 0 compaction won't run at the same time, so don't need to worry
@@ -1180,7 +1180,7 @@ int64_t CompactionPicker::GetOverlappingL0Files(
 #endif
   assert(!start_level_inputs->files.empty());
 
-  return 0;
+  return 0;  // OK return
 }
 
 }  // namespace rocksdb

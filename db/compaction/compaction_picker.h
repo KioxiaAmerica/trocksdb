@@ -197,6 +197,9 @@ class CompactionPicker {
                                     int* start_level, int* output_level,
                                     CompactionInputFiles* start_level_inputs);
 
+#ifndef NO_INDIRECT_VALUE
+ // The return from GetOverlappingL0Files used to be bool: false for error, true for OK.  Changed now.
+#endif
   int64_t GetOverlappingL0Files(VersionStorageInfo* vstorage,
                              CompactionInputFiles* start_level_inputs,
                              int output_level, int* parent_index, const ImmutableCFOptions *ioptions);  // return -1=error, 0=OK, 1=OK, change output_level_ to last level

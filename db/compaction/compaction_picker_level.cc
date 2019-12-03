@@ -64,7 +64,7 @@ class LevelCompactionBuilder {
   void SetupInitialFiles();
 
   // If the initial files are from L0 level, pick other L0
-  // files if needed.
+  // files if needed.  Return false if compaction should be aborted
   bool SetupOtherL0FilesIfNeeded();
 
   // Based on initial files, setup other files need to be compacted
@@ -303,7 +303,7 @@ void LevelCompactionBuilder::SetupInitialFiles() {
 bool LevelCompactionBuilder::SetupOtherL0FilesIfNeeded() {
   if (start_level_ == 0 && output_level_ != 0) {
     return compaction_picker_->GetOverlappingL0Files(
-        vstorage_, &start_level_inputs_, output_level_, &parent_index_, &ioptions_);
+        vstorage_, &start_level_inputs_, output_level_, &parent_index_, &ioptions_) >= 0;  // 0 and 1 =  OK
   }
   return true;
 }

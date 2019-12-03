@@ -432,6 +432,12 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
                       kColumnFamilyOptionsBlacklist);
 
   // Need to update the option string if a new option is added.
+#ifndef NO_INDIRECT_VALUE
+#define ADDLOPTS "allow_trivial_move=false;" "vlog_direct_IO=false;" "compaction_score_limit_L0=1000.0;"
+#else
+#define ADDLOPTS
+#endif
+
   ASSERT_OK(GetColumnFamilyOptionsFromString(
       *options,
       "compaction_filter_factory=mpudlojcujCompactionFilterFactory;"
@@ -486,11 +492,7 @@ TEST_F(OptionsSettableTest, ColumnFamilyOptionsAllFieldsSettable) {
       "sample_for_compression=0;"
       "compaction_options_fifo={max_table_files_size=3;allow_"
       "compaction=false;};"
-#ifndef NO_INDIRECT_VALUE
-      "allow_trivial_move=false;"
-      "vlog_direct_IO=false;"
-      "compaction_score_limit_L0=1000.0;"
-#endif
+      ADDLOPTS
       , new_options));
 
   ASSERT_EQ(unset_bytes_base,
