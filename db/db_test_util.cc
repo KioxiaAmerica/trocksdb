@@ -614,15 +614,14 @@ Options DBTestBase::GetOptions(
       options.manual_wal_flush = true;
       break;
     }
-#ifndef NO_INDIRECT_VALUE
-    case kDefaultInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
-#endif
     case kUnorderedWrite: {
       options.allow_concurrent_memtable_write = false;
       options.unordered_write = false;
       break;
     }
-
+#ifndef NO_INDIRECT_VALUE
+    case kDefaultInd: options.vlogring_activation_level=std::vector<int>{0}; options.min_indirect_val_size[0]=0;   // fall through to...
+#endif
     default:
       break;
   }
