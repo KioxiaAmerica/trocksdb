@@ -1939,6 +1939,10 @@ void DBImpl::MultiGetImpl(
       if (done) {
         range.MarkKeyDone(mget_iter);
       } else {
+#ifndef NO_INDIRECT_VALUE
+        // to support indirect values, Get() must have access to the VLog.  We pass this in through the MergeContext so as not to disturb interfaces
+        merge_context.SetCfd(cfh->cfd());
+#endif
         RecordTick(stats_, MEMTABLE_MISS);
         lookup_current = true;
       }
