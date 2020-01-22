@@ -1483,7 +1483,7 @@ Status VLog::VLogGet(
   // Because of the OS kludge that doesn't allow zero-length files to be memory-mapped, we have to check to make
   // sure that the reference doesn't have 0 length: because the 0-length reference might be contained in a
   // (nonexistent) 0-length file, and we'd better not try to read it
-  if(!ref.Len()){ result.clear(); return s; }   // length 0; return empty string, no error
+  if(static_cast<uint64_t>(ref.Len())==0){ result.clear(); return s; }   // length 0; return empty string, no error
 
   if(ref.Len()<(1+4)){
     ROCKS_LOG_ERROR(immdbopts_->info_log,
