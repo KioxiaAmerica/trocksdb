@@ -8,11 +8,12 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/db_test_util.h"
+#include "db/compaction/compaction_picker_level.h"
 #include "port/stack_trace.h"
 #include "port/port.h"
 #include "rocksdb/experimental.h"
 #include "rocksdb/utilities/convenience.h"
-#include "util/sync_point.h"
+#include "test_util/sync_point.h"
 #include <chrono>
 #include <thread>
 #include <cmath>

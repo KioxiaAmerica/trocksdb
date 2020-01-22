@@ -60,13 +60,9 @@
 
 #ifndef ROCKSDB_LITE
 
-#ifndef __STDC_FORMAT_MACROS
-#define __STDC_FORMAT_MACROS
-#endif
-
-#include <inttypes.h>
+#include <cinttypes>
 #include "db/builder.h"
-#include "db/db_impl.h"
+#include "db/db_impl/db_impl.h"
 #include "db/dbformat.h"
 #include "db/log_reader.h"
 #include "db/log_writer.h"
@@ -74,6 +70,7 @@
 #include "db/table_cache.h"
 #include "db/version_edit.h"
 #include "db/write_batch_internal.h"
+#include "file/filename.h"
 #include "options/cf_options.h"
 #include "rocksdb/comparator.h"
 #include "rocksdb/db.h"
@@ -82,7 +79,6 @@
 #include "rocksdb/write_buffer_manager.h"
 #include "table/scoped_arena_iterator.h"
 #include "util/file_reader_writer.h"
-#include "util/filename.h"
 #include "util/string_util.h"
 #ifndef NO_INDIRECT_VALUE
 #include "db/value_log.h"
@@ -115,11 +111,13 @@ class Repairer {
             // once.
             NewLRUCache(10, db_options_.table_cache_numshardbits)),
         table_cache_(new TableCache(default_cf_iopts_, env_options_,
-                                    raw_table_cache_.get())),
+                                    raw_table_cache_.get(),
+                                    /*block_cache_tracer=*/nullptr)),
         wb_(db_options_.db_write_buffer_size),
         wc_(db_options_.delayed_write_rate),
         vset_(dbname_, &immutable_db_options_, env_options_,
-              raw_table_cache_.get(), &wb_, &wc_),
+              raw_table_cache_.get(), &wb_, &wc_,
+              /*block_cache_tracer=*/nullptr),
         next_file_number_(1),
         db_lock_(nullptr) {
     for (const auto& cfd : column_families) {
@@ -461,9 +459,6 @@ class Repairer {
           nullptr /* event_logger */, 0 /* job_id */, Env::IO_HIGH,
           nullptr /* table_properties */, -1 /* level */, current_time,
 	  0 /* oldest_key_time */, write_hint
-#ifndef NO_INDIRECT_VALUE
-          ,nullptr /* cfd */, nullptr /* vlog_flush_info */
-#endif
           );
       ROCKS_LOG_INFO(db_options_.info_log,
                      "Log #%" PRIu64 ": %d ops saved to Table #%" PRIu64 " %s",
@@ -548,10 +543,16 @@ class Repairer {
       }
     }
     if (status.ok()) {
+      ReadOptions ropts;
+      ropts.total_order_seek = true;
       InternalIterator* iter = table_cache_->NewIterator(
-          ReadOptions(), env_options_, cfd->internal_comparator(), t->meta,
+          ropts, env_options_, cfd->internal_comparator(), t->meta,
           nullptr /* range_del_agg */,
-          cfd->GetLatestMutableCFOptions()->prefix_extractor.get());
+          cfd->GetLatestMutableCFOptions()->prefix_extractor.get(),
+          /*table_reader_ptr=*/nullptr, /*file_read_hist=*/nullptr,
+          TableReaderCaller::kRepair, /*arena=*/nullptr, /*skip_filters=*/false,
+          /*level=*/-1, /*smallest_compaction_key=*/nullptr,
+          /*largest_compaction_key=*/nullptr);
       bool empty = true;
       ParsedInternalKey parsed;
       t->min_sequence = 0;

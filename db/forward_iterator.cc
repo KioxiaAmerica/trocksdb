@@ -11,7 +11,7 @@
 #include <utility>
 
 #include "db/column_family.h"
-#include "db/db_impl.h"
+#include "db/db_impl/db_impl.h"
 #include "db/db_iter.h"
 #include "db/dbformat.h"
 #include "db/job_context.h"
@@ -21,8 +21,8 @@
 #include "rocksdb/slice.h"
 #include "rocksdb/slice_transform.h"
 #include "table/merging_iterator.h"
+#include "test_util/sync_point.h"
 #include "util/string_util.h"
-#include "util/sync_point.h"
 
 namespace rocksdb {
 
@@ -79,7 +79,11 @@ class ForwardLevelIterator : public InternalIterator {
         read_options_, *(cfd_->soptions()), cfd_->internal_comparator(),
         *files_[file_index_],
         read_options_.ignore_range_deletions ? nullptr : &range_del_agg,
-        prefix_extractor_, nullptr /* table_reader_ptr */, nullptr, false);
+        prefix_extractor_, /*table_reader_ptr=*/nullptr,
+        /*file_read_hist=*/nullptr, TableReaderCaller::kUserIterator,
+        /*arena=*/nullptr, /*skip_filters=*/false, /*level=*/-1,
+        /*smallest_compaction_key=*/nullptr,
+        /*largest_compaction_key=*/nullptr);
     file_iter_->SetPinnedItersMgr(pinned_iters_mgr_);
     valid_ = false;
     if (!range_del_agg.IsEmpty()) {
@@ -384,9 +388,9 @@ void ForwardIterator::SeekInternal(const Slice& internal_key,
       }
     }
 
-    Slice user_key;
+    Slice target_user_key;
     if (!seek_to_first) {
-      user_key = ExtractUserKey(internal_key);
+      target_user_key = ExtractUserKey(internal_key);
     }
     const VersionStorageInfo* vstorage = sv_->current->storage_info();
     const std::vector<FileMetaData*>& l0 = vstorage->LevelFiles(0);
@@ -399,8 +403,8 @@ void ForwardIterator::SeekInternal(const Slice& internal_key,
       } else {
         // If the target key passes over the larget key, we are sure Next()
         // won't go over this file.
-        if (user_comparator_->Compare(user_key,
-              l0[i]->largest.user_key()) > 0) {
+        if (user_comparator_->Compare(target_user_key,
+                                      l0[i]->largest.user_key()) > 0) {
           if (read_options_.iterate_upper_bound != nullptr) {
             has_iter_trimmed_for_upper_bound_ = true;
             DeleteIterator(l0_iters_[i]);
@@ -645,7 +649,12 @@ void ForwardIterator::RebuildIterators(bool refresh_sv) {
     l0_iters_.push_back(cfd_->table_cache()->NewIterator(
         read_options_, *cfd_->soptions(), cfd_->internal_comparator(), *l0,
         read_options_.ignore_range_deletions ? nullptr : &range_del_agg,
-        sv_->mutable_cf_options.prefix_extractor.get()));
+        sv_->mutable_cf_options.prefix_extractor.get(),
+        /*table_reader_ptr=*/nullptr, /*file_read_hist=*/nullptr,
+        TableReaderCaller::kUserIterator, /*arena=*/nullptr,
+        /*skip_filters=*/false, /*level=*/-1,
+        /*smallest_compaction_key=*/nullptr,
+        /*largest_compaction_key=*/nullptr));
   }
   BuildLevelIterators(vstorage);
   current_ = nullptr;
@@ -717,7 +726,12 @@ void ForwardIterator::RenewIterators() {
         read_options_, *cfd_->soptions(), cfd_->internal_comparator(),
         *l0_files_new[inew],
         read_options_.ignore_range_deletions ? nullptr : &range_del_agg,
-        svnew->mutable_cf_options.prefix_extractor.get()));
+        svnew->mutable_cf_options.prefix_extractor.get(),
+        /*table_reader_ptr=*/nullptr, /*file_read_hist=*/nullptr,
+        TableReaderCaller::kUserIterator, /*arena=*/nullptr,
+        /*skip_filters=*/false, /*level=*/-1,
+        /*smallest_compaction_key=*/nullptr,
+        /*largest_compaction_key=*/nullptr));
   }
 
   for (auto* f : l0_iters_) {
@@ -775,8 +789,13 @@ void ForwardIterator::ResetIncompleteIterators() {
     DeleteIterator(l0_iters_[i]);
     l0_iters_[i] = cfd_->table_cache()->NewIterator(
         read_options_, *cfd_->soptions(), cfd_->internal_comparator(),
-        *l0_files[i], nullptr /* range_del_agg */,
-        sv_->mutable_cf_options.prefix_extractor.get());
+        *l0_files[i], /*range_del_agg=*/nullptr,
+        sv_->mutable_cf_options.prefix_extractor.get(),
+        /*table_reader_ptr=*/nullptr, /*file_read_hist=*/nullptr,
+        TableReaderCaller::kUserIterator, /*arena=*/nullptr,
+        /*skip_filters=*/false, /*level=*/-1,
+        /*smallest_compaction_key=*/nullptr,
+        /*largest_compaction_key=*/nullptr);
     l0_iters_[i]->SetPinnedItersMgr(pinned_iters_mgr_);
   }
 

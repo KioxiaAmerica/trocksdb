@@ -205,6 +205,19 @@ class Transaction {
                                        const std::vector<Slice>& keys,
                                        std::vector<std::string>* values) = 0;
 
+  // Batched version of MultiGet - see DBImpl::MultiGet(). Sub-classes are
+  // expected to override this with an implementation that calls
+  // DBImpl::MultiGet()
+  virtual void MultiGet(const ReadOptions& options,
+                        ColumnFamilyHandle* column_family,
+                        const size_t num_keys, const Slice* keys,
+                        PinnableSlice* values, Status* statuses,
+                        const bool /*sorted_input*/ = false) {
+    for (size_t i = 0; i < num_keys; ++i) {
+      statuses[i] = Get(options, column_family, keys[i], &values[i]);
+    }
+  }
+
   // Read this key and ensure that this transaction will only
   // be able to be committed if this key is not written outside this
   // transaction after it has first been read (or after the snapshot if a
@@ -293,8 +306,10 @@ class Transaction {
   // functions in WriteBatch, but will also do conflict checking on the
   // keys being written.
   //
-  // assume_tracked=true expects the key be already tracked. If valid then it
-  // skips ValidateSnapshot. Returns error otherwise.
+  // assume_tracked=true expects the key be already tracked. More
+  // specifically, it means the the key was previous tracked in the same
+  // savepoint, with the same exclusive flag, and at a lower sequence number.
+  // If valid then it skips ValidateSnapshot.  Returns error otherwise.
   //
   // If this Transaction was created on an OptimisticTransactionDB, these
   // functions should always return Status::OK().

@@ -11,6 +11,7 @@
 #include <vector>
 #include "db/range_tombstone_fragmenter.h"
 #include "db/table_properties_collector.h"
+#include "logging/event_logger.h"
 #include "options/cf_options.h"
 #include "rocksdb/comparator.h"
 #include "rocksdb/env.h"
@@ -20,7 +21,6 @@
 #include "rocksdb/table_properties.h"
 #include "rocksdb/types.h"
 #include "table/scoped_arena_iterator.h"
-#include "util/event_logger.h"
 #ifndef NO_INDIRECT_VALUE
 #include "value_log.h"
 #include "value_log_iterator.h"
@@ -54,7 +54,8 @@ TableBuilder* NewTableBuilder(
     const uint64_t sample_for_compression,
     const CompressionOptions& compression_opts, int level,
     const bool skip_filters = false, const uint64_t creation_time = 0,
-    const uint64_t oldest_key_time = 0, const uint64_t target_file_size = 0);
+    const uint64_t oldest_key_time = 0, const uint64_t target_file_size = 0,
+    const uint64_t file_creation_time = 0);
 
 // Build a Table file from the contents of *iter.  The generated file
 // will be named according to number specified in meta. On success, the rest of
@@ -84,7 +85,8 @@ extern Status BuildTable(
     const Env::IOPriority io_priority = Env::IO_HIGH,
     TableProperties* table_properties = nullptr, int level = -1,
     const uint64_t creation_time = 0, const uint64_t oldest_key_time = 0,
-    Env::WriteLifeTimeHint write_hint = Env::WLTH_NOT_SET
+    Env::WriteLifeTimeHint write_hint = Env::WLTH_NOT_SET,
+    const uint64_t file_creation_time = 0
 #ifndef NO_INDIRECT_VALUE
     ,ColumnFamilyData* cfd=nullptr  // if we should wsrite values to the VLog, this is the VLog; otherwise nullptr
     ,VLogEditStats *vlog_flush_info=nullptr    // vlog info that needs to go to edit and stats

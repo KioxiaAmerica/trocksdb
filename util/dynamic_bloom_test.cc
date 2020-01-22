@@ -11,11 +11,7 @@ int main() {
 }
 #else
 
-#ifndef __STDC_FORMAT_MACROS
-#define __STDC_FORMAT_MACROS
-#endif
-
-#include <inttypes.h>
+#include <cinttypes>
 #include <algorithm>
 #include <atomic>
 #include <functional>
@@ -24,13 +20,13 @@ int main() {
 #include <vector>
 
 #include "dynamic_bloom.h"
+#include "logging/logging.h"
+#include "memory/arena.h"
 #include "port/port.h"
-#include "util/arena.h"
+#include "test_util/testharness.h"
+#include "test_util/testutil.h"
 #include "util/gflags_compat.h"
-#include "util/logging.h"
 #include "util/stop_watch.h"
-#include "util/testharness.h"
-#include "util/testutil.h"
 
 using GFLAGS_NAMESPACE::ParseCommandLineFlags;
 

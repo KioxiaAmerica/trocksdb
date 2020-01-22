@@ -1,6 +1,8 @@
 // Copyright (c) 2014 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+//
+// Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 
 #pragma once
 
@@ -93,6 +95,8 @@ enum class CompactionReason : int {
   kFlush,
   // Compaction caused by external sst file ingestion
   kExternalSstIngestion,
+  // Compaction due to SST file being too old
+  kPeriodicCompaction,
   // total number of compaction reasons, new reasons must be added above this.
   kNumOfReasons,
 };

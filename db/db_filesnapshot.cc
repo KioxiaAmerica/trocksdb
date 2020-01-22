@@ -6,24 +6,20 @@
 
 #ifndef ROCKSDB_LITE
 
-#ifndef __STDC_FORMAT_MACROS
-#define __STDC_FORMAT_MACROS
-#endif
-
-#include <inttypes.h>
+#include <cinttypes>
 #include <stdint.h>
 #include <algorithm>
 #include <string>
-#include "db/db_impl.h"
+#include "db/db_impl/db_impl.h"
 #include "db/job_context.h"
 #include "db/version_set.h"
+#include "file/file_util.h"
+#include "file/filename.h"
 #include "port/port.h"
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
-#include "util/file_util.h"
-#include "util/filename.h"
+#include "test_util/sync_point.h"
 #include "util/mutexlock.h"
-#include "util/sync_point.h"
 
 namespace rocksdb {
 
@@ -60,10 +56,11 @@ Status DBImpl::EnableFileDeletions(bool force) {
     }
   }
   if (file_deletion_enabled) {
-      ROCKS_LOG_INFO(immutable_db_options_.info_log, "File Deletions Enabled");
-    PurgeObsoleteFiles(job_context);
-      bg_cv_.SignalAll();
-    } else {
+    ROCKS_LOG_INFO(immutable_db_options_.info_log, "File Deletions Enabled");
+    if (job_context.HaveSomethingToDelete()) {
+      PurgeObsoleteFiles(job_context);
+    }
+  } else {
     ROCKS_LOG_WARN(immutable_db_options_.info_log,
           "File Deletions Enable, but not really enabled. Counter: %d",
           disable_delete_obsolete_files_);

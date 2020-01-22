@@ -13,10 +13,10 @@
 #include "rocksdb/cache.h"
 #include "rocksdb/write_buffer_manager.h"
 #include "table/mock_table.h"
+#include "test_util/testharness.h"
+#include "test_util/testutil.h"
 #include "util/file_reader_writer.h"
 #include "util/string_util.h"
-#include "util/testharness.h"
-#include "util/testutil.h"
 
 namespace rocksdb {
 
@@ -35,7 +35,8 @@ class FlushJobTest : public testing::Test {
         write_buffer_manager_(db_options_.db_write_buffer_size),
         versions_(new VersionSet(dbname_, &db_options_, env_options_,
                                  table_cache_.get(), &write_buffer_manager_,
-                                 &write_controller_)),
+                                 &write_controller_,
+                                 /*block_cache_tracer=*/nullptr)),
         shutting_down_(false),
         mock_table_factory_(new mock::MockTableFactory()) {
     EXPECT_OK(env_->CreateDirIfMissing(dbname_));

@@ -24,13 +24,14 @@
 #endif
 
 #include "cache/lru_cache.h"
-#include "db/db_impl.h"
+#include "db/db_impl/db_impl.h"
 #include "db/db_test_util.h"
 #include "db/dbformat.h"
 #include "db/job_context.h"
 #include "db/version_set.h"
 #include "db/write_batch_internal.h"
 #include "env/mock_env.h"
+#include "file/filename.h"
 #include "memtable/hash_linklist_rep.h"
 #include "monitoring/thread_status_util.h"
 #include "port/port.h"
@@ -53,19 +54,18 @@
 #include "rocksdb/utilities/checkpoint.h"
 #include "rocksdb/utilities/optimistic_transaction_db.h"
 #include "rocksdb/utilities/write_batch_with_index.h"
-#include "table/block_based_table_factory.h"
+#include "table/block_based/block_based_table_factory.h"
 #include "table/mock_table.h"
-#include "table/plain_table_factory.h"
+#include "table/plain/plain_table_factory.h"
 #include "table/scoped_arena_iterator.h"
+#include "test_util/sync_point.h"
+#include "test_util/testharness.h"
+#include "test_util/testutil.h"
 #include "util/compression.h"
 #include "util/file_reader_writer.h"
-#include "util/filename.h"
 #include "util/mutexlock.h"
 #include "util/rate_limiter.h"
 #include "util/string_util.h"
-#include "util/sync_point.h"
-#include "util/testharness.h"
-#include "util/testutil.h"
 #include "utilities/merge_operators.h"
 
 namespace rocksdb {
@@ -2189,6 +2189,7 @@ struct MTState {
 struct MTThread {
   MTState* state;
   int id;
+  bool multiget_batched;
 };
 
 static void MTThreadBody(void* arg) {
@@ -2237,8 +2238,28 @@ static void MTThreadBody(void* arg) {
       // same)
       std::vector<Slice> keys(kColumnFamilies, Slice(keybuf));
       std::vector<std::string> values;
-      std::vector<Status> statuses =
-          db->MultiGet(ReadOptions(), t->state->test->handles_, keys, &values);
+      std::vector<Status> statuses;
+      if (!t->multiget_batched) {
+        statuses = db->MultiGet(ReadOptions(), t->state->test->handles_, keys,
+                                &values);
+      } else {
+        std::vector<PinnableSlice> pin_values(keys.size());
+        statuses.resize(keys.size());
+        const Snapshot* snapshot = db->GetSnapshot();
+        ReadOptions ro;
+        ro.snapshot = snapshot;
+        for (int cf = 0; cf < kColumnFamilies; ++cf) {
+          db->MultiGet(ro, t->state->test->handles_[cf], 1, &keys[cf],
+                       &pin_values[cf], &statuses[cf]);
+        }
+        db->ReleaseSnapshot(snapshot);
+        values.resize(keys.size());
+        for (int cf = 0; cf < kColumnFamilies; ++cf) {
+          if (statuses[cf].ok()) {
+            values[cf].assign(pin_values[cf].data(), pin_values[cf].size());
+          }
+        }
+      }
       Status s = statuses[0];
       // all statuses have to be the same
       for (size_t i = 1; i < statuses.size(); ++i) {
@@ -2280,10 +2301,13 @@ static void MTThreadBody(void* arg) {
 
 }  // namespace
 
-class MultiThreadedDBTest : public DBTest,
-                            public ::testing::WithParamInterface<int> {
+class MultiThreadedDBTest
+    : public DBTest,
+      public ::testing::WithParamInterface<std::tuple<int, bool>> {
  public:
-  void SetUp() override { option_config_ = GetParam(); }
+  void SetUp() override {
+    std::tie(option_config_, multiget_batched_) = GetParam();
+  }
 
   static std::vector<int> GenerateOptionConfigs() {
     std::vector<int> optionConfigs;
@@ -2292,9 +2316,12 @@ class MultiThreadedDBTest : public DBTest,
     }
     return optionConfigs;
   }
+
+  bool multiget_batched_;
 };
 
 TEST_P(MultiThreadedDBTest, MultiThreaded) {
+  if (option_config_ == kPipelinedWrite) return;
   anon::OptionsOverride options_override;
   options_override.skip_policy = kSkipNoSnapshot;
   Options options = CurrentOptions(options_override);
@@ -2318,6 +2345,7 @@ TEST_P(MultiThreadedDBTest, MultiThreaded) {
   for (int id = 0; id < kNumThreads; id++) {
     thread[id].state = &mt;
     thread[id].id = id;
+    thread[id].multiget_batched = multiget_batched_;
     env_->StartThread(MTThreadBody, &thread[id]);
   }
 
@@ -2335,7 +2363,9 @@ TEST_P(MultiThreadedDBTest, MultiThreaded) {
 
 INSTANTIATE_TEST_CASE_P(
     MultiThreaded, MultiThreadedDBTest,
-    ::testing::ValuesIn(MultiThreadedDBTest::GenerateOptionConfigs()));
+    ::testing::Combine(
+        ::testing::ValuesIn(MultiThreadedDBTest::GenerateOptionConfigs()),
+        ::testing::Bool()));
 #endif  // ROCKSDB_LITE
 
 // Group commit test:
@@ -2498,6 +2528,16 @@ class ModelDB : public DB {
     return Status::NotSupported("Not implemented");
   }
 
+  using DB::CreateColumnFamilyWithImport;
+  virtual Status CreateColumnFamilyWithImport(
+      const ColumnFamilyOptions& /*options*/,
+      const std::string& /*column_family_name*/,
+      const ImportColumnFamilyOptions& /*import_options*/,
+      const ExportImportFilesMetaData& /*metadata*/,
+      ColumnFamilyHandle** /*handle*/) override {
+    return Status::NotSupported("Not implemented.");
+  }
+
   Status VerifyChecksum() override {
     return Status::NotSupported("Not implemented.");
   }
@@ -2594,13 +2634,14 @@ class ModelDB : public DB {
     return false;
   }
   using DB::GetApproximateSizes;
-  void GetApproximateSizes(ColumnFamilyHandle* /*column_family*/,
-                           const Range* /*range*/, int n, uint64_t* sizes,
-                           uint8_t /*include_flags*/
-                           = INCLUDE_FILES) override {
+  Status GetApproximateSizes(const SizeApproximationOptions& /*options*/,
+                             ColumnFamilyHandle* /*column_family*/,
+                             const Range* /*range*/, int n,
+                             uint64_t* sizes) override {
     for (int i = 0; i < n; i++) {
       sizes[i] = 0;
     }
+    return Status::OK();
   }
   using DB::GetApproximateMemTableStats;
   void GetApproximateMemTableStats(ColumnFamilyHandle* /*column_family*/,
@@ -4952,11 +4993,15 @@ TEST_F(DBTest, DynamicMiscOptions) {
   ASSERT_OK(dbfull()->TEST_GetLatestMutableCFOptions(handles_[0],
                                                      &mutable_cf_options));
   ASSERT_EQ(CompressionType::kNoCompression, mutable_cf_options.compression);
-  ASSERT_OK(dbfull()->SetOptions({{"compression", "kSnappyCompression"}}));
-  ASSERT_OK(dbfull()->TEST_GetLatestMutableCFOptions(handles_[0],
-                                                     &mutable_cf_options));
-  ASSERT_EQ(CompressionType::kSnappyCompression,
-            mutable_cf_options.compression);
+
+  if (Snappy_Supported()) {
+    ASSERT_OK(dbfull()->SetOptions({{"compression", "kSnappyCompression"}}));
+    ASSERT_OK(dbfull()->TEST_GetLatestMutableCFOptions(handles_[0],
+                                                       &mutable_cf_options));
+    ASSERT_EQ(CompressionType::kSnappyCompression,
+              mutable_cf_options.compression);
+  }
+
   // Test paranoid_file_checks already done in db_block_cache_test
   ASSERT_OK(
       dbfull()->SetOptions(handles_[1], {{"paranoid_file_checks", "true"}}));
@@ -6069,6 +6114,19 @@ TEST_F(DBTest, FailWhenCompressionNotSupportedTest) {
   }
 }
 
+TEST_F(DBTest, CreateColumnFamilyShouldFailOnIncompatibleOptions) {
+  Options options = CurrentOptions();
+  options.max_open_files = 100;
+  Reopen(options);
+
+  ColumnFamilyOptions cf_options(options);
+  // ttl is only supported when max_open_files is -1.
+  cf_options.ttl = 3600;
+  ColumnFamilyHandle* handle;
+  ASSERT_NOK(db_->CreateColumnFamily(cf_options, "pikachu", &handle));
+  delete handle;
+}
+
 #ifndef ROCKSDB_LITE
 TEST_F(DBTest, RowCache) {
   Options options = CurrentOptions();
@@ -6234,10 +6292,30 @@ TEST_F(DBTest, ThreadLocalPtrDeadlock) {
   fprintf(stderr, "Done. Flushed %d times, destroyed %d threads\n",
           flushes_done.load(), threads_destroyed.load());
 }
+
+TEST_F(DBTest, LargeBlockSizeTest) {
+  Options options = CurrentOptions();
+  CreateAndReopenWithCF({"pikachu"}, options);
+  ASSERT_OK(Put(0, "foo", "bar"));
+  BlockBasedTableOptions table_options;
+  table_options.block_size = 8LL*1024*1024*1024LL;
+  options.table_factory.reset(NewBlockBasedTableFactory(table_options));
+  ASSERT_NOK(TryReopenWithColumnFamilies({"default", "pikachu"}, options));
+}
+
 }  // namespace rocksdb
+
+#ifdef ROCKSDB_UNITTESTS_WITH_CUSTOM_OBJECTS_FROM_STATIC_LIBS
+extern "C" {
+void RegisterCustomObjects(int argc, char** argv);
+}
+#else
+void RegisterCustomObjects(int /*argc*/, char** /*argv*/) {}
+#endif  // !ROCKSDB_UNITTESTS_WITH_CUSTOM_OBJECTS_FROM_STATIC_LIBS
 
 int main(int argc, char** argv) {
   rocksdb::port::InstallStackTraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
+  RegisterCustomObjects(argc, argv);
   return RUN_ALL_TESTS();
 }

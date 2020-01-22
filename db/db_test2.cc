@@ -200,7 +200,7 @@ TEST_P(DBTestSharedWriteBufferAcrossCFs, SharedWriteBufferAcrossCFs) {
 
   // The total soft write buffer size is about 105000
   std::shared_ptr<Cache> cache = NewLRUCache(4 * 1024 * 1024, 2);
-  ASSERT_LT(cache->GetUsage(), 1024 * 1024);
+  ASSERT_LT(cache->GetUsage(), 256 * 1024);
 
   if (use_old_interface_) {
     options.db_write_buffer_size = 120000;  // this is the real limit
@@ -236,14 +236,14 @@ TEST_P(DBTestSharedWriteBufferAcrossCFs, SharedWriteBufferAcrossCFs) {
 
   ASSERT_OK(Put(3, Key(1), DummyString(30000), wo));
   if (cost_cache_) {
-    ASSERT_GE(cache->GetUsage(), 1024 * 1024);
-    ASSERT_LE(cache->GetUsage(), 2 * 1024 * 1024);
+    ASSERT_GE(cache->GetUsage(), 256 * 1024);
+    ASSERT_LE(cache->GetUsage(), 2 * 256 * 1024);
   }
   wait_flush();
   ASSERT_OK(Put(0, Key(1), DummyString(60000), wo));
   if (cost_cache_) {
-    ASSERT_GE(cache->GetUsage(), 1024 * 1024);
-    ASSERT_LE(cache->GetUsage(), 2 * 1024 * 1024);
+    ASSERT_GE(cache->GetUsage(), 256 * 1024);
+    ASSERT_LE(cache->GetUsage(), 2 * 256 * 1024);
   }
   wait_flush();
   ASSERT_OK(Put(2, Key(1), DummyString(1), wo));
@@ -339,11 +339,11 @@ TEST_P(DBTestSharedWriteBufferAcrossCFs, SharedWriteBufferAcrossCFs) {
               static_cast<uint64_t>(2));
   }
   if (cost_cache_) {
-    ASSERT_GE(cache->GetUsage(), 1024 * 1024);
+    ASSERT_GE(cache->GetUsage(), 256 * 1024);
     Close();
     options.write_buffer_manager.reset();
     last_options_.write_buffer_manager.reset();
-    ASSERT_LT(cache->GetUsage(), 1024 * 1024);
+    ASSERT_LT(cache->GetUsage(), 256 * 1024);
   }
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
 }
@@ -467,8 +467,8 @@ TEST_F(DBTest2, TestWriteBufferNoLimitWithCache) {
   Reopen(options);
 
   ASSERT_OK(Put("foo", "bar"));
-  // One dummy entry is 1MB.
-  ASSERT_GT(cache->GetUsage(), 500000);
+  // One dummy entry is 256KB.
+  ASSERT_GT(cache->GetUsage(), 128000);
 }
 
 namespace {
@@ -1036,8 +1036,7 @@ TEST_F(DBTest2, WalFilterTestWithColumnFamilies) {
   ASSERT_TRUE(index == keys_cf.size());
 }
 
-// Temporarily disable it because the test is flaky.
-TEST_F(DBTest2, DISABLED_PresetCompressionDict) {
+TEST_F(DBTest2, PresetCompressionDict) {
   // Verifies that compression ratio improves when dictionary is enabled, and
   // improves even further when the dictionary is trained by ZSTD.
   const size_t kBlockSizeBytes = 4 << 10;
@@ -1046,7 +1045,8 @@ TEST_F(DBTest2, DISABLED_PresetCompressionDict) {
   const int kNumL0Files = 5;
 
   Options options;
-  options.env = CurrentOptions().env; // Make sure to use any custom env that the test is configured with.
+  // Make sure to use any custom env that the test is configured with.
+  options.env = CurrentOptions().env;
   options.allow_concurrent_memtable_write = false;
   options.arena_block_size = kBlockSizeBytes;
   options.create_if_missing = true;
@@ -1075,10 +1075,19 @@ TEST_F(DBTest2, DISABLED_PresetCompressionDict) {
   if(options.vlogring_activation_level.size())return;  // this test does not apply to indirect values
 #endif
 
+  enum DictionaryTypes : int {
+    kWithoutDict,
+    kWithDict,
+    kWithZSTDTrainedDict,
+    kDictEnd,
+  };
+
   for (auto compression_type : compression_types) {
     options.compression = compression_type;
-    size_t prev_out_bytes;
-    for (int i = 0; i < 3; ++i) {
+    size_t bytes_without_dict = 0;
+    size_t bytes_with_dict = 0;
+    size_t bytes_with_zstd_trained_dict = 0;
+    for (int i = kWithoutDict; i < kDictEnd; i++) {
       // First iteration: compress without preset dictionary
       // Second iteration: compress with preset dictionary
       // Third iteration (zstd only): compress with zstd-trained dictionary
@@ -1088,19 +1097,19 @@ TEST_F(DBTest2, DISABLED_PresetCompressionDict) {
       // the non-first iterations, verify the data we get out is the same data
       // we put in.
       switch (i) {
-        case 0:
+        case kWithoutDict:
           options.compression_opts.max_dict_bytes = 0;
           options.compression_opts.zstd_max_train_bytes = 0;
           break;
-        case 1:
-          options.compression_opts.max_dict_bytes = 4 * kBlockSizeBytes;
+        case kWithDict:
+          options.compression_opts.max_dict_bytes = kBlockSizeBytes;
           options.compression_opts.zstd_max_train_bytes = 0;
           break;
-        case 2:
+        case kWithZSTDTrainedDict:
           if (compression_type != kZSTD) {
             continue;
           }
-          options.compression_opts.max_dict_bytes = 4 * kBlockSizeBytes;
+          options.compression_opts.max_dict_bytes = kBlockSizeBytes;
           options.compression_opts.zstd_max_train_bytes = kL0FileBytes;
           break;
         default:
@@ -1132,23 +1141,32 @@ TEST_F(DBTest2, DISABLED_PresetCompressionDict) {
       ASSERT_EQ(0, NumTableFilesAtLevel(0, 1));
       ASSERT_GT(NumTableFilesAtLevel(1, 1), 0);
 
-      size_t out_bytes = 0;
-      std::vector<std::string> files;
-      GetSstFiles(env_, dbname_, &files);
-      for (const auto& file : files) {
-        uint64_t curr_bytes;
-        env_->GetFileSize(dbname_ + "/" + file, &curr_bytes);
-        out_bytes += static_cast<size_t>(curr_bytes);
+      // Get the live sst files size
+      size_t total_sst_bytes = TotalSize(1);
+      if (i == kWithoutDict) {
+        bytes_without_dict = total_sst_bytes;
+      } else if (i == kWithDict) {
+        bytes_with_dict = total_sst_bytes;
+      } else if (i == kWithZSTDTrainedDict) {
+        bytes_with_zstd_trained_dict = total_sst_bytes;
       }
 
       for (size_t j = 0; j < kNumL0Files * (kL0FileBytes / kBlockSizeBytes);
            j++) {
         ASSERT_EQ(seq_datas[(j / 10) % 10], Get(1, Key(static_cast<int>(j))));
       }
-      if (i) {
-        ASSERT_GT(prev_out_bytes, out_bytes);
+      if (i == kWithDict) {
+        ASSERT_GT(bytes_without_dict, bytes_with_dict);
+      } else if (i == kWithZSTDTrainedDict) {
+        // In zstd compression, it is sometimes possible that using a trained
+        // dictionary does not get as good a compression ratio as without
+        // training.
+        // But using a dictionary (with or without training) should always get
+        // better compression ratio than not using one.
+        ASSERT_TRUE(bytes_with_dict > bytes_with_zstd_trained_dict ||
+                    bytes_without_dict > bytes_with_zstd_trained_dict);
       }
-      prev_out_bytes = out_bytes;
+
       DestroyAndReopen(options);
     }
   }
@@ -1197,7 +1215,7 @@ TEST_F(DBTest2, DISABLED_PresetCompressionDictLocality) {
   rocksdb::SyncPoint::GetInstance()->EnableProcessing();
   CompactRangeOptions compact_range_opts;
   compact_range_opts.bottommost_level_compaction =
-      BottommostLevelCompaction::kForce;
+      BottommostLevelCompaction::kForceOptimized;
   ASSERT_OK(db_->CompactRange(compact_range_opts, nullptr, nullptr));
 
   // Dictionary compression should not be so good as to compress four totally
@@ -1729,7 +1747,7 @@ TEST_F(DBTest2, MaxCompactionBytesTest) {
     GenerateNewRandomFileInvInd(&rnd,values_are_indirect);
   }
   CompactRangeOptions cro;
-  cro.bottommost_level_compaction = BottommostLevelCompaction::kForce;
+  cro.bottommost_level_compaction = BottommostLevelCompaction::kForceOptimized;
   ASSERT_OK(db_->CompactRange(cro, nullptr, nullptr));
   ASSERT_EQ("0,0,8", FilesPerLevel(0));
 
@@ -2335,7 +2353,7 @@ TEST_F(DBTest2, AutomaticCompactionOverlapManualCompaction) {
   // Run a manual compaction that will compact the 2 files in L2
   // into 1 file in L2
   cro.exclusive_manual_compaction = false;
-  cro.bottommost_level_compaction = BottommostLevelCompaction::kForce;
+  cro.bottommost_level_compaction = BottommostLevelCompaction::kForceOptimized;
   ASSERT_OK(db_->CompactRange(cro, nullptr, nullptr));
 
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
@@ -2412,7 +2430,7 @@ TEST_F(DBTest2, ManualCompactionOverlapManualCompaction) {
   // into 1 file in L1
   CompactRangeOptions cro;
   cro.exclusive_manual_compaction = false;
-  cro.bottommost_level_compaction = BottommostLevelCompaction::kForce;
+  cro.bottommost_level_compaction = BottommostLevelCompaction::kForceOptimized;
   ASSERT_OK(db_->CompactRange(cro, nullptr, nullptr));
   bg_thread.join();
 
@@ -2429,6 +2447,41 @@ TEST_F(DBTest2, OptimizeForPointLookup) {
   ASSERT_EQ("v1", Get("foo"));
   Flush();
   ASSERT_EQ("v1", Get("foo"));
+}
+
+TEST_F(DBTest2, OptimizeForSmallDB) {
+  Options options = CurrentOptions();
+  Close();
+  options.OptimizeForSmallDb();
+
+  // Find the cache object
+  ASSERT_EQ(std::string(BlockBasedTableFactory::kName),
+            std::string(options.table_factory->Name()));
+  BlockBasedTableOptions* table_options =
+      reinterpret_cast<BlockBasedTableOptions*>(
+          options.table_factory->GetOptions());
+  ASSERT_TRUE(table_options != nullptr);
+  std::shared_ptr<Cache> cache = table_options->block_cache;
+
+  ASSERT_EQ(0, cache->GetUsage());
+  ASSERT_OK(DB::Open(options, dbname_, &db_));
+  ASSERT_OK(Put("foo", "v1"));
+
+  // memtable size is costed to the block cache
+  ASSERT_NE(0, cache->GetUsage());
+
+  ASSERT_EQ("v1", Get("foo"));
+  Flush();
+
+  size_t prev_size = cache->GetUsage();
+  // Remember block cache size, so that we can find that
+  // it is filled after Get().
+  // Use pinnable slice so that it can ping the block so that
+  // when we check the size it is not evicted.
+  PinnableSlice value;
+  ASSERT_OK(db_->Get(ReadOptions(), db_->DefaultColumnFamily(), "foo", &value));
+  ASSERT_GT(cache->GetUsage(), prev_size);
+  value.Reset();
 }
 
 #endif  // ROCKSDB_LITE
@@ -3741,10 +3794,120 @@ TEST_F(DBTest2, OldStatsInterface) {
   ASSERT_GT(dos->num_rt, 0);
   ASSERT_GT(dos->num_mt, 0);
 }
+
+TEST_F(DBTest2, CloseWithUnreleasedSnapshot) {
+  const Snapshot* ss = db_->GetSnapshot();
+
+  for (auto h : handles_) {
+    db_->DestroyColumnFamilyHandle(h);
+  }
+  handles_.clear();
+
+  ASSERT_NOK(db_->Close());
+  db_->ReleaseSnapshot(ss);
+  ASSERT_OK(db_->Close());
+  delete db_;
+  db_ = nullptr;
+}
+
+TEST_F(DBTest2, PrefixBloomReseek) {
+  Options options = CurrentOptions();
+  options.create_if_missing = true;
+  options.prefix_extractor.reset(NewCappedPrefixTransform(3));
+  BlockBasedTableOptions bbto;
+  bbto.filter_policy.reset(NewBloomFilterPolicy(10, false));
+  bbto.whole_key_filtering = false;
+  options.table_factory.reset(NewBlockBasedTableFactory(bbto));
+  DestroyAndReopen(options);
+
+  // Construct two L1 files with keys:
+  // f1:[aaa1 ccc1] f2:[ddd0]
+  ASSERT_OK(Put("aaa1", ""));
+  ASSERT_OK(Put("ccc1", ""));
+  ASSERT_OK(Flush());
+  ASSERT_OK(Put("ddd0", ""));
+  ASSERT_OK(Flush());
+  CompactRangeOptions cro;
+  cro.bottommost_level_compaction = BottommostLevelCompaction::kSkip;
+  ASSERT_OK(db_->CompactRange(cro, nullptr, nullptr));
+
+  ASSERT_OK(Put("bbb1", ""));
+
+  Iterator* iter = db_->NewIterator(ReadOptions());
+
+  // Seeking into f1, the iterator will check bloom filter which returns the
+  // file iterator ot be invalidate, and the cursor will put into f2, with
+  // the next key to be "ddd0".
+  iter->Seek("bbb1");
+  ASSERT_TRUE(iter->Valid());
+  ASSERT_EQ("bbb1", iter->key().ToString());
+
+  // Reseek ccc1, the L1 iterator needs to go back to f1 and reseek.
+  iter->Seek("ccc1");
+  ASSERT_TRUE(iter->Valid());
+  ASSERT_EQ("ccc1", iter->key().ToString());
+
+  delete iter;
+}
+
+#ifndef ROCKSDB_LITE
+TEST_F(DBTest2, RowCacheSnapshot) {
+  Options options = CurrentOptions();
+  options.statistics = rocksdb::CreateDBStatistics();
+  options.row_cache = NewLRUCache(8192);
+  DestroyAndReopen(options);
+
+  ASSERT_OK(Put("foo", "bar1"));
+
+  const Snapshot* s1 = db_->GetSnapshot();
+
+  ASSERT_OK(Put("foo", "bar2"));
+  ASSERT_OK(Flush());
+
+  ASSERT_OK(Put("foo2", "bar"));
+  const Snapshot* s2 = db_->GetSnapshot();
+  ASSERT_OK(Put("foo3", "bar"));
+  const Snapshot* s3 = db_->GetSnapshot();
+
+  ASSERT_EQ(TestGetTickerCount(options, ROW_CACHE_HIT), 0);
+  ASSERT_EQ(TestGetTickerCount(options, ROW_CACHE_MISS), 0);
+  ASSERT_EQ(Get("foo"), "bar2");
+  ASSERT_EQ(TestGetTickerCount(options, ROW_CACHE_HIT), 0);
+  ASSERT_EQ(TestGetTickerCount(options, ROW_CACHE_MISS), 1);
+  ASSERT_EQ(Get("foo"), "bar2");
+  ASSERT_EQ(TestGetTickerCount(options, ROW_CACHE_HIT), 1);
+  ASSERT_EQ(TestGetTickerCount(options, ROW_CACHE_MISS), 1);
+  ASSERT_EQ(Get("foo", s1), "bar1");
+  ASSERT_EQ(TestGetTickerCount(options, ROW_CACHE_HIT), 1);
+  ASSERT_EQ(TestGetTickerCount(options, ROW_CACHE_MISS), 2);
+  ASSERT_EQ(Get("foo", s2), "bar2");
+  ASSERT_EQ(TestGetTickerCount(options, ROW_CACHE_HIT), 2);
+  ASSERT_EQ(TestGetTickerCount(options, ROW_CACHE_MISS), 2);
+  ASSERT_EQ(Get("foo", s1), "bar1");
+  ASSERT_EQ(TestGetTickerCount(options, ROW_CACHE_HIT), 3);
+  ASSERT_EQ(TestGetTickerCount(options, ROW_CACHE_MISS), 2);
+  ASSERT_EQ(Get("foo", s3), "bar2");
+  ASSERT_EQ(TestGetTickerCount(options, ROW_CACHE_HIT), 4);
+  ASSERT_EQ(TestGetTickerCount(options, ROW_CACHE_MISS), 2);
+
+  db_->ReleaseSnapshot(s1);
+  db_->ReleaseSnapshot(s2);
+  db_->ReleaseSnapshot(s3);
+}
+#endif  // ROCKSDB_LITE
 }  // namespace rocksdb
+
+#ifdef ROCKSDB_UNITTESTS_WITH_CUSTOM_OBJECTS_FROM_STATIC_LIBS
+extern "C" {
+void RegisterCustomObjects(int argc, char** argv);
+}
+#else
+void RegisterCustomObjects(int /*argc*/, char** /*argv*/) {}
+#endif  // !ROCKSDB_UNITTESTS_WITH_CUSTOM_OBJECTS_FROM_STATIC_LIBS
 
 int main(int argc, char** argv) {
   rocksdb::port::InstallStackTraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
+  RegisterCustomObjects(argc, argv);
   return RUN_ALL_TESTS();
 }

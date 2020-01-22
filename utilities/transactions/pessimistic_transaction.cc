@@ -13,15 +13,15 @@
 #include <vector>
 
 #include "db/column_family.h"
-#include "db/db_impl.h"
+#include "db/db_impl/db_impl.h"
 #include "rocksdb/comparator.h"
 #include "rocksdb/db.h"
 #include "rocksdb/snapshot.h"
 #include "rocksdb/status.h"
 #include "rocksdb/utilities/transaction_db.h"
+#include "test_util/sync_point.h"
 #include "util/cast_util.h"
 #include "util/string_util.h"
-#include "util/sync_point.h"
 #include "utilities/transactions/pessimistic_transaction_db.h"
 #include "utilities/transactions/transaction_util.h"
 
@@ -231,7 +231,8 @@ Status WriteCommittedTxn::PrepareInternal() {
       (void)two_write_queues_;  // to silence unused private field warning
     }
     virtual Status Callback(SequenceNumber, bool is_mem_disabled,
-                            uint64_t log_number) override {
+                            uint64_t log_number, size_t /*index*/,
+                            size_t /*total*/) override {
 #ifdef NDEBUG
       (void)is_mem_disabled;
 #endif
@@ -628,9 +629,26 @@ Status PessimisticTransaction::TryLock(ColumnFamilyHandle* column_family,
   if (s.ok()) {
     // We must track all the locked keys so that we can unlock them later. If
     // the key is already locked, this func will update some stats on the
-    // tracked key. It could also update the tracked_at_seq if it is lower than
-    // the existing trackey seq.
-    TrackKey(cfh_id, key_str, tracked_at_seq, read_only, exclusive);
+    // tracked key. It could also update the tracked_at_seq if it is lower
+    // than the existing tracked key seq. These stats are necessary for
+    // RollbackToSavePoint to determine whether a key can be safely removed
+    // from tracked_keys_. Removal can only be done if a key was only locked
+    // during the current savepoint.
+    //
+    // Recall that if assume_tracked is true, we assume that TrackKey has been
+    // called previously since the last savepoint, with the same exclusive
+    // setting, and at a lower sequence number, so skipping here should be
+    // safe.
+    if (!assume_tracked) {
+      TrackKey(cfh_id, key_str, tracked_at_seq, read_only, exclusive);
+    } else {
+#ifndef NDEBUG
+      assert(tracked_keys_cf->second.count(key_str) > 0);
+      const auto& info = tracked_keys_cf->second.find(key_str)->second;
+      assert(info.seq <= tracked_at_seq);
+      assert(info.exclusive == exclusive);
+#endif
+    }
   }
 
   return s;

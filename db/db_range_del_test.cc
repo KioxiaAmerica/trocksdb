@@ -5,7 +5,7 @@
 
 #include "db/db_test_util.h"
 #include "port/stack_trace.h"
-#include "util/testutil.h"
+#include "test_util/testutil.h"
 #include "utilities/merge_operators.h"
 
 namespace rocksdb {
@@ -463,9 +463,10 @@ TEST_F(DBRangeDelTest, ValidUniversalSubcompactionBoundaries) {
   ASSERT_OK(dbfull()->RunManualCompaction(
       reinterpret_cast<ColumnFamilyHandleImpl*>(db_->DefaultColumnFamily())
           ->cfd(),
-      1 /* input_level */, 2 /* output_level */, 0 /* output_path_id */,
-      0 /* max_subcompactions */, nullptr /* begin */, nullptr /* end */,
-      true /* exclusive */, true /* disallow_trivial_move */));
+      1 /* input_level */, 2 /* output_level */, CompactRangeOptions(),
+      nullptr /* begin */, nullptr /* end */, true /* exclusive */,
+      true /* disallow_trivial_move */,
+      port::kMaxUint64 /* max_file_num_to_ignore */));
 }
 #endif  // ROCKSDB_LITE
 
@@ -515,7 +516,7 @@ TEST_F(DBRangeDelTest, CompactionRemovesCoveredMergeOperands) {
   ASSERT_EQ(expected, actual);
 }
 
-TEST_F(DBRangeDelTest, DISABLED_PutDeleteRangeMergeFlush) {
+TEST_F(DBRangeDelTest, PutDeleteRangeMergeFlush) {
   // Test the sequence of operations: (1) Put, (2) DeleteRange, (3) Merge, (4)
   // Flush. The `CompactionIterator` previously had a bug where we forgot to
   // check for covering range tombstones when processing the (1) Put, causing

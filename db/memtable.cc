@@ -19,6 +19,8 @@
 #include "db/pinned_iterators_manager.h"
 #include "db/range_tombstone_fragmenter.h"
 #include "db/read_callback.h"
+#include "memory/arena.h"
+#include "memory/memory_usage.h"
 #include "monitoring/perf_context_imp.h"
 #include "monitoring/statistics.h"
 #include "port/port.h"
@@ -31,10 +33,8 @@
 #include "table/internal_iterator.h"
 #include "table/iterator_wrapper.h"
 #include "table/merging_iterator.h"
-#include "util/arena.h"
 #include "util/autovector.h"
 #include "util/coding.h"
-#include "util/memory_usage.h"
 #include "util/mutexlock.h"
 #include "util/util.h"
 
@@ -318,8 +318,9 @@ class MemTableIterator : public InternalIterator {
     PERF_COUNTER_ADD(seek_on_memtable_count, 1);
     if (bloom_) {
       // iterator should only use prefix bloom filter
-      if (!bloom_->MayContain(
-              prefix_extractor_->Transform(ExtractUserKey(k)))) {
+      Slice user_k(ExtractUserKey(k));
+      if (prefix_extractor_->InDomain(user_k) &&
+          !bloom_->MayContain(prefix_extractor_->Transform(user_k))) {
         PERF_COUNTER_ADD(bloom_memtable_miss_count, 1);
         valid_ = false;
         return;
@@ -334,8 +335,9 @@ class MemTableIterator : public InternalIterator {
     PERF_TIMER_GUARD(seek_on_memtable_time);
     PERF_COUNTER_ADD(seek_on_memtable_count, 1);
     if (bloom_) {
-      if (!bloom_->MayContain(
-              prefix_extractor_->Transform(ExtractUserKey(k)))) {
+      Slice user_k(ExtractUserKey(k));
+      if (prefix_extractor_->InDomain(user_k) &&
+          !bloom_->MayContain(prefix_extractor_->Transform(user_k))) {
         PERF_COUNTER_ADD(bloom_memtable_miss_count, 1);
         valid_ = false;
         return;
@@ -491,6 +493,8 @@ bool MemTable::Add(SequenceNumber s, ValueType type,
   p = EncodeVarint32(p, val_size);
   memcpy(p, value.data(), val_size);
   assert((unsigned)(p + val_size - buf) == (unsigned)encoded_len);
+  size_t ts_sz = GetInternalKeyComparator().user_comparator()->timestamp_size();
+
   if (!allow_concurrent) {
     // Extract prefix for insert with hint.
     if (insert_with_hint_prefix_extractor_ != nullptr &&
@@ -518,11 +522,12 @@ bool MemTable::Add(SequenceNumber s, ValueType type,
                          std::memory_order_relaxed);
     }
 
-    if (bloom_filter_ && prefix_extractor_) {
+    if (bloom_filter_ && prefix_extractor_ &&
+        prefix_extractor_->InDomain(key)) {
       bloom_filter_->Add(prefix_extractor_->Transform(key));
     }
     if (bloom_filter_ && moptions_.memtable_whole_key_filtering) {
-      bloom_filter_->Add(key);
+      bloom_filter_->Add(StripTimestampFromUserKey(key, ts_sz));
     }
 
     // The first sequence number inserted into the memtable
@@ -551,11 +556,12 @@ bool MemTable::Add(SequenceNumber s, ValueType type,
       post_process_info->num_deletes++;
     }
 
-    if (bloom_filter_ && prefix_extractor_) {
+    if (bloom_filter_ && prefix_extractor_ &&
+        prefix_extractor_->InDomain(key)) {
       bloom_filter_->AddConcurrently(prefix_extractor_->Transform(key));
     }
     if (bloom_filter_ && moptions_.memtable_whole_key_filtering) {
-      bloom_filter_->AddConcurrently(key);
+      bloom_filter_->AddConcurrently(StripTimestampFromUserKey(key, ts_sz));
     }
 
     // atomically update first_seqno_ and earliest_seqno_.
@@ -628,8 +634,10 @@ static bool SaveValue(void* arg, const char* entry) {
   // all entries with overly large sequence numbers.
   uint32_t key_length;
   const char* key_ptr = GetVarint32Ptr(entry, entry + 5, &key_length);
-  if (s->mem->GetInternalKeyComparator().user_comparator()->Equal(
-          Slice(key_ptr, key_length - 8), s->key->user_key())) {
+  Slice user_key_slice = Slice(key_ptr, key_length - 8);
+  if (s->mem->GetInternalKeyComparator()
+          .user_comparator()
+          ->CompareWithoutTimestamp(user_key_slice, s->key->user_key()) == 0) {
     // Correct user key
     const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
     ValueType type;
@@ -763,14 +771,17 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s,
   bool found_final_value = false;
   bool merge_in_progress = s->IsMergeInProgress();
   bool may_contain = true;
+  size_t ts_sz = GetInternalKeyComparator().user_comparator()->timestamp_size();
   if (bloom_filter_) {
     // when both memtable_whole_key_filtering and prefix_extractor_ are set,
     // only do whole key filtering for Get() to save CPU
     if (moptions_.memtable_whole_key_filtering) {
-      may_contain = bloom_filter_->MayContain(user_key);
+      may_contain =
+          bloom_filter_->MayContain(StripTimestampFromUserKey(user_key, ts_sz));
     } else {
       assert(prefix_extractor_);
       may_contain =
+          !prefix_extractor_->InDomain(user_key) ||
           bloom_filter_->MayContain(prefix_extractor_->Transform(user_key));
     }
   }
