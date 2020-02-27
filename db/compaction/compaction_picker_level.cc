@@ -65,7 +65,7 @@ class LevelCompactionBuilder {
 
   // If the initial files are from L0 level, pick other L0
   // files if needed.  Return false if compaction should be aborted
-  bool SetupOtherL0FilesIfNeeded();
+  int64_t SetupOtherL0FilesIfNeeded();
 
   // Based on initial files, setup other files need to be compacted
   // in this compaction, accordingly.
@@ -300,10 +300,10 @@ void LevelCompactionBuilder::SetupInitialFiles() {
   }
 }
 
-bool LevelCompactionBuilder::SetupOtherL0FilesIfNeeded() {
+int64_t LevelCompactionBuilder::SetupOtherL0FilesIfNeeded() {
   if (start_level_ == 0 && output_level_ != 0) {
     return compaction_picker_->GetOverlappingL0Files(
-        vstorage_, &start_level_inputs_, output_level_, &parent_index_, &ioptions_) >= 0;  // 0 and 1 =  OK
+        vstorage_, &start_level_inputs_, output_level_, &parent_index_, &ioptions_);
   }
   return true;
 }
@@ -393,9 +393,10 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
 
   // If it is a L0 -> base level compaction, we need to set up other L0
   // files if needed.
-  if (!SetupOtherL0FilesIfNeeded()) {
+  int64_t l0status=SetupOtherL0FilesIfNeeded();
+  if (l0status<0) { //error
     return nullptr;
-  }
+  } else if (l0status>0)output_level_ = vstorage_->num_levels()-1;  // if sequential-key load, load into last level
 
   // Pick files in the output level and expand more files in the start level
   // if needed.
